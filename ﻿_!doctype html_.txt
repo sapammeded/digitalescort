@@ -1,0 +1,689 @@
+﻿<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <title>Naviguard — Digital Escort (Single-file PWA)</title>
+  <meta name="description" content="Naviguard single-file PWA: camera + GPS + offline cache + permission UX + export GPX" />
+  <meta name="theme-color" content="#1e40af">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>">
+  <style>
+    :root{ --primary:#1e40af; --bg:#0f172a; --surface:#111827; --text:#f1f5f9; --muted:#94a3b8; --accent:#0ea5e9; --radius:14px; }
+    html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+    .app{height:100vh;display:flex;flex-direction:column;position:relative;overflow:hidden;}
+    .header{padding:10px 14px;background:rgba(15,23,42,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:space-between;z-index:1200}
+    .app-title{display:flex;gap:8px;align-items:center;font-weight:700}
+    .status-badge{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.04);font-size:13px}
+    .main-content{flex:1;position:relative;display:flex}
+    .camera-view{flex:1;position:relative;background:#000}
+    #video{width:100%;height:100%;object-fit:cover;transform:none} /* rear camera natural */
+    .ar-overlay{position:absolute;inset:0;pointer-events:none;z-index:10}
+    #arCanvas{width:100%;height:100%}
+    .info-panel{position:absolute;left:12px;right:12px;top:78px;background:rgba(15,23,42,0.6);backdrop-filter:blur(8px);padding:12px;border-radius:12px;z-index:20;transition:transform .2s,opacity .2s}
+    .controls{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;display:flex;gap:10px;z-index:30;transition:opacity .2s,transform .2s}
+    .control-btn{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:0;color:var(--text)}
+    .control-btn.primary{background:var(--primary);box-shadow:0 6px 20px rgba(14,165,233,0.08)}
+    .waypoint-list{position:absolute;left:12px;right:12px;bottom:100px;background:rgba(15,23,42,0.5);padding:10px;border-radius:12px;max-height:220px;overflow:auto;z-index:25;transition:opacity .2s,transform .2s}
+    .toast{position:fixed;left:50%;top:18px;transform:translateX(-50%) translateY(-120%);background:var(--surface);padding:12px 16px;border-radius:12px;z-index:1000;transition:transform .3s}
+    .toast.show{transform:translateX(-50%) translateY(0)}
+    .loading-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px;background:linear-gradient(180deg,rgba(2,6,23,0.95),rgba(2,6,23,0.85));z-index:999}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1100}
+    .card{background:var(--surface);padding:16px;border-radius:12px;max-width:520px;color:var(--text)}
+    .btn{background:var(--primary);color:white;padding:10px 14px;border-radius:10px;border:0;font-weight:600;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.08)}
+    .small{font-size:13px;color:var(--muted)}
+    /* responsive */
+    @media(max-width:600px){ .info-panel{top:68px;padding:10px} .control-btn{width:50px;height:50px} }
+
+    /* ========== UI TIDY (Full UX but neater) ========== */
+    /* Minimal and Full modes kept to let user control density.
+       Default mode for Mode 4: Full UI visible but docked & non-obstructive.
+    */
+    .minimal .info-panel { opacity: 0; transform: translateY(-6px); pointer-events: none; }
+    .minimal .waypoint-list, .minimal .mini-controls, .minimal .mapbox-mini { opacity: 0; transform: translateY(6px); pointer-events: none; }
+    .minimal .controls { opacity: 0.4; transform: scale(.94); }
+
+    .full .info-panel, .full .waypoint-list, .full .mini-controls, .full .mapbox-mini { opacity:1; pointer-events: auto; transform:none; }
+
+    /* UI toggle button */
+    #uiToggleBtn {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      z-index: 2000;
+      background: linear-gradient(180deg,#0b63d6,#0a58c6);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 56px; height:56px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+      font-size: 24px; cursor: pointer;
+    }
+    #miniIndicator {
+      position: fixed; left:12px; bottom:12px; z-index:2000;
+      background: rgba(0,0,0,0.45); color:#fff; padding:6px 8px; border-radius:8px; font-size:12px;
+    }
+
+    /* Hide default file input appearance */
+    input[type="file"].mbtiles { opacity: 0; width: 1px; height: 1px; position: absolute; left:-9999px; }
+    /* make mini controls column compact */
+    .mini-controls { position: absolute; top: 12px; left: 12px; z-index:1200; display:flex; gap:8px; flex-direction:column; }
+    .mini-btn { background: rgba(0,0,0,0.5); color:#fff; padding:8px 10px; border-radius:10px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,0.06); font-size:13px }
+    .mapbox-mini { position:absolute; right:12px; bottom:12px; width:140px; height:120px; border-radius:10px; overflow:hidden; z-index:1200; border:1px solid rgba(255,255,255,0.06); background:#fff; transition:opacity .2s, transform .2s; }
+  </style>
+</head>
+<body>
+  <div class="app full" id="app">
+    <div class="header">
+      <div class="app-title"><span>🧭</span><span>Naviguard — Escort</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="status-badge" id="gpsStatus">📍 GPS: -</div>
+        <div class="status-badge" id="connStatus">🌐 Offline</div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="camera-view" id="cameraView">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas class="ar-overlay" id="arCanvas"></canvas>
+
+        <div class="info-panel" id="infoPanel" aria-live="polite" role="region">
+          <div style="font-weight:700" id="locationName">Memulai...</div>
+          <div class="small" id="coords">Lat: -- , Lng: --</div>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn" id="btnSetWaypoint">Simpan Lokasi</button>
+            <button class="btn ghost" id="btnExportGPX">Export GPX</button>
+            <button class="btn ghost" id="btnToggleVoice">🔊 Voice: OFF</button>
+            <button class="btn ghost" id="btnLowPower">🔋 Low Power</button>
+            <button class="btn ghost" id="btnClearData">Hapus Data</button>
+          </div>
+        </div>
+
+        <div class="waypoint-list" id="waypointList" style="display:none"></div>
+
+        <div class="controls" id="mainControls">
+          <button class="control-btn" id="btnTogglePath" title="Record Path">🎯</button>
+          <button class="control-btn primary" id="btnStartNav" title="Start/Stop">🚀</button>
+          <button class="control-btn" id="btnSwitchCam" title="Switch Cam">🔄</button>
+        </div>
+
+        <!-- hidden MBTiles file input (only shown via nicer button) -->
+        <input type="file" accept=".mbtiles" id="mbtilesInput" class="mbtiles" />
+
+      </div>
+    </div>
+
+    <div class="loading-screen" id="loadingScreen" aria-hidden="false">
+      <div style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.12);border-top:4px solid var(--primary);border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div>Memulai Naviguard...</div>
+      <div class="small" id="loadingStatus">Meminta izin kamera dan GPS</div>
+    </div>
+
+    <div class="toast" id="toast" aria-live="polite" role="status"></div>
+  </div>
+
+  <!-- Permission modal shown at first-run -->
+  <div class="modal" id="permModal" style="display:none">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="permTitle">
+      <h3 id="permTitle">Izinkan Akses Kamera & Lokasi</h3>
+      <p class="small">Naviguard perlu akses Kamera untuk tampilan AR dan GPS untuk menentukan lokasi. Data diproses lokal dan hanya dikirim jika Anda memilih sinkronisasi. Aplikasi berjalan lebih baik di HTTPS / GitHub Pages.</p>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button class="btn ghost" id="permLater">Nanti</button>
+        <button class="btn" id="permGrant">Izinkan & Lanjut</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- UI toggle + mini controls (OCR/OD/Map) -->
+  <button id="uiToggleBtn" title="Toggle UI">×</button>
+  <div id="miniIndicator" style="display:none">UI: Minimal</div>
+
+  <div class="mini-controls" id="miniControls">
+    <button class="mini-btn" id="toggleOCR">OCR: OFF</button>
+    <button class="mini-btn" id="toggleOD">Detect: OFF</button>
+    <button class="mini-btn" id="toggleMap">Map: OFF</button>
+    <!-- nicer file picker trigger -->
+    <button class="mini-btn" id="triggerMB" style="display:none">Upload Tiles</button>
+  </div>
+
+  <div class="mapbox-mini" id="miniMap" style="display:none">
+    <div id="miniMapInner" style="width:100%;height:100%"></div>
+  </div>
+
+<script>
+/* =========================
+   NAVIGUARD SINGLE-FILE PWA (FINAL - MODE 4 tidy)
+   Basis file used: original uploaded file. See reference. 1
+   Changes:
+   - Mode 4: Full UX but better layout & hidden file picker
+   - UI toggle (full/minimal) with auto-hide behaviour
+   - MBTiles input hidden & triggered via nicer button when map ON
+   - No feature removed; heavy features still require user toggle
+   ========================= */
+
+const $ = id => document.getElementById(id);
+const showToast = (t, ms=3000) => {
+  const el = $('toast'); el.textContent = t; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'), ms);
+};
+
+/* --------- Reverse geocode cache (localStorage) ---------- */
+const RG_CACHE_KEY = 'ng_rg_cache_v1';
+function rgLoad(){ try{ return JSON.parse(localStorage.getItem(RG_CACHE_KEY) || '{}'); }catch(e){return {};} }
+function rgSave(o){ try{ localStorage.setItem(RG_CACHE_KEY, JSON.stringify(o)); }catch(e){} }
+function rgPrune(c, max=600){
+  const keys = Object.keys(c);
+  if(keys.length <= max) return c;
+  const arr = keys.map(k=>({k,v:c[k]}));
+  arr.sort((a,b)=> (a.v.t||0) - (b.v.t||0));
+  const keep = arr.slice(arr.length-max);
+  const out = {}; keep.forEach(it=>out[it.k]=it.v);
+  return out;
+}
+
+/* --------- Create manifest dynamically -------- */
+(function createManifest(){
+  try{
+    const manifest = {
+      name: "Naviguard Escort (Single-file PWA)",
+      short_name: "Naviguard",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#0f172a",
+      theme_color: "#1e40af",
+      icons: [{ src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧭</text></svg>", sizes:"192x192", type:"image/svg+xml" }]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('link'); link.rel='manifest'; link.href=url; document.head.appendChild(link);
+  }catch(e){ console.warn('manifest', e); }
+})();
+
+/* --------- Register service worker from blob --------- */
+(async function registerSW(){
+  if(!('serviceWorker' in navigator)) return;
+  const sw = `
+    const CACHE = 'naviguard-core-v1';
+    const ASSETS = ['.'];
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));
+    });
+    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+    self.addEventListener('fetch', e => {
+      if(e.request.method !== 'GET') return;
+      e.respondWith(caches.match(e.request).then(cached => {
+        if(cached) return cached;
+        return fetch(e.request).then(resp => {
+          try {
+            if(e.request.url.startsWith(self.location.origin)) {
+              const copy = resp.clone();
+              caches.open(CACHE).then(c => c.put(e.request, copy));
+            }
+          } catch(err){}
+          return resp;
+        }).catch(()=>caches.match('.'));
+      }));
+    });
+  `;
+  try{
+    const blob = new Blob([sw], {type:'application/javascript'});
+    const url = URL.createObjectURL(blob);
+    await navigator.serviceWorker.register(url);
+    console.log('ServiceWorker registered');
+  }catch(e){ console.warn('SW fail', e); }
+})();
+
+/* ===== App state ===== */
+const state = {
+  stream: null,
+  watchId: null,
+  lastPos: null,
+  path: [],
+  waypoints: [],
+  rgCache: rgLoad(),
+  voiceOn: false,
+  lowPower: false,
+  pathRecording: true,
+  usingFront: false,
+  currentTarget: null
+};
+
+/* ===== DOM refs ===== */
+const video = $('video'), canvas = $('arCanvas'), ctx = canvas.getContext('2d');
+const loadingScreen = $('loadingScreen'), permModal = $('permModal');
+
+/* ===== Permission modal flow ===== */
+function showPermModal(){ permModal.style.display='flex'; }
+function hidePermModal(){ permModal.style.display='none'; }
+
+$('permGrant').addEventListener('click', async ()=>{
+  localStorage.setItem('ng_seen_perm_v1','1');
+  hidePermModal(); await startAll();
+});
+$('permLater').addEventListener('click', ()=>{
+  localStorage.setItem('ng_seen_perm_v1','1');
+  hidePermModal(); startAll().catch(()=>{});
+});
+
+/* ===== Camera functions ===== */
+async function startCamera(facing='environment'){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Camera tidak tersedia');
+  stopCamera();
+  const constraints = { video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }, audio:false };
+  state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+  video.srcObject = state.stream;
+  state.usingFront = (facing === 'user');
+  updateConnectionUI();
+}
+function stopCamera(){
+  if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; video.srcObject=null; }
+}
+async function switchCamera(){
+  try{
+    stopCamera();
+    await startCamera(state.usingFront ? 'environment' : 'user');
+    showToast('Kamera diganti');
+  }catch(e){ showToast('Gagal ganti kamera: '+(e.message||e)); }
+}
+$('btnSwitchCam').addEventListener('click', switchCamera);
+
+/* ===== GPS functions ===== */
+function startGPS(){
+  if(!navigator.geolocation) { showToast('Geolocation tidak didukung'); return; }
+  if(state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
+  state.watchId = navigator.geolocation.watchPosition(pos => {
+    state.lastPos = pos;
+    updateCoordsUI(pos);
+    if(state.pathRecording) recordPath(pos);
+    maybeReverseGeocode(pos.coords.latitude, pos.coords.longitude);
+    updateConnectionUI();
+  }, err => {
+    console.warn('gps err', err);
+    $('gpsStatus').textContent = '📍 GPS: Error';
+    showToast('GPS error: ' + (err.message || err.code));
+  }, { enableHighAccuracy: true, maximumAge: state.lowPower ? 5000 : 1000, timeout:10000 });
+}
+function stopGPS(){ if(state.watchId != null) { navigator.geolocation.clearWatch(state.watchId); state.watchId = null; } }
+function updateCoordsUI(pos){
+  const c = pos.coords;
+  $('coords').textContent = `Lat: ${c.latitude.toFixed(6)} , Lng: ${c.longitude.toFixed(6)}`;
+  $('gpsStatus').innerHTML = `📍 GPS: ${Math.round(c.accuracy)}m`;
+}
+function updateConnectionUI(){
+  $('connStatus').textContent = navigator.onLine ? '🌐 Online' : '🌐 Offline';
+}
+
+/* ===== Reverse geocode with caching (Nominatim) ===== */
+async function maybeReverseGeocode(lat, lon){
+  try{
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if(state.rgCache[key] && state.rgCache[key].name){
+      $('locationName').textContent = state.rgCache[key].name;
+      return state.rgCache[key].name;
+    }
+    if(!navigator.onLine){
+      $('locationName').textContent = 'Nama tidak tersedia (offline)';
+      return null;
+    }
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16`;
+    const r = await fetch(url, {headers: {'Accept': 'application/json'}});
+    if(!r.ok) throw new Error('rg fail');
+    const data = await r.json();
+    const name = data.display_name || (data.address && Object.values(data.address).join(', ')) || 'Tidak ada nama';
+    state.rgCache[key] = { name, t: Date.now() };
+    state.rgCache = rgPrune(state.rgCache, 800);
+    rgSave(state.rgCache);
+    $('locationName').textContent = name;
+    if(state.voiceOn) speak(name);
+    return name;
+  }catch(e){
+    console.warn('rg err', e);
+    $('locationName').textContent = 'Gagal dapatkan nama';
+    return null;
+  }
+}
+
+/* ===== Path recording & GPX export ===== */
+function recordPath(pos){
+  if(!pos) return;
+  state.path.push({lat: pos.coords.latitude, lon: pos.coords.longitude, t: pos.timestamp, acc: pos.coords.accuracy});
+  if(state.path.length > 20000) state.path.shift();
+}
+$('btnTogglePath').addEventListener('click', ()=>{
+  state.pathRecording = !state.pathRecording;
+  showToast(state.pathRecording ? 'Perekaman jalur aktif' : 'Perekaman jalur berhenti');
+});
+$('btnSetWaypoint').addEventListener('click', ()=>{
+  if(!state.lastPos){ showToast('GPS belum tersedia'); return; }
+  const c = state.lastPos.coords;
+  const wp = { id: Date.now().toString(), name: `WP ${state.waypoints.length+1}`, lat: c.latitude, lon: c.longitude, t: Date.now() };
+  state.waypoints.push(wp);
+  localStorage.setItem('ng_waypoints_v1', JSON.stringify(state.waypoints));
+  showToast('Waypoint disimpan');
+  updateWaypointList();
+});
+function loadWaypoints(){ try{ const s = localStorage.getItem('ng_waypoints_v1'); if(s) state.waypoints = JSON.parse(s); }catch(e){} updateWaypointList(); }
+function updateWaypointList(){
+  const el = $('waypointList'); el.innerHTML = '';
+  if(!state.waypoints || state.waypoints.length === 0){ el.style.display='none'; return; }
+  el.style.display='block';
+  state.waypoints.forEach(w=>{
+    const d = document.createElement('div'); d.style.padding='8px'; d.style.borderBottom='1px solid rgba(255,255,255,0.04)';
+    d.innerHTML = `<div style="font-weight:600">${w.name}</div><div class="small">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</div>`;
+    d.addEventListener('click', ()=> startNavTo(w));
+    el.appendChild(d);
+  });
+}
+function exportGPX(){
+  if(!state.path || state.path.length === 0){ showToast('Tidak ada path untuk diexport'); return; }
+  const header = `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Naviguard">\n`;
+  const footer = '\n</gpx>';
+  const trk = `<trk><name>track-${Date.now()}</name><trkseg>\n`;
+  const pts = state.path.map(p => `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${new Date(p.t).toISOString()}</time></trkpt>`).join('\n');
+  const blob = new Blob([header + trk + pts + '\n</trkseg></trk>' + footer], {type:'application/gpx+xml'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'naviguard-track.gpx'; a.click(); URL.revokeObjectURL(url);
+  showToast('GPX siap di-download');
+}
+$('btnExportGPX').addEventListener('click', exportGPX);
+
+/* ===== Voice (TTS) ===== */
+$('btnToggleVoice').addEventListener('click', ()=>{
+  state.voiceOn = !state.voiceOn;
+  $('btnToggleVoice').textContent = state.voiceOn ? '🔊 Voice: ON' : '🔊 Voice: OFF';
+  showToast('Voice ' + (state.voiceOn ? 'On':'Off'));
+});
+function speak(text){
+  if(!state.voiceOn) return;
+  try{
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'id-ID';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(u);
+  }catch(e){ console.warn('tts', e); }
+}
+
+/* ===== Low power & Clear data ===== */
+$('btnLowPower').addEventListener('click', ()=>{
+  state.lowPower = !state.lowPower;
+  $('btnLowPower').textContent = state.lowPower ? '🔋 Low Power: ON' : '🔋 Low Power';
+  showToast('Low power ' + (state.lowPower ? 'On':'Off'));
+  if(state.watchId !== null){ stopGPS(); startGPS(); }
+});
+$('btnClearData').addEventListener('click', ()=>{
+  if(confirm('Hapus semua waypoint, path & cache lokal?')) {
+    state.waypoints = []; state.path = []; state.rgCache = {}; localStorage.removeItem('ng_waypoints_v1'); localStorage.removeItem(RG_CACHE_KEY);
+    updateWaypointList(); showToast('Data lokal dihapus');
+  }
+});
+
+/* ===== Simple navigation to waypoint ===== */
+function startNavTo(wp){
+  state.currentTarget = wp;
+  showToast('Navigasi ke ' + wp.name);
+  if(state.lastPos) {
+    const d = haversine(state.lastPos.coords.latitude, state.lastPos.coords.longitude, wp.lat, wp.lon);
+    showToast(`Jarak: ${Math.round(d)} m`);
+    if(state.voiceOn) speak(`${wp.name}. Jarak sekitar ${Math.round(d)} meter.`);
+  }
+}
+
+/* ===== Haversine ===== */
+function haversine(lat1,lon1,lat2,lon2){
+  const R=6371000; const dLat=(lat2-lat1)*Math.PI/180; const dLon=(lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2);
+  const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); return R*c;
+}
+
+/* ===== AR Canvas draw loop (lightweight) ===== */
+function resizeCanvas(){ canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
+function drawLoop(){
+  resizeCanvas();
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // draw center reticle
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 24, 0, Math.PI*2); ctx.stroke();
+  // draw waypoints (naive)
+  if(state.lastPos && state.waypoints.length){
+    state.waypoints.forEach(w=>{
+      const s = gpsToScreen(w.lat, w.lon);
+      ctx.fillStyle = (state.currentTarget && state.currentTarget.id===w.id) ? '#ef4444' : '#10b981';
+      ctx.beginPath(); ctx.arc(s.x, s.y, 8, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.fillText(w.name, s.x+12, s.y+4);
+    });
+  }
+  requestAnimationFrame(drawLoop);
+}
+drawLoop();
+function gpsToScreen(lat, lon){
+  if(!state.lastPos) return {x: canvas.width/2, y: canvas.height/2};
+  const midLat = state.lastPos.coords.latitude, midLon = state.lastPos.coords.longitude;
+  const dx = (lon-midLon) * 1000000 + canvas.width/2;
+  const dy = (lat-midLat) * 1000000 + canvas.height/2;
+  return {x: dx, y: dy};
+}
+
+/* ===== OCR/OD/Map patch (lazy loaded) ===== */
+/* Script block injected below duplicates previous functionality but integrates with UI toggle and hidden MBTiles input.
+   We keep the same CDN-based lazy-loading approach.
+*/
+(async function(){
+  // --- Config (ubah kalau mau gunakan API berbayar) ---
+  const USE_GOOGLE_TRANSLATE = false;
+  const MAP_DEFAULT_TILE = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+  const TESSERACT_CDN = 'https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js';
+  const TFJS_CDN = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
+  const COCO_CDN = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js';
+  const MAPLIBRE_CSS = 'https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css';
+  const MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js';
+
+  function loadScript(src){ return new Promise((res, rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=()=>res(true); s.onerror=rej; document.head.appendChild(s); }) }
+  function loadCSS(href){ return new Promise((res, rej)=>{ const l=document.createElement('link'); l.rel='stylesheet'; l.href=href; l.onload=()=>res(true); l.onerror=rej; document.head.appendChild(l); }) }
+
+  const btnOCR = $('toggleOCR'), btnOD = $('toggleOD'), btnMap = $('toggleMap');
+  const triggerMB = $('triggerMB'), mbInput = $('mbtilesInput'), miniMapWrap = $('miniMap');
+
+  let OCR_ON=false, OD_ON=false, MAP_ON=false, tesseract=null, cocoModel=null, odLoop=null, mapObj=null;
+
+  // OCR toggle
+  btnOCR.addEventListener('click', async ()=>{
+    OCR_ON = !OCR_ON; btnOCR.textContent = `OCR: ${OCR_ON ? 'ON':'OFF'}`;
+    if(OCR_ON){
+      if(!window.Tesseract) { showToast('Memuat Tesseract.js...'); await loadScript(TESSERACT_CDN); }
+      if(window.Tesseract && window.Tesseract.createWorker) {
+        tesseract = await window.Tesseract.createWorker({logger: m=>{}});
+        await tesseract.load(); await tesseract.loadLanguage('eng+ind+osd').catch(()=>{}); await tesseract.initialize('eng');
+      }
+      showToast('OCR siap. Ketuk layar untuk scan frame.');
+      const onTap = async () => {
+        try {
+          const snap = document.createElement('canvas'); snap.width = video.videoWidth || 1280; snap.height = video.videoHeight || 720;
+          snap.getContext('2d').drawImage(video,0,0,snap.width,snap.height);
+          showToast('OCR: memproses...');
+          let text='';
+          if(tesseract && tesseract.recognize) {
+            const res = await tesseract.recognize(snap);
+            text = res?.data?.text || '';
+          } else if(window.Tesseract && window.Tesseract.recognize){
+            const res = await window.Tesseract.recognize(snap,'eng');
+            text = res?.data?.text || '';
+          }
+          if(text.trim()) overlayTransientText(text,5000);
+          else showToast('Tidak menemukan teks');
+        } catch(e){ console.warn(e); showToast('OCR error'); }
+      };
+      video.addEventListener('click', onTap);
+      btnOCR._onTap = onTap;
+    } else {
+      if(btnOCR._onTap) video.removeEventListener('click', btnOCR._onTap);
+      if(tesseract && tesseract.terminate) await tesseract.terminate();
+      tesseract=null;
+      showToast('OCR dimatikan');
+    }
+  });
+
+  // Object detection toggle
+  btnOD.addEventListener('click', async ()=>{
+    OD_ON = !OD_ON; btnOD.textContent = `Detect: ${OD_ON ? 'ON':'OFF'}`;
+    if(OD_ON){
+      if(!window.tf) { showToast('Memuat TF.js...'); await loadScript(TFJS_CDN); }
+      if(!window.cocoSsd) { showToast('Memuat COCO-SSD...'); await loadScript(COCO_CDN); }
+      if(window.cocoSsd && !cocoModel) cocoModel = await window.cocoSsd.load();
+      showToast('Object Detection siap');
+      odLoop = setInterval(async ()=>{
+        if(!cocoModel || video.readyState<2) return;
+        try{
+          const w=320, h=Math.round((video.videoHeight/video.videoWidth)*320);
+          const snap=document.createElement('canvas'); snap.width=w; snap.height=h;
+          snap.getContext('2d').drawImage(video,0,0,w,h);
+          const preds = await cocoModel.detect(snap);
+          // draw boxes
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          preds.filter(p=>p.score>0.45).forEach(p=>{
+            const sx = canvas.width / w, sy = canvas.height / h;
+            const x=p.bbox[0]*sx, y=p.bbox[1]*sy, bw=p.bbox[2]*sx, bh=p.bbox[3]*sy;
+            ctx.strokeStyle='rgba(255,165,0,0.9)'; ctx.lineWidth=3; ctx.strokeRect(x,y,bw,bh);
+            ctx.fillStyle='rgba(255,165,0,0.9)'; ctx.font='16px sans-serif'; ctx.fillText(`${p.class} ${Math.round(p.score*100)}%`, x+6, y+18);
+          });
+        }catch(e){ console.warn('od',e); }
+      }, 900);
+    } else {
+      clearInterval(odLoop); odLoop=null; ctx.clearRect(0,0,canvas.width,canvas.height); showToast('Detection dimatikan');
+    }
+  });
+
+  // Map toggle + MBTiles handling
+  btnMap.addEventListener('click', async ()=>{
+    MAP_ON = !MAP_ON; btnMap.textContent = `Map: ${MAP_ON ? 'ON':'OFF'}`;
+    if(MAP_ON){
+      miniMapWrap.style.display='block';
+      $('triggerMB').style.display='block'; // show nicer upload trigger
+      if(!window.maplibregl){ await loadCSS(MAPLIBRE_CSS); await loadScript(MAPLIBRE_JS); }
+      if(!mapObj){
+        maplibregl.accessToken = '';
+        mapObj = new maplibregl.Map({
+          container: 'miniMapInner',
+          style: { "version":8, "sources": { "raster-tiles": { "type":"raster", "tiles":[ MAP_DEFAULT_TILE ], "tileSize":256 } }, "layers":[ { "id":"simple-tiles","type":"raster","source":"raster-tiles" } ] },
+          center: [0,0], zoom: 2, interactive:false
+        });
+        setInterval(()=>{ if(state.lastPos) { mapObj.setCenter([state.lastPos.coords.longitude, state.lastPos.coords.latitude]); if(mapObj.getZoom()<12) mapObj.setZoom(12); } }, 1500);
+      }
+    } else {
+      miniMapWrap.style.display='none';
+      $('triggerMB').style.display='none';
+    }
+  });
+
+  // MBTiles trigger -> forward click to hidden input
+  triggerMB.addEventListener('click', ()=> mbInput.click());
+  mbInput.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0];
+    if(!f) return;
+    showToast('MBTiles di-upload (client-side parsing advanced, belum otomatis).');
+    // Keep as stub: advanced client-side MBTiles read is heavy (sql.js), recommend server or pre-extract tiles.
+  });
+
+  // helper overlay text
+  function overlayTransientText(text, ms=4000){
+    ctx.save();
+    const w = canvas.width * 0.78;
+    const h = 80;
+    const x = (canvas.width - w)/2;
+    const y = 24;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x,y,w,h);
+    ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif';
+    wrapText(ctx, text, x+8, y+24, w-16, 18);
+    setTimeout(()=>{ ctx.clearRect(x-2,y-2,w+4,h+4); }, ms);
+    ctx.restore();
+  }
+  function wrapText(ctx, text, x, y, maxWidth, lh){
+    const words = text.split(' '); let line=''; for(let n=0;n<words.length;n++){
+      const test = line + words[n] + ' '; const m = ctx.measureText(test); if(m.width > maxWidth && n>0){ ctx.fillText(line, x, y); line = words[n] + ' '; y += lh; } else { line = test; }
+    } ctx.fillText(line, x, y);
+  }
+
+})();
+
+/* ===== UI Toggle & Auto-hide (Mode 4 behavior) ===== */
+(function(){
+  const appRoot = $('app');
+  const uiToggle = $('uiToggleBtn');
+  const miniInd = $('miniIndicator');
+  // default: full UI visible (Mode 4). user can toggle to minimal.
+  let isFull = true;
+  function setMode(full){
+    isFull = !!full;
+    if(isFull){
+      appRoot.classList.remove('minimal'); appRoot.classList.add('full');
+      miniInd.style.display='none'; uiToggle.textContent='×';
+    } else {
+      appRoot.classList.remove('full'); appRoot.classList.add('minimal');
+      miniInd.style.display='block'; uiToggle.textContent='≡';
+    }
+  }
+  setMode(true);
+
+  uiToggle.addEventListener('click', ()=>{
+    setMode(!isFull);
+    // If switching to minimal, gently disable heavy features to save CPU
+    if(!isFull){
+      try{ const odBtn = $('toggleOD'); if(odBtn && odBtn.textContent.includes('ON')) odBtn.click(); }catch(e){}
+      try{ const ocrBtn = $('toggleOCR'); if(ocrBtn && ocrBtn.textContent.includes('ON')) ocrBtn.click(); }catch(e){}
+      try{ const mapBtn = $('toggleMap'); if(mapBtn && mapBtn.textContent.includes('ON')) mapBtn.click(); }catch(e){}
+    }
+  });
+
+  // auto-hide overlays after user inactivity (5s). When full, keep visible.
+  let hideTimer = null;
+  function scheduleHide(){
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(()=>{ if(!isFull) { appRoot.classList.add('minimal'); miniInd.style.display='block'; } }, 5000);
+  }
+  ['touchstart','mousemove','click'].forEach(ev=>{
+    document.addEventListener(ev, ()=>{
+      if(!isFull) { appRoot.classList.remove('minimal'); miniInd.style.display='none'; setTimeout(()=>{ if(!isFull) appRoot.classList.add('minimal'); }, 1200); }
+      scheduleHide();
+    }, {passive:true});
+  });
+  scheduleHide();
+})();
+
+/* ===== Init flow ===== */
+async function startAll(){
+  try{
+    loadingScreen.style.display='flex';
+    $('loadingStatus').textContent='Memulai kamera...';
+    await startCamera('environment');
+    $('loadingStatus').textContent='Mengaktifkan GPS...';
+    startGPS();
+    loadWaypoints();
+    updateWaypointList();
+    $('btnStartNav').addEventListener('click', ()=> {
+      if(state.currentTarget) { state.currentTarget = null; showToast('Navigasi dihentikan'); }
+      else { if(state.waypoints[0]) startNavTo(state.waypoints[0]); else showToast('Tidak ada waypoint'); }
+    });
+    window.addEventListener('online', ()=>{ updateConnectionUI(); showToast('Online'); });
+    window.addEventListener('offline', ()=>{ updateConnectionUI(); showToast('Offline'); });
+    video.addEventListener('loadedmetadata', ()=>{ loadingScreen.style.display='none'; });
+    setInterval(()=> { try{ localStorage.setItem('ng_waypoints_v1', JSON.stringify(state.waypoints)); rgSave(state.rgCache); }catch(e){} }, 5000);
+  }catch(e){
+    console.error('startAll', e);
+    loadingScreen.style.display='none';
+    showToast('Gagal memulai: ' + (e.message || e));
+    showPermModal();
+  }
+}
+
+window.addEventListener('load', ()=>{
+  const seen = localStorage.getItem('ng_seen_perm_v1');
+  if(!seen) { showPermModal(); } else { startAll(); }
+});
+
+// expose for debugging
+window.__naviguard = { state, startAll, startCamera, stopCamera, startGPS, stopGPS, maybeReverseGeocode };
+(function(){ state.rgCache = rgLoad(); state.rgCache = rgPrune(state.rgCache, 800); rgSave(state.rgCache); })();
+
+</script>
+
+</body>
+</html>
