@@ -1,0 +1,574 @@
+﻿<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Naviguard — Escort (Patched Multi-scale + Manual Label + OCR)</title>
+<meta name="description" content="Naviguard patched: multi-scale detection, manual label, global OCR, UX helper" />
+<meta name="theme-color" content="#0f172a">
+<style>
+:root{--bg:#0b1220;--surface:#0f172a;--text:#e6eef8;--muted:#9fb0c8;--accent:#0ea5e9;--danger:#ef4444;--ok:#10b981;}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+.app{height:100vh;display:flex;flex-direction:column;position:relative;overflow:hidden;}
+.header{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(2,6,23,0.6);backdrop-filter:blur(6px);z-index:1200}
+.title{display:flex;gap:10px;align-items:center;font-weight:700}
+.small{font-size:13px;color:var(--muted)}
+.main{flex:1;position:relative}
+.camera{position:relative;height:100%;background:#000}
+video#video{width:100%;height:100%;object-fit:cover}
+canvas#overlay{position:absolute;inset:0;pointer-events:auto;z-index:12}
+.controls{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;display:flex;gap:8px;z-index:30}
+.btn{background:rgba(255,255,255,0.06);color:var(--text);padding:10px 12px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+.btn.primary{background:var(--accent)}
+.btn.warn{background:var(--danger)}
+.panel{position:absolute;right:12px;top:72px;width:360px;max-height:66vh;overflow:auto;background:linear-gradient(180deg, rgba(2,6,23,0.9), rgba(3,7,25,0.85));backdrop-filter:blur(6px);padding:10px;border-radius:12px;z-index:1400;border:1px solid rgba(255,255,255,0.04)}
+.panel h3{margin:0 0 8px 0}
+.row{display:flex;justify-content:space-between;align-items:center}
+.badge{padding:6px 8px;border-radius:8px;background:rgba(255,255,255,0.04);font-size:13px}
+.object-item{padding:8px;border-radius:10px;margin-bottom:8px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.02)}
+.kv{font-size:13px;color:var(--muted)}
+.captionBar{position:absolute;left:50%;transform:translateX(-50%);bottom:78px;background:rgba(0,0,0,0.6);padding:10px 12px;border-radius:12px;z-index:2000;max-width:92%;text-align:center}
+.riskLow{background:#0ea5a0;padding:6px 8px;border-radius:8px;color:#fff}
+.riskMed{background:#f59e0b;padding:6px 8px;border-radius:8px;color:#fff}
+.riskHigh{background:#ef4444;padding:6px 8px;border-radius:8px;color:#fff}
+.topbarleft{display:flex;gap:8px;align-items:center}
+.toggle{font-size:12px;padding:6px 8px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:transparent;cursor:pointer}
+.footer-note{position:absolute;left:12px;bottom:12px;z-index:2000;background:rgba(0,0,0,0.5);padding:6px 8px;border-radius:8px;color:var(--muted);font-size:12px}
+#modelStatus{position:fixed;left:12px;bottom:12px;z-index:3000;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,0.5);color:#cbd5e1}
+#helpModal{display:none}
+.overlayLabel{position:absolute;left:10px;top:56px;z-index:2900}
+@media(max-width:600px){ .panel{width:92vw;right:6px;left:6px;top:auto;bottom:96px;max-height:40vh} .controls{bottom:22px} .captionBar{bottom:110px} }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div class="topbarleft">
+        <div class="title">🧭 Naviguard — Escort</div>
+        <div class="small" id="gpsStatus">📍 GPS: -</div>
+        <div class="small" id="conn">🌐 Offline</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="toggle" id="assistToggle">Assist: OFF</button>
+        <button class="toggle" id="detailToggle">Detail: SIMPLE</button>
+      </div>
+    </div>
+
+    <div class="main">
+      <div class="camera">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="overlay"></canvas>
+
+        <div class="captionBar" id="captionBar" style="display:none">
+          <div id="captionText" style="font-weight:700"></div>
+          <div id="captionSub" class="small"></div>
+        </div>
+
+        <div class="controls" id="controls">
+          <button class="btn" id="btnTake">📸 Capture</button>
+          <button class="btn" id="btnGlobalOCR">OCR</button>
+          <button class="btn primary" id="btnPanic">⚠ PANIC</button>
+          <button class="btn" id="btnToggleCam">🔄</button>
+        </div>
+
+        <div class="footer-note">Assist will describe everything in view. Use Detail toggle to see full attributes.</div>
+      </div>
+    </div>
+
+    <div class="panel" id="descPanel">
+      <h3>Scene Description</h3>
+      <div class="row" style="margin-bottom:8px">
+        <div class="small" id="sceneSummary">No assist running</div>
+        <div><span id="riskBadge" class="badge">Risk: -</span></div>
+      </div>
+
+      <div id="envBlock" style="margin-bottom:8px">
+        <div class="kv">Lighting: <span id="lighting">-</span></div>
+        <div class="kv">Surface: <span id="surface">-</span></div>
+        <div class="kv">People: <span id="peopleCount">0</span> • Vehicles: <span id="vehicleCount">0</span> • Bags: <span id="bagCount">0</span></div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="btn" id="btnExportJSON">Export JSON</button>
+        <button class="btn" id="btnClearInc">Clear Log</button>
+        <button class="btn" id="btnPreloadOCR">Preload OCR</button>
+      </div>
+
+      <div id="objectsList"></div>
+      <div style="margin-top:8px" class="small">Tip: klik "Run OCR" pada item untuk mengekstrak teks dari area itu (jika ada).</div>
+    </div>
+
+    <div id="modelStatus">Model: idle</div>
+
+    <!-- Help button + modal inserted by JS patch -->
+
+  </div>
+
+<script>
+/* ========== Naviguard Patched Full (Multi-scale analyze + manual label + OCR global + UX helper) ========== */
+
+/* ----------------- Utilities ----------------- */
+const $ = id => document.getElementById(id);
+function showToast(t, ms=2500){ console.log('TOAST', t); /* no intrusive toast for now */ }
+
+/* ----------------- State ----------------- */
+const state = {
+  stream: null,
+  lastPos: null,
+  assist: false,
+  detailFull: false,
+  model: null,
+  analyzing: false,
+  lastAnalysis: null,
+  assistLoop: null,
+  tesseract: null,
+  incidentLog: []
+};
+
+/* ----------------- Camera & overlay ----------------- */
+const video = $('video'), overlay = $('overlay'), ctx = overlay.getContext('2d');
+function resizeCanvas(){ overlay.width = overlay.offsetWidth; overlay.height = overlay.offsetHeight; }
+window.addEventListener('resize', resizeCanvas);
+
+async function startCamera(facing='environment'){
+  try{
+    if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Camera not available');
+    stopCamera();
+    const constraints = { video: { facingMode: facing, width:{ ideal:1280 }, height:{ ideal:720 } }, audio:false };
+    state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = state.stream;
+    await new Promise(r=> video.onloadedmetadata = r);
+    resizeCanvas();
+  }catch(e){ console.error('startCamera', e); alert('Gagal akses kamera: '+(e.message||e)); }
+}
+function stopCamera(){ if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; video.srcObject=null; } }
+$('btnToggleCam').addEventListener('click', async ()=>{ try{ await startCamera(state.usingFront ? 'environment' : 'user'); state.usingFront = !state.usingFront; }catch(e){console.warn(e);} });
+
+/* ----------------- GPS minimal ----------------- */
+if(navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(p=>{ state.lastPos = p; $('gpsStatus').textContent = `📍 GPS: ${p.coords.accuracy.toFixed(0)}m`; }, ()=>{});
+  navigator.geolocation.watchPosition(p=>{ state.lastPos = p; $('gpsStatus').textContent = `📍 GPS: ${p.coords.accuracy.toFixed(0)}m`; }, ()=>{});
+}
+
+/* ----------------- Lazy-load model & Tesseract ----------------- */
+const TFJS = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
+const COCO = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js';
+const TESS = 'https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js';
+function loadScript(src){ return new Promise((res,rej)=>{ if(document.querySelector('script[src="'+src+'"]')) return res(); const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('fail load '+src)); document.head.appendChild(s); }); }
+
+async function ensureModel(){
+  if(state.model) return state.model;
+  $('modelStatus').textContent = 'Model: loading...';
+  await loadScript(TFJS);
+  await loadScript(COCO);
+  state.model = await cocoSsd.load();
+  $('modelStatus').textContent = 'Model: ready';
+  return state.model;
+}
+
+async function ensureTesseract(){
+  if(state.tesseract) return state.tesseract;
+  $('modelStatus').textContent = 'OCR: loading...';
+  await loadScript(TESS);
+  if(window.Tesseract && window.Tesseract.createWorker){
+    state.tesseract = await Tesseract.createWorker({logger:m=>{}});
+    await state.tesseract.load();
+    try{ await state.tesseract.loadLanguage('eng+ind'); await state.tesseract.initialize('eng'); }catch(e){ await state.tesseract.initialize('eng'); }
+    $('modelStatus').textContent = 'OCR: ready';
+    return state.tesseract;
+  } else {
+    $('modelStatus').textContent = 'OCR: failed';
+    throw new Error('Tesseract not available');
+  }
+}
+
+/* ----------------- Improved multi-scale analyzeFrame (REPLACED) ----------------- */
+async function analyzeFrame(){
+  if(!video || video.readyState < 2) return null;
+  await ensureModel();
+
+  async function detectOnCanvas(canvas){
+    try{ const preds = await state.model.detect(canvas); return preds || []; } catch(e){ console.warn('detect error', e); return []; }
+  }
+
+  // small canvas (fast)
+  const Wsmall = 320;
+  const Hsmall = Math.round((video.videoHeight/video.videoWidth)*Wsmall) || 180;
+  const cSmall = document.createElement('canvas'); cSmall.width = Wsmall; cSmall.height = Hsmall;
+  cSmall.getContext('2d').drawImage(video, 0, 0, Wsmall, Hsmall);
+  let predsSmall = (await detectOnCanvas(cSmall)).filter(p=>p.score > 0.25);
+
+  // medium canvas (every 2 cycles)
+  let predsMed = [];
+  if(!window._med_skip_count) window._med_skip_count = 0;
+  window._med_skip_count = (window._med_skip_count + 1) % 2;
+  if(window._med_skip_count === 0){
+    const Wmed = 640;
+    const Hmed = Math.round((video.videoHeight/video.videoWidth)*Wmed) || 360;
+    const cMed = document.createElement('canvas'); cMed.width = Wmed; cMed.height = Hmed;
+    cMed.getContext('2d').drawImage(video, 0, 0, Wmed, Hmed);
+    predsMed = (await detectOnCanvas(cMed)).filter(p=>p.score > 0.18);
+    // normalize bbox to small scale
+    predsMed = predsMed.map(p=>{
+      const scaleX = Wsmall / Wmed; const scaleY = Hsmall / Hmed;
+      return { ...p, bbox: [p.bbox[0]*scaleX, p.bbox[1]*scaleY, p.bbox[2]*scaleX, p.bbox[3]*scaleY] };
+    });
+  }
+
+  // combine + simple NMS
+  const all = predsSmall.concat(predsMed);
+  function iou(a,b){
+    const [ax,ay,aw,ah] = a.bbox; const [bx,by,bw,bh] = b.bbox;
+    const ix = Math.max(ax,bx); const iy = Math.max(ay,by);
+    const axr = ax+aw, ayr = ay+ah, bxr = bx+bw, byr = by+bh;
+    const w = Math.max(0, Math.min(axr,bxr)-ix);
+    const h = Math.max(0, Math.min(ayr,byr)-iy);
+    const inter = w*h;
+    const areaA = aw*ah; const areaB = bw*bh;
+    return inter / (areaA + areaB - inter + 1e-6);
+  }
+  const keep = [];
+  all.sort((a,b)=>b.score - a.score);
+  for(const p of all){
+    let skip = false;
+    for(const q of keep){
+      if(p.class === q.class && iou(p,q) > 0.45){ skip = true; break; }
+    }
+    if(!skip) keep.push(p);
+  }
+
+  // normalize to UI expected schema (use small canvas scale)
+  const objects = keep.map((p, idx) => {
+    const bbox = p.bbox;
+    const centerX = bbox[0] + bbox[2]/2;
+    const centerY = bbox[1] + bbox[3]/2;
+    const approxDist = estimateDistanceByBBox(bbox[3], Hsmall);
+    return {
+      id: 'o' + idx + '_' + Date.now(),
+      class: p.class,
+      score: Math.round(p.score*100)/100,
+      bbox_small: { x: Math.round(bbox[0]), y: Math.round(bbox[1]), w: Math.round(bbox[2]), h: Math.round(bbox[3]) },
+      center_norm: { x: +(centerX/Wsmall).toFixed(2), y: +(centerY/Hsmall).toFixed(2) },
+      distance_m: approxDist,
+      lastSeen: Date.now()
+    };
+  });
+
+  // counts & environment
+  const peopleCount = objects.filter(x=>x.class==='person').length;
+  const vehicleCount = objects.filter(x=>['car','truck','bus','motorcycle','bicycle','motorbike'].includes(x.class)).length;
+  const bagCount = objects.filter(x=>['backpack','handbag','suitcase'].includes(x.class)).length;
+
+  const imgd = cSmall.getContext('2d').getImageData(0,0,Wsmall,Hsmall);
+  let sum=0; for(let i=0;i<imgd.data.length;i+=40) sum += (0.299*imgd.data[i] + 0.587*imgd.data[i+1] + 0.114*imgd.data[i+2]);
+  const avg = Math.round(sum / (Math.max(1, Math.floor(imgd.data.length/40))));
+  const lighting = avg < 60 ? 'Very dim' : avg < 110 ? 'Dim' : avg < 160 ? 'Medium' : 'Bright';
+  const colors={r:0,g:0,b:0}; for(let i=0;i<imgd.data.length;i+=200){ colors.r+=imgd.data[i]; colors.g+=imgd.data[i+1]; colors.b+=imgd.data[i+2]; }
+  let surface = 'unknown'; const mx = Math.max(colors.r, colors.g, colors.b);
+  if(mx === colors.g) surface='vegetation/green'; else if(mx===colors.r) surface='tile/brick/wood'; else surface='concrete/asphalt';
+
+  const analysis = { timestamp: Date.now(), lighting, surface, peopleCount, vehicleCount, bagCount, objects };
+  state.lastAnalysis = analysis;
+  return analysis;
+}
+
+/* ----------------- draw overlay boxes ----------------- */
+function clearOverlay(){ ctx.clearRect(0,0,overlay.width,overlay.height); }
+function drawObjectsOnOverlay(analysis){
+  clearOverlay();
+  if(!analysis || !analysis.objects) return;
+  const smallW = 320;
+  const smallH = Math.round((video.videoHeight/video.videoWidth)*smallW) || 180;
+  const sx = overlay.width / smallW;
+  const sy = overlay.height / smallH;
+  analysis.objects.forEach(o=>{
+    const x = o.bbox_small.x * sx, y = o.bbox_small.y * sy, w = o.bbox_small.w * sx, h = o.bbox_small.h * sy;
+    ctx.strokeStyle = 'rgba(255,165,0,0.95)'; ctx.lineWidth = 3; ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x, y-22, 160, 22);
+    ctx.fillStyle = '#fff'; ctx.font='14px sans-serif'; ctx.fillText(`${o.class} ${Math.round(o.score*100)}% • ${o.distance_m}m`, x+6, y-6);
+  });
+}
+
+/* ----------------- caption + risk generator ----------------- */
+function generateCaption(analysis){
+  if(!analysis) return {caption:'No data', risk:0, label:'Low', recommendation:'No action'};
+  const parts = [];
+  if(analysis.peopleCount>0) parts.push(`${analysis.peopleCount} orang`);
+  if(analysis.vehicleCount>0) parts.push(`${analysis.vehicleCount} kendaraan`);
+  if(analysis.bagCount>0) parts.push(`${analysis.bagCount} barang/tas`);
+  const env = `Permukaan: ${analysis.surface}; Pencahayaan: ${analysis.lighting}`;
+  const objnote = parts.length ? parts.join(', ') : 'tidak ada objek signifikan';
+  let score = 5;
+  if(analysis.peopleCount>6) score += 25; else if(analysis.peopleCount>2) score += 10;
+  if(analysis.bagCount>0) score += 20;
+  if(analysis.objects.some(o=>o.trend==='approaching' && o.class==='person' && o.distance_m <= 6)) score += 25;
+  const label = score>=75 ? 'Critical' : score>=50 ? 'High' : score>=25 ? 'Medium' : 'Low';
+  const rec = label==='Low' ? 'Monitor area' : label==='Medium' ? 'Waspada — cek objek' : label==='High' ? 'Hindari dekat — panggil backup' : 'Segera evakuasi / panic';
+  const caption = `${env}. Terlihat: ${objnote}. Risiko: ${label}.`;
+  return {caption, risk:score, label, recommendation:rec};
+}
+
+/* ----------------- render panel ----------------- */
+function renderPanel(analysis){
+  if(!analysis){
+    $('sceneSummary').textContent = 'Assist OFF';
+    $('objectsList').innerHTML = '<div class="small">Assist mode not running.</div>';
+    $('captionBar').style.display = 'none';
+    $('riskBadge').textContent = 'Risk: -';
+    return;
+  }
+  $('sceneSummary').textContent = `Updated: ${new Date(analysis.timestamp).toLocaleTimeString()}`;
+  $('lighting').textContent = analysis.lighting;
+  $('surface').textContent = analysis.surface;
+  $('peopleCount').textContent = analysis.peopleCount;
+  $('vehicleCount').textContent = analysis.vehicleCount;
+  $('bagCount').textContent = analysis.bagCount;
+  // objects
+  const out = [];
+  analysis.objects.forEach((o,idx)=>{
+    const html = `<div class="object-item" data-id="${o.id}">
+      <div style="display:flex;justify-content:space-between"><div style="font-weight:700">${o.class} • ${o.distance_m}m</div><div class="kv">${o.score}</div></div>
+      <div class="kv">center: ${o.center_norm.x}, ${o.center_norm.y} • bbox: ${o.bbox_small.x},${o.bbox_small.y},${o.bbox_small.w},${o.bbox_small.h}</div>
+      <div class="kv">motion: ${o.motion||'n/a'} • trend: ${o.trend||'n/a'}</div>
+      <div style="margin-top:6px;display:flex;gap:8px">
+        <button class="btn" onclick="runOCRForObject('${o.id}')">Run OCR</button>
+        <button class="btn" onclick="markAsIncident('${o.id}')">Mark Incident</button>
+        <button class="btn" onclick="zoomToObject(${idx})">Zoom</button>
+      </div>
+    </div>`;
+    out.push(html);
+  });
+  $('objectsList').innerHTML = out.join('') || '<div class="small">No objects detected</div>';
+  // caption
+  const res = generateCaption(analysis);
+  $('captionText').textContent = res.caption;
+  $('captionSub').textContent = res.recommendation;
+  $('captionBar').style.display = 'block';
+  const badge = $('riskBadge');
+  badge.textContent = `Risk: ${res.label}`;
+  badge.className = 'badge';
+  if(res.label==='Low') badge.style.background = '#10b981';
+  else if(res.label==='Medium') badge.style.background = '#f59e0b';
+  else badge.style.background = '#ef4444';
+  drawObjectsOnOverlay(analysis);
+}
+
+/* ----------------- estimateDistance helper ----------------- */
+function estimateDistanceByBBox(hpx, frameH){
+  const K = 14000;
+  const val = Math.max(4, hpx);
+  const d = Math.round(K / val);
+  return Math.min(Math.max(d, 0.5), 500);
+}
+
+/* ----------------- Assist loop ----------------- */
+async function startAssist(){
+  if(state.assist) return;
+  state.assist = true; $('assistToggle').textContent = 'Assist: ON';
+  await ensureModel(); // ensure model (status updated by ensureModel)
+  state.assistLoop = setInterval(async ()=>{
+    if(state.analyzing) return;
+    state.analyzing = true;
+    try{
+      const analysis = await analyzeFrame();
+      state.lastAnalysis = analysis;
+      renderPanel(analysis);
+      const cap = generateCaption(analysis);
+      if(cap.risk >= 50 && window.speechSynthesis){
+        const u = new SpeechSynthesisUtterance(`${cap.caption} ${cap.recommendation}`); u.lang='id-ID'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+      }
+    }catch(e){ console.warn('assist err', e); }
+    state.analyzing = false;
+  }, 1100);
+}
+
+function stopAssist(){
+  state.assist = false; $('assistToggle').textContent = 'Assist: OFF';
+  if(state.assistLoop){ clearInterval(state.assistLoop); state.assistLoop = null; }
+  renderPanel(null);
+}
+
+/* ----------------- OCR on-demand per object ----------------- */
+async function runOCRForObject(objId){
+  try{
+    const analysis = state.lastAnalysis;
+    if(!analysis) return alert('No analysis available');
+    const obj = analysis.objects.find(o=>o.id===objId);
+    if(!obj) return alert('Object not found');
+    const Wsmall = 320; const Hsmall = Math.round((video.videoHeight/video.videoWidth)*Wsmall) || 180;
+    // capture full frame and map small bbox to full
+    const full = document.createElement('canvas'); full.width = video.videoWidth; full.height = video.videoHeight;
+    full.getContext('2d').drawImage(video, 0, 0, full.width, full.height);
+    const scaleX = full.width / Wsmall; const scaleY = full.height / Hsmall;
+    const sx = Math.max(0, Math.round(obj.bbox_small.x * scaleX));
+    const sy = Math.max(0, Math.round(obj.bbox_small.y * scaleY));
+    const sw = Math.max(16, Math.round(obj.bbox_small.w * scaleX));
+    const sh = Math.max(16, Math.round(obj.bbox_small.h * scaleY));
+    const crop = document.createElement('canvas'); crop.width = sw; crop.height = sh;
+    crop.getContext('2d').drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
+    // preprocess grayscale
+    const id = crop.getContext('2d').getImageData(0,0,sw,sh);
+    for(let i=0;i<id.data.length;i+=4){
+      const lum = 0.299*id.data[i] + 0.587*id.data[i+1] + 0.114*id.data[i+2];
+      id.data[i]=id.data[i+1]=id.data[i+2]=lum;
+    }
+    crop.getContext('2d').putImageData(id,0,0);
+    await ensureTesseract();
+    showToast('OCR: processing...');
+    const res = await state.tesseract.recognize(crop);
+    const text = (res && res.data && res.data.text) ? res.data.text.trim() : '';
+    if(!text) return alert('OCR: tidak menemukan teks.');
+    const cleaned = text.replace(/[^\x20-\x7E\u00A0-\u024F\n\r]/g,'').trim();
+    alert('OCR Result:\\n\\n' + (cleaned.length>1000 ? cleaned.slice(0,1000)+'\\n\\n(Truncated)' : cleaned));
+  }catch(e){ console.warn('ocr obj', e); alert('OCR gagal: ' + (e.message||e)); }
+}
+
+/* ----------------- Manual label on overlay click ----------------- */
+overlay.style.cursor = 'crosshair';
+overlay.addEventListener('click', function(e){
+  try{
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const relX = +(x/overlay.width).toFixed(3), relY = +(y/overlay.height).toFixed(3);
+    const lbl = prompt('Label objek ini (contoh: shoe, rack, chair):');
+    if(!lbl) return;
+    const Wsmall = 320; const Hsmall = Math.round((video.videoHeight/video.videoWidth)*Wsmall) || 180;
+    const cx = Math.round(relX * Wsmall); const cy = Math.round(relY * Hsmall);
+    const obj = { id: 'manual_'+Date.now(), class: lbl, score: 1.0, bbox_small: { x: Math.max(0,cx-40), y: Math.max(0,cy-40), w:80, h:80 }, center_norm:{x:relX,y:relY}, distance_m: null, lastSeen: Date.now() };
+    state.lastAnalysis = state.lastAnalysis || { timestamp: Date.now(), lighting:'-', surface:'-', peopleCount:0, vehicleCount:0, bagCount:0, objects:[] };
+    state.lastAnalysis.objects.push(obj);
+    renderPanel(state.lastAnalysis);
+    alert('Label disimpan lokal. Gunakan Export JSON untuk kumpulkan data training.');
+  }catch(e){ console.warn('manual label', e); }
+});
+
+/* ----------------- Global OCR button (works even Assist OFF) ----------------- */
+$('btnGlobalOCR').addEventListener('click', async ()=>{
+  try{
+    if(!video || video.readyState < 2) return alert('Camera belum siap');
+    const full = document.createElement('canvas'); full.width = video.videoWidth; full.height = video.videoHeight;
+    full.getContext('2d').drawImage(video, 0, 0, full.width, full.height);
+    const cropSize = Math.round(Math.min(full.width, full.height) * 0.5);
+    const cx = Math.round((full.width - cropSize)/2), cy = Math.round((full.height - cropSize)/2);
+    const crop = document.createElement('canvas'); crop.width = cropSize; crop.height = cropSize;
+    crop.getContext('2d').drawImage(full, cx, cy, cropSize, cropSize, 0,0,cropSize,cropSize);
+    const id = crop.getContext('2d').getImageData(0,0,crop.width,crop.height);
+    for(let i=0;i<id.data.length;i+=4){
+      const g = id.data[i]*0.299 + id.data[i+1]*0.587 + id.data[i+2]*0.114;
+      id.data[i]=id.data[i+1]=id.data[i+2]=g;
+    }
+    crop.getContext('2d').putImageData(id,0,0);
+    await ensureTesseract();
+    showToast('OCR: processing...');
+    const res = await state.tesseract.recognize(crop);
+    const text = (res && res.data && res.data.text) ? res.data.text.trim() : '';
+    if(!text) return alert('OCR: tidak menemukan teks.');
+    const cleaned = text.replace(/[^\x20-\x7E\u00A0-\u024F\n\r]/g,'').trim();
+    alert('OCR Result:\\n\\n' + (cleaned.length>1000 ? cleaned.slice(0,1000)+'\\n\\n(Truncated)' : cleaned));
+  }catch(e){ console.warn('global ocr', e); alert('OCR gagal: '+(e.message||e)); }
+});
+
+/* ----------------- Incident mark, capture, export ----------------- */
+function markAsIncident(objId){
+  if(!state.lastAnalysis) return;
+  const obj = state.lastAnalysis.objects.find(o=>o.id===objId);
+  const record = { timestamp: Date.now(), analysis: state.lastAnalysis, flagged: obj ? { id: objId, class: obj.class } : null };
+  state.incidentLog.push(record);
+  alert('Incident flagged and saved locally');
+}
+
+$('btnTake').addEventListener('click', async ()=>{
+  if(!video || video.readyState < 2) return alert('Camera not ready');
+  const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight; c.getContext('2d').drawImage(video,0,0,c.width,c.height);
+  const dataUrl = c.toDataURL('image/jpeg', 0.9);
+  const meta = { time: new Date().toISOString(), gps: state.lastPos ? {lat: state.lastPos.coords.latitude, lon: state.lastPos.coords.longitude, acc: state.lastPos.coords.accuracy} : null, analysis: state.lastAnalysis };
+  const rec = { id: 'cap'+Date.now(), dataUrl, meta };
+  state.incidentLog.push(rec);
+  const blob = await (await fetch(dataUrl)).blob();
+  const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download = `nav-photo-${Date.now()}.jpg`; a.click(); URL.revokeObjectURL(url);
+  alert('Photo captured and saved locally. Use Export JSON to export analysis.');
+});
+
+$('btnPanic').addEventListener('click', async ()=>{
+  $('btnPanic').disabled = true;
+  try{ $('btnTake').click(); if(navigator.vibrate) navigator.vibrate([200,100,200]); if(window.speechSynthesis){ const u=new SpeechSynthesisUtterance('Panic triggered. Location recorded.'); u.lang='id-ID'; window.speechSynthesis.speak(u); } }catch(e){console.warn(e);} finally{ setTimeout(()=>$('btnPanic').disabled=false,1500); }
+});
+
+$('btnExportJSON').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify({incidents: state.incidentLog, lastAnalysis: state.lastAnalysis}, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='naviguard-analysis.json'; a.click(); URL.revokeObjectURL(url);
+});
+$('btnClearInc').addEventListener('click', ()=>{ if(confirm('Clear incident log?')){ state.incidentLog = []; alert('Cleared'); } });
+$('btnPreloadOCR').addEventListener('click', async ()=>{ try{ await ensureTesseract(); alert('OCR preloaded'); }catch(e){ alert('Preload OCR failed'); } });
+
+function zoomToObject(idx){ alert('Zoom to object #' + idx); }
+
+/* ----------------- UX Helper (help button, labels, model status binding) ----------------- */
+(function uxHelper(){
+  // Help button
+  const helpHTML = `
+    <div id="nav-help" style="position:fixed;left:12px;top:12px;z-index:3000">
+      <button id="showHelpBtn" style="padding:8px 10px;border-radius:8px;border:none;background:#0ea5e9;color:#fff;font-weight:700">Help</button>
+    </div>
+    <div id="helpModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:4000;align-items:center;justify-content:center">
+      <div style="background:#0f172a;padding:16px;border-radius:12px;max-width:520px;color:#e6eef8">
+        <h3 style="margin-top:0">Panduan Singkat Naviguard</h3>
+        <ul>
+          <li><strong>Assist</strong> — hidupkan untuk mulai deteksi objek (butuh beberapa detik untuk load model).</li>
+          <li><strong>Detail</strong> — ubah panel deskripsi SIMPLE/FULL.</li>
+          <li><strong>📸 Capture</strong> — ambil foto bukti + simpan analysis.</li>
+          <li><strong>⚠ PANIC</strong> — satu tekan untuk rekam cepat dan notifikasi.</li>
+          <li><strong>OCR</strong> — ada tombol global dan juga per-object (Run OCR) untuk ekstrak teks.</li>
+          <li><strong>Manual label</strong> — klik area di overlay untuk memberi label custom (mis. shoe, rack).</li>
+          <li><strong>Export JSON</strong> — download semua incident + analysis.</li>
+        </ul>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px">
+          <button id="closeHelp" style="padding:8px 10px;border-radius:8px;border:0;background:#fff;color:#0f172a">Tutup</button>
+        </div>
+      </div>
+    </div>
+  `;
+  document.body.insertAdjacentHTML('beforeend', helpHTML);
+  document.getElementById('showHelpBtn').onclick = ()=> document.getElementById('helpModal').style.display='flex';
+  document.getElementById('closeHelp').onclick = ()=> document.getElementById('helpModal').style.display='none';
+
+  // add tiny labels under control buttons
+  const controls = document.getElementById('controls');
+  if(controls){
+    const labels = ['Capture','OCR','Panic','SwitchCam'];
+    const nodes = controls.querySelectorAll('button');
+    nodes.forEach((btn,i)=>{
+      const lbl = document.createElement('div'); lbl.style.fontSize='11px'; lbl.style.color='#cbd5e1'; lbl.style.textAlign='center'; lbl.textContent = labels[i]||'';
+      btn.parentNode.insertBefore(lbl, btn.nextSibling);
+    });
+  }
+
+  // model status binding already handled in ensureModel/ensureTesseract
+  // hint if no objects after some time
+  let noObjSince = null;
+  setInterval(()=>{
+    const assistOn = $('assistToggle').textContent.includes('ON');
+    if(!assistOn){ noObjSince=null; return; }
+    const hasObjects = state.lastAnalysis && state.lastAnalysis.objects && state.lastAnalysis.objects.length>0;
+    if(!hasObjects){
+      if(!noObjSince) noObjSince = Date.now();
+      if(Date.now() - noObjSince > 6000) $('sceneSummary').textContent = 'Arahkan kamera ke orang/kendaraan/tas untuk deteksi.';
+    } else noObjSince = null;
+  },1000);
+
+})();
+
+/* ----------------- UI wiring ----------------- */
+$('assistToggle').addEventListener('click', ()=>{ if(!state.assist) startAssist(); else stopAssist(); });
+$('detailToggle').addEventListener('click', ()=>{ state.detailFull = !state.detailFull; $('detailToggle').textContent = state.detailFull ? 'Detail: FULL' : 'Detail: SIMPLE'; });
+
+/* ----------------- init camera on load ----------------- */
+window.addEventListener('load', async ()=>{ await startCamera('environment'); $('conn').textContent = navigator.onLine ? '🌐 Online' : '🌐 Offline'; renderPanel(null); });
+
+/* expose for debug */
+window._nav = { state, analyzeFrame, startAssist, stopAssist, ensureModel, ensureTesseract };
+
+</script>
+</body>
+</html>
