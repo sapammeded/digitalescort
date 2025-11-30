@@ -1,0 +1,465 @@
+﻿<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <title>Naviguard — Digital Escort (Capture + OCR + OD)</title>
+  <meta name="description" content="Naviguard single-file PWA: camera + GPS + offline cache + capture + OCR + OD + incident log" />
+  <meta name="theme-color" content="#1e40af">
+  <style>
+    :root{ --primary:#1e40af; --bg:#0f172a; --surface:#111827; --text:#f1f5f9; --muted:#94a3b8; --accent:#0ea5e9; --radius:12px; }
+    html,body{height:100%;margin:0;font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+    .app{height:100vh;display:flex;flex-direction:column;position:relative;overflow:hidden;}
+    .header{padding:10px 14px;background:rgba(15,23,42,0.6);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:space-between;z-index:1200}
+    .app-title{display:flex;gap:8px;align-items:center;font-weight:700}
+    .status-badge{padding:6px 10px;border-radius:999px;background:rgba(255,255,255,0.04);font-size:13px}
+    .main-content{flex:1;position:relative;display:flex}
+    .camera-view{flex:1;position:relative;background:#000}
+    #video{width:100%;height:100%;object-fit:cover;transform:none}
+    .ar-overlay{position:absolute;inset:0;pointer-events:none;z-index:10}
+    #arCanvas{width:100%;height:100%}
+    .info-panel{position:absolute;left:12px;right:12px;top:78px;background:rgba(15,23,42,0.6);backdrop-filter:blur(8px);padding:12px;border-radius:12px;z-index:20;transition:transform .2s,opacity .2s}
+    .controls{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;display:flex;gap:10px;z-index:30;transition:opacity .2s,transform .2s}
+    .control-btn{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,0.04);display:flex;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:0;color:var(--text)}
+    .control-btn.primary{background:var(--primary);box-shadow:0 6px 20px rgba(14,165,233,0.08)}
+    .waypoint-list{position:absolute;left:12px;right:12px;bottom:100px;background:rgba(15,23,42,0.5);padding:10px;border-radius:12px;max-height:220px;overflow:auto;z-index:25;transition:opacity .2s,transform .2s}
+    .toast{position:fixed;left:50%;top:18px;transform:translateX(-50%) translateY(-120%);background:var(--surface);padding:12px 16px;border-radius:12px;z-index:1000;transition:transform .3s}
+    .toast.show{transform:translateX(-50%) translateY(0)}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:1100}
+    .card{background:var(--surface);padding:16px;border-radius:12px;max-width:520px;color:var(--text)}
+    .btn{background:var(--primary);color:white;padding:10px 14px;border-radius:10px;border:0;font-weight:600;cursor:pointer}
+    .btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.08)}
+    .small{font-size:13px;color:var(--muted)}
+    .mini-controls { position: absolute; top: 12px; left: 12px; z-index:1200; display:flex; gap:8px; flex-direction:column; }
+    .mini-btn { background: rgba(0,0,0,0.5); color:#fff; padding:8px 10px; border-radius:10px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,0.06); font-size:13px }
+    .incident-panel{position:fixed;right:12px;top:78px;width:320px;max-height:60vh;overflow:auto;background:rgba(2,6,23,0.85);backdrop-filter:blur(8px);padding:10px;border-radius:12px;z-index:1400}
+    .incident-item{display:flex;gap:8px;padding:8px;border-bottom:1px solid rgba(255,255,255,0.04)}
+    .thumb{width:84px;height:56px;object-fit:cover;border-radius:6px;background:#000}
+    .meta{flex:1}
+    .meta .title{font-weight:700}
+    .meta .sub{font-size:12px;color:var(--muted)}
+    .preview-modal{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:1600;background:rgba(0,0,0,0.7)}
+    .preview-card{background:var(--surface);padding:12px;border-radius:10px;max-width:92vw;max-height:90vh;overflow:auto;color:var(--text)}
+    .controls-vertical{display:flex;flex-direction:column;gap:8px}
+    @media(max-width:600px){ .incident-panel{width:92vw;right:6px;left:6px} .control-btn{width:50px;height:50px} }
+  </style>
+</head>
+<body>
+  <div class="app full" id="app">
+    <div class="header">
+      <div class="app-title"><span>🧭</span><span>Naviguard — Escort (Capture)</span></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="status-badge" id="gpsStatus">📍 GPS: -</div>
+        <div class="status-badge" id="connStatus">🌐 Offline</div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="camera-view" id="cameraView">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas class="ar-overlay" id="arCanvas"></canvas>
+
+        <div class="info-panel" id="infoPanel" aria-live="polite" role="region">
+          <div style="font-weight:700" id="locationName">Memulai...</div>
+          <div class="small" id="coords">Lat: -- , Lng: --</div>
+          <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn" id="btnSetWaypoint">Simpan Lokasi</button>
+            <button class="btn ghost" id="btnExportGPX">Export GPX</button>
+            <button class="btn ghost" id="btnToggleVoice">🔊 Voice: OFF</button>
+            <button class="btn ghost" id="btnLowPower">🔋 Low Power</button>
+            <button class="btn ghost" id="btnClearData">Hapus Data</button>
+          </div>
+        </div>
+
+        <div class="waypoint-list" id="waypointList" style="display:none"></div>
+
+        <div class="controls" id="mainControls">
+          <button class="control-btn" id="btnTogglePath" title="Record Path">🎯</button>
+          <button class="control-btn primary" id="btnStartNav" title="Start/Stop">🚀</button>
+          <button class="control-btn" id="btnSwitchCam" title="Switch Cam">🔄</button>
+          <!-- TAKE PICTURE -->
+          <button class="control-btn" id="btnTakePhoto" title="Take Picture">📸</button>
+        </div>
+
+        <input type="file" accept=".mbtiles" id="mbtilesInput" class="mbtiles" />
+
+      </div>
+    </div>
+
+    <div class="loading-screen" id="loadingScreen" aria-hidden="false">
+      <div style="width:40px;height:40px;border:4px solid rgba(255,255,255,0.12);border-top:4px solid var(--primary);border-radius:50%;animation:spin 1s linear infinite"></div>
+      <div>Memulai Naviguard...</div>
+      <div class="small" id="loadingStatus">Meminta izin kamera dan GPS</div>
+    </div>
+
+    <div class="toast" id="toast" aria-live="polite" role="status"></div>
+  </div>
+
+  <!-- Permission modal -->
+  <div class="modal" id="permModal" style="display:none">
+    <div class="card" role="dialog" aria-modal="true" aria-labelledby="permTitle">
+      <h3 id="permTitle">Izinkan Akses Kamera & Lokasi</h3>
+      <p class="small">Naviguard perlu akses Kamera untuk tampilan AR dan GPS untuk menentukan lokasi. Data diproses lokal dan hanya dikirim jika Anda memilih sinkronisasi.</p>
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+        <button class="btn ghost" id="permLater">Nanti</button>
+        <button class="btn" id="permGrant">Izinkan & Lanjut</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- mini controls including toggles for auto OCR/OD -->
+  <div class="mini-controls" id="miniControls">
+    <button class="mini-btn" id="toggleOCR">Auto OCR: OFF</button>
+    <button class="mini-btn" id="toggleOD">Auto Detect: OFF</button>
+    <button class="mini-btn" id="toggleMap">Map: OFF</button>
+  </div>
+
+  <!-- incident panel -->
+  <div class="incident-panel" id="incidentPanel" aria-live="polite">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-weight:700">Incident Log</div>
+      <div><button class="btn ghost" id="exportPhotos">Export JSON</button></div>
+    </div>
+    <div id="incidentList"></div>
+  </div>
+
+  <!-- preview modal (hidden) -->
+  <div class="preview-modal" id="previewModal" style="display:none">
+    <div class="preview-card" id="previewCard">
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <img id="previewImage" src="" style="max-width:240px;border-radius:8px" />
+        <div style="flex:1">
+          <div id="previewMeta" class="small"></div>
+          <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn" id="downloadPhoto">Download</button>
+            <button class="btn ghost" id="runOCR">Run OCR</button>
+            <button class="btn ghost" id="runDetect">Run Detect</button>
+            <button class="btn ghost" id="saveToReport">Save to Report</button>
+            <button class="btn ghost" id="closePreview">Close</button>
+          </div>
+          <div id="previewResults" style="margin-top:8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* =========================
+   Enhanced Naviguard with Take Picture + Auto OCR/OD + Incident Log
+   Based on uploaded file (base features & UI). See source reference. 1
+   ========================= */
+
+const $ = id => document.getElementById(id);
+const showToast = (t, ms=3500)=>{ const el=$('toast'); el.textContent=t; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), ms); };
+
+/* ---------------- State ---------------- */
+const state = {
+  stream: null,
+  watchId: null,
+  lastPos: null,
+  path: [],
+  waypoints: [],
+  rgCache: {},
+  voiceOn: false,
+  lowPower: false,
+  pathRecording: true,
+  usingFront: false,
+  currentTarget: null,
+  incidentPhotos: [], // {id, blobUrl, dataUrl, meta:{lat,lon,time,addr,acc}, ocr, detect}
+  tesseractWorker: null,
+  cocoModel: null,
+  odLoop: null,
+  OCR_ON: false,
+  OD_ON: false,
+};
+
+/* --------- Reverse geocode cache helpers ---------- */
+const RG_CACHE_KEY = 'ng_rg_cache_v1';
+function rgLoad(){ try{ return JSON.parse(localStorage.getItem(RG_CACHE_KEY) || '{}'); }catch(e){return {};} }
+function rgSave(o){ try{ localStorage.setItem(RG_CACHE_KEY, JSON.stringify(o)); }catch(e){} }
+
+/* --------- Init DOM refs ---------- */
+const video = $('video'), canvas = $('arCanvas'), ctx = canvas.getContext('2d');
+
+/* --------- Camera & GPS (lightly adapted) ---------- */
+async function startCamera(facing='environment'){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Camera tidak tersedia');
+  stopCamera();
+  const constraints = { video: { facingMode: facing, width:{ideal:1280}, height:{ideal:720} }, audio:false };
+  state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+  video.srcObject = state.stream;
+  state.usingFront = (facing === 'user');
+  updateConnectionUI();
+}
+function stopCamera(){ if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; video.srcObject=null; } }
+async function switchCamera(){ try{ stopCamera(); await startCamera(state.usingFront ? 'environment' : 'user'); showToast('Kamera diganti'); }catch(e){ showToast('Gagal ganti kamera: '+(e.message||e)); } }
+$('btnSwitchCam').addEventListener('click', switchCamera);
+
+function startGPS(){
+  if(!navigator.geolocation){ showToast('Geolocation tidak didukung'); return; }
+  if(state.watchId != null) navigator.geolocation.clearWatch(state.watchId);
+  state.watchId = navigator.geolocation.watchPosition(pos => {
+    state.lastPos = pos;
+    updateCoordsUI(pos);
+    if(state.pathRecording) recordPath(pos);
+    maybeReverseGeocode(pos.coords.latitude, pos.coords.longitude);
+    updateConnectionUI();
+  }, err => {
+    console.warn('gps err', err); $('gpsStatus').textContent = '📍 GPS: Error'; showToast('GPS error: ' + (err.message || err.code));
+  }, { enableHighAccuracy: true, maximumAge: state.lowPower ? 5000 : 1000, timeout:10000 });
+}
+function stopGPS(){ if(state.watchId != null){ navigator.geolocation.clearWatch(state.watchId); state.watchId = null; } }
+function updateCoordsUI(pos){
+  const c = pos.coords; $('coords').textContent = `Lat: ${c.latitude.toFixed(6)} , Lng: ${c.longitude.toFixed(6)}`; $('gpsStatus').innerHTML = `📍 GPS: ${Math.round(c.accuracy)}m`; 
+}
+function updateConnectionUI(){ $('connStatus').textContent = navigator.onLine ? '🌐 Online' : '🌐 Offline'; }
+
+/* --------- Reverse geocode (Nominatim) ---------- */
+state.rgCache = rgLoad();
+async function maybeReverseGeocode(lat, lon){
+  try{
+    const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if(state.rgCache[key] && state.rgCache[key].name){
+      $('locationName').textContent = state.rgCache[key].name;
+      return state.rgCache[key].name;
+    }
+    if(!navigator.onLine){ $('locationName').textContent = 'Nama tidak tersedia (offline)'; return null; }
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16`;
+    const r = await fetch(url, {headers: {'Accept': 'application/json'}});
+    if(!r.ok) throw new Error('rg fail');
+    const data = await r.json();
+    const name = data.display_name || 'Tidak ada nama';
+    state.rgCache[key] = { name, t: Date.now() };
+    rgSave(state.rgCache);
+    $('locationName').textContent = name;
+    if(state.voiceOn) speak(name);
+    return name;
+  }catch(e){ console.warn('rg err', e); $('locationName').textContent = 'Gagal dapatkan nama'; return null; }
+}
+
+/* --------- Path & Waypoints (kept minimal) ---------- */
+function recordPath(pos){ if(!pos) return; state.path.push({lat: pos.coords.latitude, lon: pos.coords.longitude, t: pos.timestamp, acc: pos.coords.accuracy}); if(state.path.length>20000) state.path.shift(); }
+$('btnTogglePath').addEventListener('click', ()=>{ state.pathRecording = !state.pathRecording; showToast(state.pathRecording ? 'Perekaman jalur aktif':'Perekaman jalur berhenti'); });
+$('btnSetWaypoint').addEventListener('click', ()=>{ if(!state.lastPos){ showToast('GPS belum tersedia'); return; } const c=state.lastPos.coords; const wp={id:Date.now().toString(), name:`WP ${state.waypoints.length+1}`, lat:c.latitude, lon:c.longitude, t:Date.now()}; state.waypoints.push(wp); localStorage.setItem('ng_waypoints_v1', JSON.stringify(state.waypoints)); showToast('Waypoint disimpan'); updateWaypointList(); });
+function loadWaypoints(){ try{ const s=localStorage.getItem('ng_waypoints_v1'); if(s) state.waypoints=JSON.parse(s); }catch(e){} updateWaypointList(); }
+function updateWaypointList(){ const el=$('waypointList'); el.innerHTML=''; if(!state.waypoints||state.waypoints.length===0){ el.style.display='none'; return; } el.style.display='block'; state.waypoints.forEach(w=>{ const d=document.createElement('div'); d.style.padding='8px'; d.style.borderBottom='1px solid rgba(255,255,255,0.04)'; d.innerHTML=`<div style="font-weight:600">${w.name}</div><div class="small">${w.lat.toFixed(5)}, ${w.lon.toFixed(5)}</div>`; d.addEventListener('click', ()=> startNavTo(w)); el.appendChild(d); }); }
+
+/* --------- GPX export (kept) ---------- */
+function exportGPX(){ if(!state.path||state.path.length===0){ showToast('Tidak ada path untuk diexport'); return; } const header=`<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Naviguard">\n`; const footer='\n</gpx>'; const trk=`<trk><name>track-${Date.now()}</name><trkseg>\n`; const pts = state.path.map(p => `<trkpt lat="${p.lat}" lon="${p.lon}"><time>${new Date(p.t).toISOString()}</time></trkpt>`).join('\n'); const blob = new Blob([header + trk + pts + '\n</trkseg></trk>' + footer], {type:'application/gpx+xml'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='naviguard-track.gpx'; a.click(); URL.revokeObjectURL(url); showToast('GPX siap di-download'); }
+$('btnExportGPX').addEventListener('click', exportGPX);
+
+/* --------- Voice --------- */
+$('btnToggleVoice').addEventListener('click', ()=>{ state.voiceOn = !state.voiceOn; $('btnToggleVoice').textContent = state.voiceOn ? '🔊 Voice: ON' : '🔊 Voice: OFF'; showToast('Voice ' + (state.voiceOn ? 'On':'Off')); });
+function speak(text){ if(!state.voiceOn) return; try{ const u=new SpeechSynthesisUtterance(text); u.lang='id-ID'; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);}catch(e){console.warn('tts',e);} }
+
+/* --------- Canvas draw loop (overlay) ---------- */
+function resizeCanvas(){ canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
+function drawLoop(){ resizeCanvas(); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 24, 0, Math.PI*2); ctx.stroke(); requestAnimationFrame(drawLoop); }
+drawLoop();
+
+/* --------- INCIDENT PHOTOS: load/save UI ---------- */
+const PHOTOS_KEY = 'ng_photos_v1';
+function loadPhotos(){ try{ const s = localStorage.getItem(PHOTOS_KEY); state.incidentPhotos = s?JSON.parse(s):[]; }catch(e){ state.incidentPhotos = []; } renderIncidentList(); }
+function savePhotos(){ try{ localStorage.setItem(PHOTOS_KEY, JSON.stringify(state.incidentPhotos)); }catch(e){} renderIncidentList(); }
+function renderIncidentList(){
+  const el = $('incidentList'); el.innerHTML=''; if(!state.incidentPhotos || state.incidentPhotos.length===0){ el.innerHTML='<div class="small">No incidents yet</div>'; return; }
+  state.incidentPhotos.slice().reverse().forEach(p=>{
+    const item = document.createElement('div'); item.className='incident-item';
+    item.innerHTML = `<img class="thumb" src="${p.dataUrl}" /><div class="meta"><div class="title">${p.meta.title||p.meta.time}</div><div class="sub">${p.meta.lat.toFixed(5)}, ${p.meta.lon.toFixed(5)} • ${p.meta.addr||''}</div></div>`;
+    item.addEventListener('click', ()=> openPreview(p.id));
+    el.appendChild(item);
+  });
+}
+
+/* --------- TAKE PICTURE implementation (core of F) ---------- */
+$('btnTakePhoto').addEventListener('click', capturePhoto);
+
+async function capturePhoto(){
+  try{
+    if(!video || video.readyState < 2){ showToast('Kamera belum siap'); return; }
+    // create canvas snapshot
+    const w = video.videoWidth || 1280, h = video.videoHeight || 720;
+    const snap = document.createElement('canvas'); snap.width = w; snap.height = h;
+    const sctx = snap.getContext('2d'); sctx.drawImage(video,0,0,w,h);
+    // compress to JPEG dataURL
+    const dataUrl = snap.toDataURL('image/jpeg', 0.85);
+    // create blob for download
+    const res = await (await fetch(dataUrl)).blob();
+    const blobUrl = URL.createObjectURL(res);
+    // metadata
+    const now = Date.now();
+    const meta = { time: new Date(now).toISOString(), title: `Photo ${new Date(now).toLocaleString()}` };
+    if(state.lastPos && state.lastPos.coords){
+      meta.lat = state.lastPos.coords.latitude;
+      meta.lon = state.lastPos.coords.longitude;
+      meta.acc = state.lastPos.coords.accuracy;
+      meta.addr = state.rgCache[`${meta.lat.toFixed(5)},${meta.lon.toFixed(5)}`]?.name || null;
+    } else {
+      meta.lat = 0; meta.lon = 0; meta.acc = 0; meta.addr = null;
+    }
+    // compose photo object
+    const id = 'p' + now;
+    const photoObj = { id, blobUrl, dataUrl, meta, ocr:null, detect:null };
+    // save to state & localStorage (metadata only, not full blob)
+    state.incidentPhotos.push(photoObj);
+    savePhotos();
+    showToast('Foto tersimpan (preview muncul)');
+    // auto-download file (user will see download in browser)
+    const a = document.createElement('a'); a.href = blobUrl; a.download = `naviguard-photo-${now}.jpg`; a.click();
+    // show preview modal
+    openPreview(id);
+    // Auto OCR/OD if toggled on
+    if(state.OCR_ON) { try{ await ensureTesseract(); await runOCROnDataUrl(dataUrl, id); }catch(e){ console.warn('auto ocr', e); } }
+    if(state.OD_ON) { try{ await ensureCoco(); await runDetectOnDataUrl(dataUrl, id); }catch(e){ console.warn('auto od', e); } }
+  }catch(e){ console.error('capture', e); showToast('Gagal capture: '+(e.message||e)); }
+}
+
+/* --------- Preview & actions ---------- */
+function openPreview(id){
+  const p = state.incidentPhotos.find(x=>x.id===id); if(!p) return;
+  $('previewImage').src = p.dataUrl;
+  $('previewMeta').textContent = `${p.meta.title} • ${p.meta.time} • ${p.meta.lat.toFixed(5)}, ${p.meta.lon.toFixed(5)} • ${p.meta.addr||'No addr'}`;
+  $('previewResults').innerHTML = renderPreviewResultsHTML(p);
+  $('previewModal').style.display = 'flex';
+  // attach handlers (rebuild to ensure correct id)
+  $('downloadPhoto').onclick = ()=> { const a=document.createElement('a'); a.href=p.blobUrl; a.download = `${p.id}.jpg`; a.click(); };
+  $('runOCR').onclick = async ()=>{ await ensureTesseract(); await runOCROnDataUrl(p.dataUrl, id); $('previewResults').innerHTML = renderPreviewResultsHTML(p); };
+  $('runDetect').onclick = async ()=>{ await ensureCoco(); await runDetectOnDataUrl(p.dataUrl, id); $('previewResults').innerHTML = renderPreviewResultsHTML(p); };
+  $('saveToReport').onclick = ()=>{ exportSinglePhotoJSON(p); };
+  $('closePreview').onclick = ()=>{ $('previewModal').style.display='none'; };
+}
+
+function renderPreviewResultsHTML(p){
+  let html = `<div class="small"><strong>Meta:</strong> ${p.meta.time} • ${p.meta.lat.toFixed(5)}, ${p.meta.lon.toFixed(5)} • ${p.meta.addr||'No addr'}</div>`;
+  if(p.ocr) html += `<div style="margin-top:6px"><strong>OCR:</strong><div class="small">${escapeHtml(p.ocr.join('<br/>'))}</div></div>`;
+  if(p.detect) html += `<div style="margin-top:6px"><strong>Detection:</strong><div class="small">${escapeHtml(JSON.stringify(p.detect, null, 2))}</div></div>`;
+  return html;
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* --------- Export photo JSON (single) ---------- */
+function exportSinglePhotoJSON(p){
+  const out = { meta: p.meta, ocr: p.ocr, detect: p.detect };
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `${p.id}.json`; a.click(); URL.revokeObjectURL(url);
+  showToast('Photo JSON siap di-download');
+}
+
+/* --------- Export all photos metadata ---------- */
+$('exportPhotos').addEventListener('click', ()=>{ try{ const blob = new Blob([JSON.stringify(state.incidentPhotos.map(p=>({id:p.id,meta:p.meta,ocr:p.ocr,detect:p.detect})), null, 2)], {type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='naviguard-photos.json'; a.click(); URL.revokeObjectURL(url); showToast('Export JSON siap'); }catch(e){console.warn(e); showToast('Export gagal'); } });
+
+/* --------- OCR & OD lazy-load + run on dataURL ---------- */
+const TESSERACT_CDN = 'https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js';
+const TFJS_CDN = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
+const COCO_CDN = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js';
+
+function loadScript(src){ return new Promise((res, rej)=>{ if(document.querySelector(`script[src="${src}"]`)){ res(true); return; } const s=document.createElement('script'); s.src=src; s.onload=()=>res(true); s.onerror=()=>rej(new Error('load failed '+src)); document.head.appendChild(s); }); }
+
+async function ensureTesseract(){
+  if(state.tesseractWorker) return state.tesseractWorker;
+  await loadScript(TESSERACT_CDN);
+  if(window.Tesseract && window.Tesseract.createWorker){
+    state.tesseractWorker = await Tesseract.createWorker({logger:m=>{}});
+    await state.tesseractWorker.load();
+    try{ await state.tesseractWorker.loadLanguage('eng+ind+osd'); await state.tesseractWorker.initialize('eng'); }catch(e){ try{ await state.tesseractWorker.initialize('eng'); }catch(e){} }
+    return state.tesseractWorker;
+  } else throw new Error('Tesseract not available');
+}
+
+async function runOCROnDataUrl(dataUrl, photoId){
+  try{
+    const worker = await ensureTesseract();
+    showToast('OCR: memproses...');
+    // convert dataUrl to blob and to Image
+    const img = new Image(); img.src = dataUrl;
+    await new Promise(res=>img.onload=res);
+    const canvas2 = document.createElement('canvas'); canvas2.width = img.naturalWidth; canvas2.height = img.naturalHeight; canvas2.getContext('2d').drawImage(img,0,0);
+    const data = canvas2.toDataURL('image/png');
+    const { data: { text } } = await worker.recognize(canvas2);
+    const lines = text.split('\n').map(s=>s.trim()).filter(Boolean);
+    const p = state.incidentPhotos.find(x=>x.id===photoId);
+    if(p){ p.ocr = lines; savePhotos(); showToast('OCR selesai'); }
+    return lines;
+  }catch(e){ console.warn('ocr run', e); showToast('OCR gagal'); return null; }
+}
+
+async function ensureCoco(){
+  if(state.cocoModel) return state.cocoModel;
+  await loadScript(TFJS_CDN); await loadScript(COCO_CDN);
+  if(window.cocoSsd && window.tf){ state.cocoModel = await cocoSsd.load(); return state.cocoModel; }
+  throw new Error('COCO model not available');
+}
+
+async function runDetectOnDataUrl(dataUrl, photoId){
+  try{
+    const model = await ensureCoco();
+    showToast('Detection: memproses...');
+    const img = new Image(); img.src = dataUrl; await new Promise(res=>img.onload=res);
+    const small = document.createElement('canvas'); const max = 640;
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    small.width = Math.round(img.naturalWidth * scale); small.height = Math.round(img.naturalHeight * scale);
+    small.getContext('2d').drawImage(img,0,0,small.width, small.height);
+    const preds = await model.detect(small);
+    const p = state.incidentPhotos.find(x=>x.id===photoId);
+    if(p){ p.detect = preds; savePhotos(); showToast('Detection selesai'); }
+    return preds;
+  }catch(e){ console.warn('detect run', e); showToast('Detection gagal'); return null; }
+}
+
+/* --------- Toggles for Auto OCR / Auto OD -------- */
+$('toggleOCR').addEventListener('click', async ()=>{
+  state.OCR_ON = !state.OCR_ON; $('toggleOCR').textContent = `Auto OCR: ${state.OCR_ON ? 'ON':'OFF'}`;
+  if(state.OCR_ON) { try{ await ensureTesseract(); showToast('OCR siap (lazy-loaded).'); }catch(e){ showToast('OCR load gagal'); state.OCR_ON=false; $('toggleOCR').textContent = 'Auto OCR: OFF'; } }
+});
+$('toggleOD').addEventListener('click', async ()=>{
+  state.OD_ON = !state.OD_ON; $('toggleOD').textContent = `Auto Detect: ${state.OD_ON ? 'ON':'OFF'}`;
+  if(state.OD_ON){ try{ await ensureCoco(); showToast('Detection siap (lazy-loaded).'); }catch(e){ showToast('Detection load gagal'); state.OD_ON=false; $('toggleOD').textContent = 'Auto Detect: OFF'; } }
+});
+
+/* --------- Utility: restore rgCache, photos on load -------- */
+window.addEventListener('load', ()=>{ state.rgCache = rgLoad(); loadWaypoints(); loadPhotos(); const seen = localStorage.getItem('ng_seen_perm_v1'); if(!seen) showPermModal(); else startAll(); });
+
+/* --------- Preview close handler (in case clicked outside) ---------- */
+$('previewModal').addEventListener('click', (e)=>{ if(e.target === $('previewModal')) $('previewModal').style.display='none'; });
+
+/* --------- Permission modal handlers ---------- */
+$('permGrant').addEventListener('click', async ()=>{ localStorage.setItem('ng_seen_perm_v1','1'); hidePermModal(); await startAll(); });
+$('permLater').addEventListener('click', ()=>{ localStorage.setItem('ng_seen_perm_v1','1'); hidePermModal(); startAll().catch(()=>{}); });
+function showPermModal(){ $('permModal').style.display='flex'; }
+function hidePermModal(){ $('permModal').style.display='none'; }
+
+/* --------- Start all (camera + gps + basic events) ---------- */
+async function startAll(){
+  try{
+    $('loadingScreen').style.display='flex';
+    $('loadingStatus').textContent='Memulai kamera...';
+    await startCamera('environment');
+    $('loadingStatus').textContent='Mengaktifkan GPS...';
+    startGPS();
+    updateWaypointList();
+    $('btnStartNav').addEventListener('click', ()=>{ if(state.currentTarget){ state.currentTarget=null; showToast('Navigasi dihentikan'); } else { if(state.waypoints[0]) startNavTo(state.waypoints[0]); else showToast('Tidak ada waypoint'); } });
+    window.addEventListener('online', ()=>{ updateConnectionUI(); showToast('Online'); });
+    window.addEventListener('offline', ()=>{ updateConnectionUI(); showToast('Offline'); });
+    video.addEventListener('loadedmetadata', ()=>{ $('loadingScreen').style.display='none'; });
+    setInterval(()=>{ try{ localStorage.setItem('ng_waypoints_v1', JSON.stringify(state.waypoints)); rgSave(state.rgCache); }catch(e){} }, 5000);
+  }catch(e){ console.error('startAll', e); $('loadingScreen').style.display='none'; showToast('Gagal memulai: ' + (e.message || e)); showPermModal(); }
+}
+
+/* --------- Simple nav to waypoint & haversine ---------- */
+function startNavTo(wp){ state.currentTarget = wp; showToast('Navigasi ke ' + wp.name); if(state.lastPos){ const d = haversine(state.lastPos.coords.latitude, state.lastPos.coords.longitude, wp.lat, wp.lon); showToast(`Jarak: ${Math.round(d)} m`); if(state.voiceOn) speak(`${wp.name}. Jarak sekitar ${Math.round(d)} meter.`); } }
+function haversine(lat1,lon1,lat2,lon2){ const R=6371000; const dLat=(lat2-lat1)*Math.PI/180; const dLon=(lon2-lon1)*Math.PI/180; const a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)*Math.sin(dLon/2); const c=2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a)); return R*c; }
+
+/* --------- Expose debug (optional) ---------- */
+window.__naviguard = { state, capturePhoto, runOCROnDataUrl, runDetectOnDataUrl, startAll };
+
+/* --------- Final housekeeping: periodically prune rgCache ---------- */
+function rgPrune(c, max=800){ const keys=Object.keys(c); if(keys.length<=max) return c; const arr=keys.map(k=>({k,v:c[k]})); arr.sort((a,b)=>(a.v.t||0)-(b.v.t||0)); const keep = arr.slice(arr.length-max); const out={}; keep.forEach(it=>out[it.k]=it.v); return out; }
+setInterval(()=>{ state.rgCache = rgPrune(state.rgCache, 800); rgSave(state.rgCache); }, 60000);
+
+/* ===== helpers: simple UI load ===== */
+function showLoadingStatus(t){ $('loadingStatus').textContent = t; }
+</script>
+
+</body>
+</html>
