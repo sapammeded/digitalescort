@@ -1,0 +1,336 @@
+﻿<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<title>Naviguard Mobile — Simplified</title>
+<meta name="theme-color" content="#071029"/>
+<style>
+  :root{--bg:#071029;--panel:#0f172a;--muted:#9fb0c8;--accent:#06b6d4;--danger:#ef4444;--ok:#10b981;--text:#e6eef8;}
+  html,body{height:100%;margin:0;font-family:system-ui,Roboto,Arial;background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .top{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,0,0,0.45)}
+  .title{font-weight:700;font-size:18px}
+  .status{font-size:13px;color:var(--muted)}
+  .cameraWrap{position:relative;flex:1;display:flex;align-items:stretch;justify-content:center;background:#000}
+  video{width:100%;height:100%;object-fit:cover}
+  canvas#overlay{position:absolute;inset:0;z-index:10;pointer-events:auto;cursor:crosshair}
+  .bottomBar{position:fixed;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(180deg, rgba(2,6,23,0.6), rgba(2,6,23,0.85));display:flex;gap:8px;justify-content:space-around;align-items:center;z-index:50}
+  .bigBtn{flex:1;margin:0 4px;padding:12px;border-radius:12px;border:0;background:rgba(255,255,255,0.06);color:var(--text);font-weight:800;font-size:15px}
+  .bigBtn.primary{background:var(--accent)}
+  .bigBtn.danger{background:var(--danger)}
+  .panel{position:fixed;left:12px;right:12px;bottom:78px;background:linear-gradient(180deg, rgba(2,6,23,0.9), rgba(2,6,23,0.85));padding:10px;border-radius:12px;z-index:60}
+  .kv{font-size:13px;color:var(--muted)}
+  .objects{max-height:26vh;overflow:auto;margin-top:8px}
+  .objectItem{padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:6px}
+  .small{font-size:12px;color:var(--muted)}
+  #modelStatus{position:fixed;left:12px;top:64px;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,0.6);z-index:70;color:var(--muted);font-size:13px}
+  .helpBubble{position:fixed;left:12px;top:12px;background:var(--accent);padding:8px;border-radius:10px;font-weight:700;z-index:80}
+  @media(max-width:600px){ .bigBtn{font-size:14px;padding:10px} .panel{bottom:88px} }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div class="title">🧭 Naviguard — Mobile</div>
+      <div>
+        <div id="gpsStatus" class="status">📍 GPS: -</div>
+        <div id="netStatus" class="status">🌐 Offline</div>
+      </div>
+    </div>
+
+    <div class="cameraWrap">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+
+      <div id="modelStatus">Model: idle</div>
+      <div class="helpBubble" id="helpBtn">Help</div>
+
+      <div class="panel" id="infoPanel">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700">Scene Description</div>
+          <div id="riskBadge" style="background:rgba(255,255,255,0.04);padding:6px 8px;border-radius:8px">Risk: -</div>
+        </div>
+        <div style="margin-top:8px" class="kv"><span id="lighting">Lighting: -</span> • <span id="surface">Surface: -</span></div>
+        <div class="kv" style="margin-top:6px">People: <span id="peopleCount">0</span> • Vehicles: <span id="vehicleCount">0</span> • Bags: <span id="bagCount">0</span></div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button id="btnExportJSON" class="bigBtn" style="flex:0.9">Export JSON</button>
+          <button id="btnClearInc" class="bigBtn" style="flex:0.8">Clear</button>
+        </div>
+        <div class="objects" id="objectsList"><div class="small">Assist OFF — tekan ASSIST untuk mulai.</div></div>
+        <div style="margin-top:6px" class="small">Tip: arahkan kamera ke objek / teks untuk hasil terbaik. Tap layar untuk beri label manual.</div>
+      </div>
+
+      <!-- Bottom big buttons -->
+      <div class="bottomBar">
+        <button id="btnAssist" class="bigBtn primary">ASSIST</button>
+        <button id="btnPreloadOCR" class="bigBtn">PRELOAD OCR</button>
+        <button id="btnGlobalOCR" class="bigBtn">GLOBAL OCR</button>
+        <button id="btnCapture" class="bigBtn">CAPTURE</button>
+        <button id="btnPanic" class="bigBtn danger">PANIC</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* Simple, mobile-first implementation wiring */
+/* Note: still lazy-loads TFJS & coco-ssd and Tesseract when needed */
+
+const $ = id => document.getElementById(id);
+const video = $('video'), overlay = $('overlay'), ctx = overlay.getContext('2d');
+
+let state = {
+  stream: null, model: null, tesseract: null, assist:false, analyzing:false, lastAnalysis:null, incidentLog:[], usingFront:false
+};
+
+/* Resize overlay to match video element */
+function resizeCanvas(){ overlay.width = overlay.offsetWidth; overlay.height = overlay.offsetHeight; }
+window.addEventListener('resize', resizeCanvas);
+
+/* Camera start */
+async function startCamera(facing='environment'){
+  try{
+    if(state.stream){ state.stream.getTracks().forEach(t=>t.stop()); state.stream=null; video.srcObject=null; }
+    const c = { video:{ facingMode: facing, width:{ideal:1280}, height:{ideal:720} }, audio:false };
+    state.stream = await navigator.mediaDevices.getUserMedia(c);
+    video.srcObject = state.stream;
+    await new Promise(r=> video.onloadedmetadata = r);
+    resizeCanvas();
+    $('netStatus').textContent = navigator.onLine ? '🌐 Online' : '🌐 Offline';
+  }catch(e){ alert('Gagal akses kamera: '+(e.message||e)); console.error(e); }
+}
+startCamera('environment');
+
+/* GPS minimal */
+if(navigator.geolocation){
+  navigator.geolocation.watchPosition(p=>{ $('gpsStatus').textContent = `📍 GPS: ${Math.round(p.coords.accuracy)}m`; }, ()=>{});
+}
+
+/* Load scripts helper */
+function loadScript(src){ return new Promise((res,rej)=>{ if(document.querySelector('script[src="'+src+'"]')) return res(); const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=()=>rej(new Error('fail load '+src)); document.head.appendChild(s); }); }
+const TF = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js';
+const COCO = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js';
+const TESS = 'https://unpkg.com/tesseract.js@4.1.1/dist/tesseract.min.js';
+
+async function ensureModel(){
+  if(state.model) return state.model;
+  $('modelStatus').textContent = 'Model: loading...';
+  await loadScript(TF);
+  await loadScript(COCO);
+  state.model = await cocoSsd.load();
+  $('modelStatus').textContent = 'Model: ready';
+  return state.model;
+}
+async function ensureTesseract(){
+  if(state.tesseract) return state.tesseract;
+  $('modelStatus').textContent = 'OCR: loading...';
+  await loadScript(TESS);
+  if(window.Tesseract && window.Tesseract.createWorker){
+    state.tesseract = await Tesseract.createWorker({logger:m=>{}});
+    await state.tesseract.load();
+    try{ await state.tesseract.loadLanguage('eng+ind'); await state.tesseract.initialize('eng'); }catch(e){ await state.tesseract.initialize('eng'); }
+    $('modelStatus').textContent = 'OCR: ready';
+    return state.tesseract;
+  } else {
+    $('modelStatus').textContent = 'OCR: failed';
+    throw new Error('Tesseract not available');
+  }
+}
+
+/* Draw overlay boxes helper */
+function clearOverlay(){ ctx.clearRect(0,0,overlay.width,overlay.height); }
+function drawBoxes(analysis){
+  clearOverlay();
+  if(!analysis || !analysis.objects) return;
+  const smallW = 320, smallH = Math.round((video.videoHeight/video.videoWidth)*smallW)||180;
+  const sx = overlay.width / smallW, sy = overlay.height / smallH;
+  analysis.objects.forEach(o=>{
+    const x = o.bbox_small.x * sx, y = o.bbox_small.y * sy, w = o.bbox_small.w * sx, h = o.bbox_small.h * sy;
+    ctx.strokeStyle='rgba(255,165,0,0.95)'; ctx.lineWidth=3; ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(x,y-22,140,22);
+    ctx.fillStyle='#fff'; ctx.font='13px sans-serif'; ctx.fillText(`${o.class} ${Math.round(o.score*100)}%`, x+6, y-6);
+  });
+}
+
+/* Simple multi-scale detect (fast + medium) */
+async function analyzeFrame(){
+  if(!video || video.readyState<2) return null;
+  await ensureModel();
+  const Wsmall = 320, Hsmall = Math.round((video.videoHeight/video.videoWidth)*Wsmall)||180;
+  const cSmall = document.createElement('canvas'); cSmall.width=Wsmall; cSmall.height=Hsmall; cSmall.getContext('2d').drawImage(video,0,0,Wsmall,Hsmall);
+  let preds = await state.model.detect(cSmall);
+  preds = preds.filter(p=>p.score>0.25);
+  // medium occasionally to catch small objects
+  if(!window._ms) window._ms=0; window._ms=(window._ms+1)%2;
+  if(window._ms===0){
+    const Wm=640, Hm=Math.round((video.videoHeight/video.videoWidth)*Wm)||360;
+    const cMed=document.createElement('canvas'); cMed.width=Wm; cMed.height=Hm; cMed.getContext('2d').drawImage(video,0,0,Wm,Hm);
+    let pm = await state.model.detect(cMed);
+    pm = pm.filter(p=>p.score>0.18).map(p=>{ const sx=Wsmall/Wm, sy=Hsmall/Hm; return {...p, bbox:[p.bbox[0]*sx,p.bbox[1]*sy,p.bbox[2]*sx,p.bbox[3]*sy] }; });
+    preds = preds.concat(pm);
+  }
+  // simple NMS
+  preds.sort((a,b)=>b.score-a.score);
+  const keep=[];
+  function iou(a,b){
+    const [ax,ay,aw,ah]=a.bbox, [bx,by,bw,bh]=b.bbox;
+    const ix=Math.max(ax,bx), iy=Math.max(ay,by), axr=ax+aw, ayr=ay+ah, bxr=bx+bw, byr=by+bh;
+    const w=Math.max(0,Math.min(axr,bxr)-ix), h=Math.max(0,Math.min(ayr,byr)-iy); const inter=w*h;
+    const areaA=aw*ah, areaB=bw*bh; return inter/(areaA+areaB-inter+1e-6);
+  }
+  for(const p of preds){
+    let skip=false;
+    for(const q of keep) if(p.class===q.class && iou(p,q)>0.45){ skip=true; break; }
+    if(!skip) keep.push(p);
+  }
+  const objects = keep.map((p,idx)=>{ const bbox=p.bbox; const cx=bbox[0]+bbox[2]/2, cy=bbox[1]+bbox[3]/2; return { id:'o'+idx+'_'+Date.now(), class:p.class, score:Math.round(p.score*100)/100, bbox_small:{x:Math.round(bbox[0]),y:Math.round(bbox[1]),w:Math.round(bbox[2]),h:Math.round(bbox[3])}, center_norm:{x:+(cx/Wsmall).toFixed(2),y:+(cy/Hsmall).toFixed(2)}, distance_m:Math.round(14000/Math.max(4,bbox[3]))/1, lastSeen:Date.now() }; });
+  // environment guesses
+  const imgd = cSmall.getContext('2d').getImageData(0,0,Wsmall,Hsmall);
+  let sum=0; for(let i=0;i<imgd.data.length;i+=80) sum += (0.299*imgd.data[i]+0.587*imgd.data[i+1]+0.114*imgd.data[i+2]);
+  const avg = sum / (Wsmall*Hsmall/80+1);
+  const lighting = avg<60 ? 'Very dim' : avg<110 ? 'Dim' : avg<160 ? 'Medium' : 'Bright';
+  // color guess
+  const colors={r:0,g:0,b:0}; for(let i=0;i<imgd.data.length;i+=200){ colors.r+=imgd.data[i]; colors.g+=imgd.data[i+1]; colors.b+=imgd.data[i+2]; }
+  const mx = Math.max(colors.r,colors.g,colors.b); const surface = mx===colors.g ? 'green/vegetation' : mx===colors.r ? 'red/brick/wood' : 'concrete/tiles';
+  const analysis = { timestamp:Date.now(), lighting, surface, peopleCount:objects.filter(o=>o.class==='person').length, vehicleCount:objects.filter(o=>['car','truck','bus','motorcycle','bicycle','motorbike'].includes(o.class)).length, bagCount:objects.filter(o=>['backpack','handbag','suitcase'].includes(o.class)).length, objects };
+  state.lastAnalysis = analysis;
+  return analysis;
+}
+
+/* Render UI panel */
+function renderPanel(a){
+  if(!a){ $('objectsList').innerHTML='<div class="small">Assist OFF — tekan ASSIST</div>'; $('lighting').textContent='Lighting: -'; $('surface').textContent='Surface: -'; $('peopleCount').textContent='0'; $('vehicleCount').textContent='0'; $('bagCount').textContent='0'; $('riskBadge').textContent='Risk: -'; clearOverlay(); return; }
+  $('lighting').textContent = 'Lighting: ' + a.lighting;
+  $('surface').textContent = a.surface;
+  $('peopleCount').textContent = a.peopleCount;
+  $('vehicleCount').textContent = a.vehicleCount;
+  $('bagCount').textContent = a.bagCount;
+  const out = a.objects.map(o=>`<div class="objectItem"><strong>${o.class}</strong> • ${o.score} • ${o.distance_m}m<br/><button onclick="runOCRForObject('${o.id}')" style="margin-top:6px;padding:6px;border-radius:8px;border:0;background:rgba(255,255,255,0.06);color:#fff">Run OCR</button></div>`).join('') || '<div class="small">No objects detected</div>';
+  $('objectsList').innerHTML = out;
+  // simple risk label
+  let score=5; if(a.peopleCount>3) score+=15; if(a.bagCount>0) score+=20;
+  const label = score>=50?'High':score>=25?'Medium':'Low';
+  $('riskBadge').textContent = 'Risk: ' + label;
+  if(label==='Low') $('riskBadge').style.background = 'rgba(16,185,129,0.12)'; else if(label==='Medium') $('riskBadge').style.background='rgba(245,158,11,0.12)'; else $('riskBadge').style.background='rgba(239,68,68,0.12)';
+  drawBoxes(a);
+}
+
+/* Start/stop assist loop */
+let assistTimer = null;
+$('btnAssist').addEventListener('click', async ()=>{
+  if(!state.assist){
+    // start
+    state.assist = true; $('btnAssist').textContent='STOP ASSIST';
+    try{ await ensureModel(); $('modelStatus').textContent='Model: ready'; }catch(e){ alert('Model load failed'); state.assist=false; $('btnAssist').textContent='ASSIST'; return; }
+    assistTimer = setInterval(async ()=>{
+      if(state.analyzing) return;
+      state.analyzing = true;
+      try{ const res = await analyzeFrame(); renderPanel(res); if(state.autoOCR && res && res.objects && res.objects.length>0){ /* optionally auto OCR first object */ } }catch(e){ console.warn(e); }
+      state.analyzing = false;
+    }, 1000);
+  } else {
+    // stop
+    state.assist = false; $('btnAssist').textContent='ASSIST';
+    if(assistTimer) clearInterval(assistTimer);
+    renderPanel(null);
+  }
+});
+
+/* Preload OCR */
+$('btnPreloadOCR').addEventListener('click', async ()=>{
+  try{ await ensureTesseract(); alert('OCR preloaded'); }catch(e){ alert('Preload OCR failed: '+(e.message||e)); }
+});
+
+/* Global OCR (center crop) */
+$('btnGlobalOCR').addEventListener('click', async ()=>{
+  try{
+    if(!video || video.readyState<2) return alert('Camera belum siap');
+    const full = document.createElement('canvas'); full.width=video.videoWidth; full.height=video.videoHeight; full.getContext('2d').drawImage(video,0,0,full.width,full.height);
+    const size = Math.round(Math.min(full.width,full.height)*0.5); const sx=Math.round((full.width-size)/2), sy=Math.round((full.height-size)/2);
+    const crop = document.createElement('canvas'); crop.width=size; crop.height=size; crop.getContext('2d').drawImage(full,sx,sy,size,size,0,0,size,size);
+    const id = crop.getContext('2d').getImageData(0,0,size,size);
+    for(let i=0;i<id.data.length;i+=4){ const g=0.299*id.data[i]+0.587*id.data[i+1]+0.114*id.data[i+2]; id.data[i]=id.data[i+1]=id.data[i+2]=g; }
+    crop.getContext('2d').putImageData(id,0,0);
+    await ensureTesseract();
+    $('modelStatus').textContent='OCR: processing...';
+    const r = await state.tesseract.recognize(crop);
+    const text = (r && r.data && r.data.text) ? r.data.text.trim() : '';
+    $('modelStatus').textContent='OCR: ready';
+    if(!text) return alert('No text found');
+    alert('OCR Result:\\n\\n' + text.slice(0,2000));
+  }catch(e){ console.warn(e); alert('OCR failed: '+(e.message||e)); $('modelStatus').textContent='OCR: failed'; }
+});
+
+/* Run OCR for one object by id (uses current lastAnalysis to find bbox) */
+async function runOCRForObject(objId){
+  try{
+    const analysis = state.lastAnalysis; if(!analysis) return alert('No analysis');
+    const obj = analysis.objects.find(o=>o.id===objId); if(!obj) return alert('Object not found');
+    const Wsmall = 320, Hsmall = Math.round((video.videoHeight/video.videoWidth)*Wsmall)||180;
+    const full = document.createElement('canvas'); full.width=video.videoWidth; full.height=video.videoHeight; full.getContext('2d').drawImage(video,0,0,full.width,full.height);
+    const scaleX = full.width / Wsmall, scaleY = full.height / Hsmall;
+    const sx = Math.max(0, Math.round(obj.bbox_small.x * scaleX)), sy = Math.max(0, Math.round(obj.bbox_small.y * scaleY));
+    const sw = Math.max(16, Math.round(obj.bbox_small.w * scaleX)), sh = Math.max(16, Math.round(obj.bbox_small.h * scaleY));
+    const crop = document.createElement('canvas'); crop.width=sw; crop.height=sh; crop.getContext('2d').drawImage(full,sx,sy,sw,sh,0,0,sw,sh);
+    const id = crop.getContext('2d').getImageData(0,0,sw,sh); for(let i=0;i<id.data.length;i+=4){ const g=0.299*id.data[i]+0.587*id.data[i+1]+0.114*id.data[i+2]; id.data[i]=id.data[i+1]=id.data[i+2]=g; } crop.getContext('2d').putImageData(id,0,0);
+    await ensureTesseract();
+    const r = await state.tesseract.recognize(crop); const text = (r && r.data && r.data.text) ? r.data.text.trim() : '';
+    if(!text) return alert('No text found'); alert('OCR Result:\\n\\n' + text.slice(0,2000));
+  }catch(e){ console.warn(e); alert('OCR failed: '+(e.message||e)); }
+}
+
+/* Capture */
+$('btnCapture').addEventListener('click', async ()=>{
+  if(!video || video.readyState<2) return alert('Camera not ready');
+  const c=document.createElement('canvas'); c.width=video.videoWidth; c.height=video.videoHeight; c.getContext('2d').drawImage(video,0,0,c.width,c.height);
+  const dataUrl=c.toDataURL('image/jpeg',0.9);
+  const rec={ id:'cap'+Date.now(), dataUrl, meta:{time:new Date().toISOString(), analysis: state.lastAnalysis} };
+  state.incidentLog.push(rec);
+  // download
+  const blob = await (await fetch(dataUrl)).blob(); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=`nav-${Date.now()}.jpg`; a.click(); URL.revokeObjectURL(url);
+  alert('Photo saved locally.');
+});
+
+/* Panic */
+$('btnPanic').addEventListener('click', async ()=>{
+  try{ // immediate capture and sound
+    await $('btnCapture').click();
+    if(navigator.vibrate) navigator.vibrate([200,100,200]);
+    if(window.speechSynthesis){ const u=new SpeechSynthesisUtterance('Panic triggered. Location recorded.'); u.lang='id-ID'; window.speechSynthesis.speak(u); }
+  }catch(e){ console.warn(e); }
+});
+
+/* Export / Clear log */
+$('btnExportJSON').addEventListener('click', ()=>{
+  const blob = new Blob([JSON.stringify({incidents: state.incidentLog, lastAnalysis: state.lastAnalysis}, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='naviguard-log.json'; a.click(); URL.revokeObjectURL(url);
+});
+$('btnClearInc').addEventListener('click', ()=>{ if(confirm('Clear incident log?')){ state.incidentLog=[]; alert('Cleared'); } });
+
+/* Manual label (tap overlay) */
+overlay.addEventListener('click', function(e){
+  try{
+    const rect = overlay.getBoundingClientRect(); const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const relX = +(x/overlay.width).toFixed(3), relY = +(y/overlay.height).toFixed(3);
+    const lbl = prompt('Label objek ini (contoh: shoe, rack, chair):'); if(!lbl) return;
+    const Wsmall=320, Hsmall = Math.round((video.videoHeight/video.videoWidth)*Wsmall)||180;
+    const cx = Math.round(relX * Wsmall), cy = Math.round(relY * Hsmall);
+    const obj = { id:'manual_'+Date.now(), class:lbl, score:1.0, bbox_small:{x:Math.max(0,cx-40),y:Math.max(0,cy-40),w:80,h:80}, center_norm:{x:relX,y:relY}, distance_m:null, lastSeen:Date.now() };
+    state.lastAnalysis = state.lastAnalysis || { timestamp:Date.now(), lighting:'-', surface:'-', peopleCount:0, vehicleCount:0, bagCount:0, objects:[] };
+    state.lastAnalysis.objects.push(obj);
+    renderPanel(state.lastAnalysis);
+    alert('Label disimpan lokal. Export JSON untuk kumpulkan data.');
+  }catch(e){ console.warn(e); }
+});
+
+/* Simple help */
+$('helpBtn').addEventListener('click', ()=>{ alert('Cara singkat:\\n1) Tekan ASSIST → tunggu MODEL: ready.\\n2) Arahkan kamera ke objek.\\n3) Tekan GLOBAL OCR untuk teks.\\n4) Tap layar untuk label manual.'); });
+
+/* Expose state for debug */
+window._nav = { state, analyzeFrame, ensureModel, ensureTesseract };
+
+/* Show initial state */
+renderPanel(null);
+</script>
+</body>
+</html>
