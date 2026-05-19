@@ -2,13 +2,11 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>SUPER TRACKING — AR + Live Polyline + Waypoint + Voice</title>
-  <meta name="description" content="Super Tracking: Kamera AR, Live Polyline, Waypoint, Voice, Export GPX">
-  <meta name="theme-color" content="#1e40af">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
+  <title>TRACKING TENTARA - Patrol Record</title>
   
-  <!-- Leaflet CSS (untuk map) -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
   <style>
     * {
@@ -17,476 +15,437 @@
       box-sizing: border-box;
       -webkit-tap-highlight-color: transparent;
     }
-
+    
     body {
-      font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-      background: #000;
+      font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+      background: #0a0a0a;
       height: 100vh;
       overflow: hidden;
       position: fixed;
       width: 100%;
     }
-
-    /* App container */
-    .app {
-      height: 100vh;
-      width: 100%;
-      position: relative;
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Header */
+    
+    /* Header sederhana */
     .header {
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
-      background: linear-gradient(135deg, rgba(0,0,0,0.7), rgba(0,0,0,0.5));
-      backdrop-filter: blur(12px);
+      background: linear-gradient(135deg, #0f172a, #0a0f1a);
       padding: 12px 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      z-index: 100;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      z-index: 20;
+      border-bottom: 2px solid #1e3a5f;
     }
-
-    .app-title {
+    
+    .title {
+      color: #f1f5f9;
+      font-weight: bold;
+      font-size: 16px;
       display: flex;
       align-items: center;
       gap: 8px;
-      font-weight: bold;
-      color: white;
-      font-size: 16px;
     }
-
-    .status-badge {
-      padding: 4px 10px;
+    
+    .badge {
+      padding: 4px 12px;
       border-radius: 20px;
-      background: rgba(0,0,0,0.5);
       font-size: 11px;
-      color: #10b981;
+      font-weight: bold;
     }
-
-    /* Camera view (fullscreen) */
-    .camera-container {
+    
+    .badge-stop {
+      background: #dc2626;
+      color: white;
+    }
+    
+    .badge-record {
+      background: #10b981;
+      color: white;
+      animation: blink 1s infinite;
+    }
+    
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+    
+    /* MAP fullscreen */
+    .map-container {
       position: absolute;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background: #000;
       z-index: 1;
     }
-
-    #video {
-      width: 100%;
+    
+    #map {
       height: 100%;
-      object-fit: cover;
-    }
-
-    /* AR Canvas overlay */
-    #arCanvas {
-      position: absolute;
-      top: 0;
-      left: 0;
       width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 10;
+      background: #1a2a3a;
     }
-
-    /* Info Panel (atas kamera) */
+    
+    /* Info panel (statistik) */
     .info-panel {
       position: absolute;
       top: 70px;
-      left: 12px;
-      right: 12px;
-      background: rgba(0,0,0,0.65);
-      backdrop-filter: blur(12px);
-      border-radius: 20px;
-      padding: 12px;
-      z-index: 20;
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .location-name {
-      font-weight: 700;
-      color: white;
-      font-size: 14px;
-      margin-bottom: 4px;
-    }
-
-    .coords-text {
-      font-size: 11px;
-      color: #94a3b8;
-      font-family: monospace;
-    }
-
-    .stats-row {
-      display: flex;
-      gap: 12px;
-      margin-top: 10px;
-      flex-wrap: wrap;
-    }
-
-    .stat-card {
-      background: rgba(255,255,255,0.1);
-      border-radius: 12px;
-      padding: 6px 12px;
-      text-align: center;
-      min-width: 70px;
-    }
-
-    .stat-label {
-      font-size: 9px;
-      color: #94a3b8;
-    }
-
-    .stat-value {
-      font-size: 16px;
-      font-weight: bold;
-      color: white;
-    }
-
-    /* Button panel */
-    .button-panel {
-      position: absolute;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 12px;
-      z-index: 30;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(12px);
-      padding: 10px 16px;
-      border-radius: 50px;
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .btn {
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      border: none;
-      font-size: 24px;
-      cursor: pointer;
-      transition: all 0.2s;
-      background: rgba(255,255,255,0.1);
-      color: white;
-    }
-
-    .btn-primary {
-      background: #1e40af;
-      box-shadow: 0 0 15px rgba(30,64,175,0.5);
-    }
-
-    .btn-danger {
-      background: #dc2626;
-    }
-
-    .btn-success {
-      background: #10b981;
-    }
-
-    .btn:active {
-      transform: scale(0.94);
-    }
-
-    /* Mini Map (bisa di-toggle) */
-    .mini-map-container {
-      position: absolute;
-      bottom: 100px;
-      right: 12px;
-      width: 160px;
-      height: 160px;
+      left: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.75);
+      backdrop-filter: blur(10px);
       border-radius: 16px;
-      overflow: hidden;
-      border: 2px solid rgba(255,255,255,0.2);
-      z-index: 25;
-      background: #1a1a2e;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-      transition: all 0.3s;
-    }
-
-    .mini-map-container.hidden {
-      opacity: 0;
-      pointer-events: none;
-      transform: scale(0.8);
-    }
-
-    #miniMap {
-      width: 100%;
-      height: 100%;
-    }
-
-    /* Waypoint list */
-    .waypoint-list {
-      position: absolute;
-      bottom: 100px;
-      left: 12px;
-      right: 90px;
-      background: rgba(0,0,0,0.7);
-      backdrop-filter: blur(12px);
-      border-radius: 16px;
-      padding: 8px;
-      max-height: 150px;
-      overflow-y: auto;
-      z-index: 25;
-      display: none;
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-
-    .waypoint-list.show {
-      display: block;
-    }
-
-    .wp-item {
-      padding: 8px;
-      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 10px;
+      z-index: 15;
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
+      flex-wrap: wrap;
+      gap: 8px;
+      border: 1px solid #2a4a6a;
     }
-
-    .wp-name {
-      color: white;
-      font-weight: 500;
-      font-size: 13px;
+    
+    .info-card {
+      flex: 1;
+      text-align: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 12px;
+      padding: 6px;
     }
-
-    .wp-dist {
-      color: #10b981;
-      font-size: 11px;
+    
+    .info-label {
+      font-size: 9px;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
     }
-
-    /* Toast */
-    .toast {
-      position: fixed;
-      bottom: 100px;
+    
+    .info-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #facc15;
+    }
+    
+    /* TOMBOL START/RECORD - BESAR DI TENGAH BAWAH */
+    .btn-container {
+      position: absolute;
+      bottom: 30px;
       left: 50%;
-      transform: translateX(-50%) translateY(100px);
-      background: #1e293b;
+      transform: translateX(-50%);
+      z-index: 30;
+    }
+    
+    .btn-start {
+      width: 85px;
+      height: 85px;
+      border-radius: 50%;
+      background: #10b981;
+      border: none;
+      font-size: 40px;
+      font-weight: bold;
       color: white;
-      padding: 10px 20px;
-      border-radius: 30px;
-      font-size: 13px;
-      z-index: 200;
-      transition: transform 0.3s;
-      white-space: nowrap;
+      box-shadow: 0 0 20px rgba(16,185,129,0.5);
+      cursor: pointer;
+      transition: all 0.2s;
     }
-
-    .toast.show {
-      transform: translateX(-50%) translateY(0);
+    
+    .btn-stop {
+      background: #dc2626;
+      box-shadow: 0 0 20px rgba(220,38,38,0.5);
     }
-
+    
+    .btn-start:active {
+      transform: scale(0.94);
+    }
+    
+    /* Tombol simpan dan export */
+    .btn-save {
+      position: absolute;
+      bottom: 30px;
+      right: 20px;
+      width: 55px;
+      height: 55px;
+      border-radius: 50%;
+      background: #1e3a5f;
+      border: none;
+      color: #facc15;
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 30;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    
+    .btn-export {
+      position: absolute;
+      bottom: 30px;
+      left: 20px;
+      width: 55px;
+      height: 55px;
+      border-radius: 50%;
+      background: #1e3a5f;
+      border: none;
+      color: #facc15;
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 30;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+    
     /* Loading screen */
-    .loading-screen {
+    .loading {
       position: fixed;
       inset: 0;
-      background: linear-gradient(180deg, #0f172a, #020617);
+      background: #0a0f1a;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-direction: column;
-      gap: 12px;
+      gap: 15px;
       z-index: 1000;
       color: white;
     }
-
+    
     .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid rgba(255,255,255,0.2);
-      border-top-color: #3b82f6;
+      width: 45px;
+      height: 45px;
+      border: 3px solid #1e3a5f;
+      border-top-color: #facc15;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
+      animation: spin 0.8s linear infinite;
     }
-
+    
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
-
-    /* Tombol toggle tambahan */
-    .extra-buttons {
-      position: absolute;
-      top: 70px;
-      right: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      z-index: 20;
+    
+    .toast {
+      position: fixed;
+      bottom: 130px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1e293b;
+      color: #facc15;
+      padding: 10px 20px;
+      border-radius: 40px;
+      font-size: 13px;
+      font-weight: bold;
+      z-index: 200;
+      transition: transform 0.3s;
+      white-space: nowrap;
     }
-
-    .extra-btn {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.1);
+    
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+    
+    /* Daftar session tersimpan */
+    .saved-list {
+      position: absolute;
+      top: 140px;
+      right: 10px;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(10px);
+      border-radius: 12px;
+      padding: 8px;
+      max-width: 180px;
+      z-index: 20;
+      display: none;
+      border: 1px solid #2a4a6a;
+    }
+    
+    .saved-list.show {
+      display: block;
+    }
+    
+    .saved-item {
+      padding: 8px;
+      border-bottom: 1px solid #2a4a6a;
       color: white;
-      font-size: 18px;
+      font-size: 11px;
       cursor: pointer;
     }
-
-    /* Voice indicator */
-    .voice-indicator {
-      position: absolute;
-      top: 70px;
-      left: 12px;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: #10b981;
-      animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.5; transform: scale(1.2); }
+    
+    .saved-item:active {
+      background: #1e3a5f;
     }
   </style>
 </head>
 <body>
 
-<div class="app" id="app">
-  <!-- Header -->
-  <div class="header">
-    <div class="app-title">
-      <span>🎯</span>
-      <span>SUPER TRACKING</span>
-    </div>
-    <div style="display: flex; gap: 8px;">
-      <div class="status-badge" id="gpsStatus">📍 -</div>
-      <div class="status-badge" id="recordStatus">⚪ STOP</div>
-    </div>
+<div class="header">
+  <div class="title">
+    <span>🎖️</span>
+    <span>TRACKING TENTARA</span>
   </div>
+  <div class="badge badge-stop" id="statusBadge">⚪ STOP</div>
+</div>
 
-  <!-- Camera + AR -->
-  <div class="camera-container">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="arCanvas"></canvas>
+<div class="map-container">
+  <div id="map"></div>
+</div>
+
+<div class="info-panel">
+  <div class="info-card">
+    <div class="info-label">TITIK</div>
+    <div class="info-value" id="pointCount">0</div>
   </div>
-
-  <!-- Info Panel -->
-  <div class="info-panel" id="infoPanel">
-    <div class="location-name" id="locationName">Memulai...</div>
-    <div class="coords-text" id="coords">Lat: -- , Lng: --</div>
-    <div class="stats-row" id="statsRow">
-      <div class="stat-card">
-        <div class="stat-label">TITIK</div>
-        <div class="stat-value" id="pointCount">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">JARAK</div>
-        <div class="stat-value" id="distance">0 m</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">KECEPATAN</div>
-        <div class="stat-value" id="speed">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">DURASI</div>
-        <div class="stat-value" id="duration">0:00</div>
-      </div>
-    </div>
+  <div class="info-card">
+    <div class="info-label">JARAK</div>
+    <div class="info-value" id="distance">0 m</div>
   </div>
-
-  <!-- Extra buttons -->
-  <div class="extra-buttons">
-    <button class="extra-btn" id="btnToggleMap" title="Toggle Map">🗺️</button>
-    <button class="extra-btn" id="btnToggleWaypoint" title="Waypoint List">📌</button>
-    <button class="extra-btn" id="btnVoice" title="Voice ON/OFF">🔊</button>
+  <div class="info-card">
+    <div class="info-label">KECEPATAN</div>
+    <div class="info-value" id="speed">0 km/j</div>
   </div>
-
-  <!-- Main buttons -->
-  <div class="button-panel">
-    <button class="btn" id="btnWaypoint" title="Simpan Waypoint">📍</button>
-    <button class="btn btn-success" id="btnStartTrack" title="Mulai Tracking">▶</button>
-    <button class="btn btn-danger" id="btnStopTrack" title="Stop Tracking" disabled>⏹</button>
-    <button class="btn" id="btnExport" title="Export GPX">📤</button>
-    <button class="btn" id="btnReset" title="Reset">🗑</button>
-  </div>
-
-  <!-- Mini Map -->
-  <div class="mini-map-container" id="miniMapContainer">
-    <div id="miniMap"></div>
-  </div>
-
-  <!-- Waypoint List -->
-  <div class="waypoint-list" id="waypointList"></div>
-
-  <!-- Toast -->
-  <div class="toast" id="toast">✅ Siap</div>
-
-  <!-- Loading -->
-  <div class="loading-screen" id="loadingScreen">
-    <div class="spinner"></div>
-    <div>Memulai SUPER TRACKING...</div>
-    <div class="coords-text" id="loadingStatus">Meminta izin kamera & GPS</div>
+  <div class="info-card">
+    <div class="info-label">DURASI</div>
+    <div class="info-value" id="duration">0:00</div>
   </div>
 </div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<div class="btn-container">
+  <button class="btn-start" id="recordBtn">▶</button>
+</div>
+
+<button class="btn-save" id="saveBtn">💾</button>
+<button class="btn-export" id="exportBtn">📤</button>
+
+<div class="saved-list" id="savedList">
+  <div style="padding:6px; color:#facc15; font-size:11px;">📁 SESSION TERSIMPAN</div>
+  <div id="savedItems"></div>
+</div>
+
+<div class="toast" id="toast">✅ SIAP</div>
+
+<div class="loading" id="loading">
+  <div class="spinner"></div>
+  <div>📍 MENDAPATKAN LOKASI</div>
+  <div style="font-size:12px; color:#94a3b8;">Pastikan GPS aktif</div>
+</div>
 
 <script>
-// ==================== SUPER TRACKING - FULL VERSION ====================
-// Gabungan: AR Camera + Live Polyline + Waypoint + Voice + Export GPX
+// ==================== TRACKING TENTARA ====================
+// Otomatis record semua pergerakan: kanan, kiri, naik, turun
 
-// ---------- DOM Elements ----------
 const $ = id => document.getElementById(id);
-const showToast = (msg, duration = 2500) => {
+
+// Toast notifikasi
+function showToast(msg) {
   const toast = $('toast');
   toast.textContent = msg;
   toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), duration);
-};
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
 
-// ---------- State ----------
-const state = {
-  // Camera
-  stream: null,
-  usingFront: false,
-  
-  // GPS
-  watchId: null,
-  lastPos: null,
-  startTime: null,
-  
-  // Path tracking (LIVE POLYLINE)
-  points: [],
-  totalDistance: 0,
-  isTracking: false,
-  
-  // Map
-  map: null,
-  polyline: null,
-  currentMarker: null,
-  mapVisible: true,
-  
-  // Waypoint
-  waypoints: [],
-  
-  // Voice
-  voiceOn: false,
-  
-  // AR Canvas
-  arCtx: null,
-  animationId: null,
-  
-  // Reverse geocode cache
-  rgCache: {}
-};
+// ---------- STATE ----------
+let isRecording = false;      // Sedang record atau tidak
+let points = [];              // Semua titik koordinat {lat, lng, timestamp}
+let totalDistance = 0;       // Total jarak tempuh (meter)
+let watchId = null;           // ID GPS watcher
+let currentPos = null;        // Posisi terakhir
+let startTime = null;         // Waktu mulai record
+let durationInterval = null;  // Timer update durasi
 
-// ---------- Utility Functions ----------
-function formatDistance(meters) {
-  if (meters < 1000) return `${Math.round(meters)} m`;
-  return `${(meters / 1000).toFixed(2)} km`;
+// Map
+let map = null;
+let polyline = null;
+let startMarker = null;       // Titik awal (hijau)
+let currentMarker = null;     // Posisi sekarang (biru)
+
+// Penyimpanan session
+let savedSessions = [];
+
+// ---------- LOAD SESSION TERSIMPAN ----------
+function loadSavedSessions() {
+  try {
+    const saved = localStorage.getItem('tentara_tracking_sessions');
+    if (saved) {
+      savedSessions = JSON.parse(saved);
+      renderSavedList();
+    }
+  } catch(e) {}
+}
+
+function saveCurrentSession() {
+  if (points.length === 0) {
+    showToast('❌ Belum ada jalur yang direkam');
+    return;
+  }
+  
+  const session = {
+    id: Date.now(),
+    name: `Patrol ${new Date().toLocaleString()}`,
+    date: Date.now(),
+    points: [...points],
+    totalDistance: totalDistance,
+    duration: startTime ? Date.now() - startTime : 0
+  };
+  
+  savedSessions.unshift(session);
+  // Simpan maksimal 10 session
+  if (savedSessions.length > 10) savedSessions.pop();
+  
+  localStorage.setItem('tentara_tracking_sessions', JSON.stringify(savedSessions));
+  renderSavedList();
+  showToast(`✅ Jalur tersimpan: ${session.name}`);
+}
+
+function renderSavedList() {
+  const container = $('savedItems');
+  if (!container) return;
+  
+  if (savedSessions.length === 0) {
+    container.innerHTML = '<div style="padding:8px; color:#64748b; font-size:11px;">Belum ada session</div>';
+    return;
+  }
+  
+  container.innerHTML = savedSessions.map(s => `
+    <div class="saved-item" data-id="${s.id}">
+      <div style="font-weight:bold;">${s.name.substring(0, 20)}</div>
+      <div style="font-size:9px; color:#94a3b8;">${Math.round(s.totalDistance)}m | ${s.points.length} titik</div>
+    </div>
+  `).join('');
+  
+  // Tambah event listener
+  document.querySelectorAll('.saved-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = parseInt(el.dataset.id);
+      const session = savedSessions.find(s => s.id === id);
+      if (session) {
+        loadSessionToMap(session);
+        showToast(`📂 Load: ${session.name}`);
+      }
+    });
+  });
+}
+
+function loadSessionToMap(session) {
+  // Hentikan recording dulu
+  if (isRecording) stopRecording();
+  
+  // Load points ke state
+  points = [...session.points];
+  totalDistance = session.totalDistance;
+  
+  // Update UI
+  updateStatsUI();
+  
+  // Render ulang garis di map
+  renderPolyline();
+  
+  // Zoom ke jalur
+  if (points.length > 0) {
+    const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+    map.fitBounds(bounds, { padding: [30, 30] });
+  }
+  
+  showToast(`📂 ${session.name} dimuat`);
+}
+
+// ---------- FUNGSI UTILITY ----------
+function formatDistance(m) {
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${(m / 1000).toFixed(2)} km`;
 }
 
 function formatSpeed(mps) {
@@ -496,27 +455,25 @@ function formatSpeed(mps) {
 
 function formatDuration(ms) {
   if (!ms) return '0:00';
-  const seconds = Math.floor(ms / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const secs = Math.floor(ms / 1000);
+  const mins = Math.floor(secs / 60);
+  const sisa = secs % 60;
+  return `${mins}:${sisa.toString().padStart(2, '0')}`;
 }
 
-function updateDurationUI() {
-  if (state.startTime && state.isTracking) {
-    const duration = Date.now() - state.startTime;
-    $('duration').textContent = formatDuration(duration);
+function updateDurationDisplay() {
+  if (isRecording && startTime) {
+    $('duration').textContent = formatDuration(Date.now() - startTime);
   }
 }
 
-// Update interval untuk durasi
-setInterval(() => {
-  if (state.isTracking && state.startTime) {
-    $('duration').textContent = formatDuration(Date.now() - state.startTime);
-  }
-}, 1000);
+// Update UI statistik
+function updateStatsUI() {
+  $('pointCount').innerHTML = points.length;
+  $('distance').innerHTML = formatDistance(totalDistance);
+}
 
-// Haversine distance
+// Hitung jarak Haversine
 function haversineDistance(lat1, lon1, lat2, lon2) {
   const R = 6371000;
   const φ1 = lat1 * Math.PI / 180;
@@ -530,475 +487,173 @@ function haversineDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// ---------- Map Functions (Leaflet + Polyline) ----------
+// ---------- MAP & POLYLINE ----------
 function initMap() {
-  const mapContainer = $('miniMap');
-  if (!mapContainer) return;
-  
-  state.map = L.map('miniMap').setView([-6.2088, 106.8456], 15);
+  map = L.map('map').setView([-6.3750, 107.1942], 17);
   
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://www.openstreetmap.org">OSM</a>',
     subdomains: 'abcd',
     maxZoom: 19
-  }).addTo(state.map);
+  }).addTo(map);
 }
 
-function updatePolyline() {
-  if (!state.map) return;
+function renderPolyline() {
+  // Hapus garis lama
+  if (polyline) map.removeLayer(polyline);
+  if (startMarker) map.removeLayer(startMarker);
+  if (currentMarker) map.removeLayer(currentMarker);
   
-  // Remove old polyline
-  if (state.polyline) {
-    state.map.removeLayer(state.polyline);
-  }
+  if (points.length === 0) return;
   
-  // Remove old marker
-  if (state.currentMarker) {
-    state.map.removeLayer(state.currentMarker);
-  }
-  
-  // Draw new polyline if points exist
-  if (state.points.length >= 2) {
-    const latlngs = state.points.map(p => [p.lat, p.lng]);
-    state.polyline = L.polyline(latlngs, {
-      color: '#3b82f6',
-      weight: 4,
+  // Gambar garis jalur
+  if (points.length >= 2) {
+    const latlngs = points.map(p => [p.lat, p.lng]);
+    polyline = L.polyline(latlngs, {
+      color: '#facc15',
+      weight: 5,
       opacity: 0.9,
       lineJoin: 'round'
-    }).addTo(state.map);
-    
-    // Auto fit bounds
-    state.map.fitBounds(state.polyline.getBounds(), { padding: [20, 20] });
+    }).addTo(map);
   }
   
-  // Add current position marker
-  if (state.lastPos) {
-    state.currentMarker = L.marker([state.lastPos.coords.latitude, state.lastPos.coords.longitude], {
+  // Titik AWAL (hijau) biar tau dari mana mulai
+  const first = points[0];
+  startMarker = L.marker([first.lat, first.lng], {
+    icon: L.divIcon({
+      html: '<div style="background:#10b981; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px #10b981;"></div>',
+      iconSize: [14, 14],
+      className: 'start-marker'
+    })
+  }).addTo(map);
+  startMarker.bindTooltip('TITIK AWAL', { permanent: false, direction: 'top' });
+  
+  // Titik AKHIR (merah) biar tau posisi terakhir
+  if (currentPos) {
+    currentMarker = L.marker([currentPos.lat, currentPos.lng], {
       icon: L.divIcon({
-        html: '<div style="background:#10b981; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px #10b981;"></div>',
-        iconSize: [12, 12],
-        className: 'custom-marker'
+        html: '<div style="background:#3b82f6; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px #3b82f6;"></div>',
+        iconSize: [14, 14],
+        className: 'current-marker'
       })
-    }).addTo(state.map);
+    }).addTo(map);
+    currentMarker.bindTooltip('POSISI SEKARANG', { permanent: false, direction: 'top' });
+  }
+  
+  // Auto zoom ke jalur
+  if (points.length > 1) {
+    const bounds = L.latLngBounds(points.map(p => [p.lat, p.lng]));
+    map.fitBounds(bounds, { padding: [30, 30] });
   }
 }
 
-function updateMapCenter() {
-  if (state.map && state.lastPos) {
-    state.map.setView([state.lastPos.coords.latitude, state.lastPos.coords.longitude], 16);
-  }
-}
-
-// Update map setiap 1.5 detik
-setInterval(() => {
-  if (state.map && state.lastPos && state.mapVisible) {
-    updateMapCenter();
-    updatePolyline();
-  }
-}, 1500);
-
-// Toggle map visibility
-$('btnToggleMap').addEventListener('click', () => {
-  state.mapVisible = !state.mapVisible;
-  const container = $('miniMapContainer');
-  if (state.mapVisible) {
-    container.classList.remove('hidden');
-    setTimeout(() => state.map?.invalidateSize(), 200);
-  } else {
-    container.classList.add('hidden');
-  }
-});
-
-// ---------- Camera + AR ----------
-async function startCamera(facing = 'environment') {
-  if (!navigator.mediaDevices) throw new Error('Camera tidak tersedia');
-  
-  if (state.stream) {
-    state.stream.getTracks().forEach(t => t.stop());
-  }
-  
-  const constraints = {
-    video: { facingMode: { exact: facing }, width: { ideal: 1280 }, height: { ideal: 720 } }
-  };
-  
-  try {
-    state.stream = await navigator.mediaDevices.getUserMedia(constraints);
-  } catch (e) {
-    // Fallback tanpa exact
-    const fallbackConstraints = { video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } } };
-    state.stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-  }
-  
-  const video = $('video');
-  video.srcObject = state.stream;
-  state.usingFront = (facing === 'user');
-}
-
-function stopCamera() {
-  if (state.stream) {
-    state.stream.getTracks().forEach(t => t.stop());
-    state.stream = null;
-  }
-}
-
-// AR Canvas setup
-function initARCanvas() {
-  const canvas = $('arCanvas');
-  const ctx = canvas.getContext('2d');
-  state.arCtx = ctx;
-  
-  function resize() {
-    canvas.width = canvas.offsetWidth;
-    canvas.height = canvas.offsetHeight;
-  }
-  resize();
-  window.addEventListener('resize', resize);
-  
-  function draw() {
-    if (!state.arCtx) return;
-    const canvas = $('arCanvas');
-    const video = $('video');
+function updateMapPosition() {
+  if (currentPos && map) {
+    if (currentMarker) map.removeLayer(currentMarker);
+    currentMarker = L.marker([currentPos.lat, currentPos.lng], {
+      icon: L.divIcon({
+        html: '<div style="background:#3b82f6; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow:0 0 10px #3b82f6;"></div>',
+        iconSize: [14, 14]
+      })
+    }).addTo(map);
+    currentMarker.bindTooltip('POSISI SEKARANG', { permanent: false, direction: 'top' });
     
-    if (canvas.width !== canvas.offsetWidth || canvas.height !== canvas.offsetHeight) {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+    // Ikuti posisi (center map)
+    map.setView([currentPos.lat, currentPos.lng], map.getZoom());
+  }
+}
+
+// ---------- GPS & RECORDING ----------
+function startRecording() {
+  if (isRecording) return;
+  
+  // Reset data
+  points = [];
+  totalDistance = 0;
+  startTime = Date.now();
+  isRecording = true;
+  
+  // Update UI
+  const btn = $('recordBtn');
+  btn.innerHTML = '⏹';
+  btn.classList.remove('btn-start');
+  btn.classList.add('btn-stop');
+  $('statusBadge').innerHTML = '🔴 RECORD';
+  $('statusBadge').classList.remove('badge-stop');
+  $('statusBadge').classList.add('badge-record');
+  
+  updateStatsUI();
+  
+  // Timer durasi
+  if (durationInterval) clearInterval(durationInterval);
+  durationInterval = setInterval(() => {
+    if (isRecording && startTime) {
+      $('duration').textContent = formatDuration(Date.now() - startTime);
     }
-    
-    state.arCtx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw reticle di tengah
-    state.arCtx.beginPath();
-    state.arCtx.arc(canvas.width / 2, canvas.height / 2, 20, 0, Math.PI * 2);
-    state.arCtx.strokeStyle = 'rgba(255,255,255,0.5)';
-    state.arCtx.lineWidth = 2;
-    state.arCtx.stroke();
-    
-    // Draw crosshair
-    state.arCtx.beginPath();
-    state.arCtx.moveTo(canvas.width / 2 - 30, canvas.height / 2);
-    state.arCtx.lineTo(canvas.width / 2 - 10, canvas.height / 2);
-    state.arCtx.moveTo(canvas.width / 2 + 10, canvas.height / 2);
-    state.arCtx.lineTo(canvas.width / 2 + 30, canvas.height / 2);
-    state.arCtx.moveTo(canvas.width / 2, canvas.height / 2 - 30);
-    state.arCtx.lineTo(canvas.width / 2, canvas.height / 2 - 10);
-    state.arCtx.moveTo(canvas.width / 2, canvas.height / 2 + 10);
-    state.arCtx.lineTo(canvas.width / 2, canvas.height / 2 + 30);
-    state.arCtx.stroke();
-    
-    // Draw waypoints di AR (jika ada)
-    if (state.lastPos && state.waypoints.length > 0) {
-      state.waypoints.forEach(wp => {
-        const screenPos = gpsToScreen(wp.lat, wp.lon);
-        if (screenPos.x > 0 && screenPos.x < canvas.width && screenPos.y > 0 && screenPos.y < canvas.height) {
-          state.arCtx.beginPath();
-          state.arCtx.arc(screenPos.x, screenPos.y, 12, 0, Math.PI * 2);
-          state.arCtx.fillStyle = 'rgba(16, 185, 129, 0.8)';
-          state.arCtx.fill();
-          state.arCtx.fillStyle = 'white';
-          state.arCtx.font = '12px sans-serif';
-          state.arCtx.fillText(wp.name, screenPos.x + 15, screenPos.y + 5);
-        }
-      });
-    }
-    
-    state.animationId = requestAnimationFrame(draw);
+  }, 1000);
+  
+  showToast('🔴 MULAI RECORD - Semua pergerakan akan terekam!');
+  console.log('RECORDING STARTED');
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  
+  isRecording = false;
+  
+  // Update UI
+  const btn = $('recordBtn');
+  btn.innerHTML = '▶';
+  btn.classList.remove('btn-stop');
+  btn.classList.add('btn-start');
+  $('statusBadge').innerHTML = '⚪ STOP';
+  $('statusBadge').classList.remove('badge-record');
+  $('statusBadge').classList.add('badge-stop');
+  
+  if (durationInterval) {
+    clearInterval(durationInterval);
+    durationInterval = null;
   }
   
-  draw();
-}
-
-function gpsToScreen(lat, lon) {
-  if (!state.lastPos) return { x: -1, y: -1 };
-  const canvas = $('arCanvas');
-  const midLat = state.lastPos.coords.latitude;
-  const midLon = state.lastPos.coords.longitude;
-  
-  // Skala kasar
-  const scale = 1000000;
-  const x = (lon - midLon) * scale + canvas.width / 2;
-  const y = (lat - midLat) * scale + canvas.height / 2;
-  return { x, y };
-}
-
-// ---------- GPS + Path Recording (LIVE POLYLINE) ----------
-function startGPS() {
-  if (!navigator.geolocation) {
-    showToast('GPS tidak didukung browser ini');
-    return;
-  }
-  
-  if (state.watchId) {
-    navigator.geolocation.clearWatch(state.watchId);
-  }
-  
-  state.watchId = navigator.geolocation.watchPosition(
-    (pos) => {
-      const wasEmpty = !state.lastPos;
-      state.lastPos = pos;
-      
-      // Update UI koordinat
-      const c = pos.coords;
-      $('coords').textContent = `Lat: ${c.latitude.toFixed(6)} , Lng: ${c.longitude.toFixed(6)}`;
-      $('gpsStatus').innerHTML = `📍 ${Math.round(c.accuracy)}m`;
-      
-      // Reverse geocode
-      reverseGeocode(c.latitude, c.longitude);
-      
-      // Jika tracking aktif, rekam titik
-      if (state.isTracking) {
-        const newPoint = { lat: c.latitude, lng: c.longitude, timestamp: pos.timestamp };
-        
-        if (state.points.length > 0) {
-          const last = state.points[state.points.length - 1];
-          const dist = haversineDistance(last.lat, last.lng, c.latitude, c.longitude);
-          
-          // Hanya rekam jika bergerak > 3 meter
-          if (dist >= 3) {
-            state.totalDistance += dist;
-            state.points.push(newPoint);
-            updatePolyline();
-            updateStatsUI();
-            showToast(`➕ +${Math.round(dist)}m`, 1000);
-            console.log(`[TRACK] +${dist.toFixed(1)}m | Total: ${state.totalDistance.toFixed(1)}m`);
-          }
-        } else {
-          // Titik pertama
-          state.points.push(newPoint);
-          updateStatsUI();
-          showToast('🎯 Titik awal direkam', 1000);
-        }
-      }
-      
-      // Update speed UI
-      $('speed').innerHTML = formatSpeed(c.speed);
-    },
-    (err) => {
-      console.warn('GPS error:', err);
-      showToast(`GPS error: ${err.message}`);
-    },
-    { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
-  );
-}
-
-function stopGPS() {
-  if (state.watchId) {
-    navigator.geolocation.clearWatch(state.watchId);
-    state.watchId = null;
-  }
-}
-
-function updateStatsUI() {
-  $('pointCount').innerHTML = state.points.length;
-  $('distance').innerHTML = formatDistance(state.totalDistance);
-}
-
-// ---------- Reverse Geocode (Cache) ----------
-const RG_CACHE_KEY = 'super_track_rg';
-function loadRGCache() {
-  try {
-    const saved = localStorage.getItem(RG_CACHE_KEY);
-    if (saved) state.rgCache = JSON.parse(saved);
-  } catch(e) {}
-}
-
-function saveRGCache() {
-  try {
-    const toSave = Object.fromEntries(Object.entries(state.rgCache).slice(0, 500));
-    localStorage.setItem(RG_CACHE_KEY, JSON.stringify(toSave));
-  } catch(e) {}
-}
-
-async function reverseGeocode(lat, lon) {
-  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
-  if (state.rgCache[key]) {
-    $('locationName').textContent = state.rgCache[key];
-    return;
-  }
-  
-  if (!navigator.onLine) {
-    $('locationName').textContent = '📍 (offline)';
-    return;
-  }
-  
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=16`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    const data = await res.json();
-    const name = data.display_name?.split(',')[0] || `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
-    state.rgCache[key] = name;
-    saveRGCache();
-    $('locationName').textContent = name;
-    
-    if (state.voiceOn) speak(name);
-  } catch(e) {
-    console.warn('Geocode error:', e);
-  }
-}
-
-// ---------- Voice ----------
-function speak(text) {
-  if (!state.voiceOn) return;
-  try {
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'id-ID';
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  } catch(e) {}
-}
-
-$('btnVoice').addEventListener('click', () => {
-  state.voiceOn = !state.voiceOn;
-  $('btnVoice').textContent = state.voiceOn ? '🔊' : '🔇';
-  showToast(`Voice ${state.voiceOn ? 'ON' : 'OFF'}`);
-});
-
-// ---------- Tracking Control ----------
-function startTracking() {
-  if (state.isTracking) return;
-  
-  state.isTracking = true;
-  state.startTime = Date.now();
-  $('recordStatus').innerHTML = '🔴 REC';
-  $('recordStatus').style.color = '#ef4444';
-  $('btnStartTrack').disabled = true;
-  $('btnStopTrack').disabled = false;
-  
-  showToast('🔴 TRACKING DIMULAI! Gerakkan perangkat Anda');
-  console.log('TRACKING STARTED');
-}
-
-function stopTracking() {
-  if (!state.isTracking) return;
-  
-  state.isTracking = false;
-  $('recordStatus').innerHTML = '⚪ STOP';
-  $('recordStatus').style.color = '#10b981';
-  $('btnStartTrack').disabled = false;
-  $('btnStopTrack').disabled = true;
-  
-  showToast(`⏹ TRACKING STOP. ${state.points.length} titik, ${formatDistance(state.totalDistance)}`);
-  console.log(`TRACKING STOPPED: ${state.points.length} points, ${state.totalDistance}m`);
-  
-  // Final update polyline
-  updatePolyline();
+  showToast(`⏹ STOP RECORD - ${points.length} titik, ${formatDistance(totalDistance)}`);
+  console.log(`RECORDING STOPPED: ${points.length} points, ${totalDistance}m`);
 }
 
 function resetTracking() {
-  if (state.isTracking) stopTracking();
+  if (isRecording) stopRecording();
   
-  state.points = [];
-  state.totalDistance = 0;
+  points = [];
+  totalDistance = 0;
+  startTime = null;
+  
   updateStatsUI();
+  $('duration').textContent = '0:00';
   
-  // Remove polyline
-  if (state.polyline) {
-    state.map.removeLayer(state.polyline);
-    state.polyline = null;
-  }
-  if (state.currentMarker) {
-    state.map.removeLayer(state.currentMarker);
-    state.currentMarker = null;
-  }
+  // Hapus dari map
+  if (polyline) map.removeLayer(polyline);
+  if (startMarker) map.removeLayer(startMarker);
+  if (currentMarker) map.removeLayer(currentMarker);
+  polyline = null;
+  startMarker = null;
+  currentMarker = null;
   
-  showToast('🗑 Semua data tracking direset');
-  console.log('TRACKING RESET');
+  showToast('🗑 Semua jalur dihapus');
 }
 
-$('btnStartTrack').addEventListener('click', startTracking);
-$('btnStopTrack').addEventListener('click', stopTracking);
-$('btnReset').addEventListener('click', resetTracking);
-
-// ---------- Waypoint ----------
-function loadWaypoints() {
-  try {
-    const saved = localStorage.getItem('super_track_wp');
-    if (saved) state.waypoints = JSON.parse(saved);
-  } catch(e) {}
-  renderWaypointList();
-}
-
-function saveWaypoints() {
-  localStorage.setItem('super_track_wp', JSON.stringify(state.waypoints));
-}
-
-function renderWaypointList() {
-  const container = $('waypointList');
-  if (!container) return;
-  
-  if (state.waypoints.length === 0) {
-    container.classList.remove('show');
-    return;
-  }
-  
-  container.innerHTML = '';
-  state.waypoints.forEach((wp, idx) => {
-    const div = document.createElement('div');
-    div.className = 'wp-item';
-    
-    let distanceText = '';
-    if (state.lastPos) {
-      const dist = haversineDistance(state.lastPos.coords.latitude, state.lastPos.coords.longitude, wp.lat, wp.lon);
-      distanceText = `${Math.round(dist)}m`;
-    }
-    
-    div.innerHTML = `
-      <div class="wp-name">📍 ${wp.name}</div>
-      <div class="wp-dist">${distanceText}</div>
-    `;
-    div.addEventListener('click', () => {
-      showToast(`Navigasi ke ${wp.name}`, 1500);
-      if (state.voiceOn) speak(`Navigasi ke ${wp.name}`);
-    });
-    container.appendChild(div);
-  });
-  container.classList.add('show');
-}
-
-$('btnWaypoint').addEventListener('click', () => {
-  if (!state.lastPos) {
-    showToast('Tunggu GPS aktif');
-    return;
-  }
-  
-  const wp = {
-    id: Date.now(),
-    name: `WP ${state.waypoints.length + 1}`,
-    lat: state.lastPos.coords.latitude,
-    lon: state.lastPos.coords.longitude,
-    timestamp: Date.now()
-  };
-  state.waypoints.push(wp);
-  saveWaypoints();
-  renderWaypointList();
-  showToast(`✅ Waypoint ${wp.name} disimpan`);
-  
-  if (state.voiceOn) speak(`Waypoint ${wp.name} disimpan`);
-});
-
-$('btnToggleWaypoint').addEventListener('click', () => {
-  const container = $('waypointList');
-  if (container.classList.contains('show')) {
-    container.classList.remove('show');
-  } else {
-    renderWaypointList();
-  }
-});
-
-// ---------- Export GPX ----------
 function exportGPX() {
-  if (state.points.length === 0) {
-    showToast('Tidak ada jalur untuk diekspor');
+  if (points.length === 0) {
+    showToast('❌ Tidak ada jalur untuk diekspor');
     return;
   }
   
   let gpx = `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Super Tracking">
+<gpx version="1.1" creator="Tentara Tracker">
   <trk>
-    <name>SuperTrack ${new Date().toISOString()}</name>
+    <name>Patrol Track ${new Date().toLocaleString()}</name>
     <trkseg>
 `;
   
-  state.points.forEach(p => {
+  points.forEach(p => {
     gpx += `      <trkpt lat="${p.lat}" lon="${p.lng}">
         <time>${new Date(p.timestamp).toISOString()}</time>
       </trkpt>\n`;
@@ -1012,61 +667,128 @@ function exportGPX() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `track_${Date.now()}.gpx`;
+  a.download = `patrol_${Date.now()}.gpx`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('📤 GPX siap diunduh');
 }
 
-$('btnExport').addEventListener('click', exportGPX);
-
-// ---------- Init App ----------
-async function init() {
-  try {
-    $('loadingScreen').style.display = 'flex';
-    
-    // Load cache
-    loadRGCache();
-    loadWaypoints();
-    
-    // Init map
-    initMap();
-    
-    // Init AR Canvas
-    initARCanvas();
-    
-    // Start camera
-    $('loadingStatus').textContent = 'Memulai kamera...';
-    await startCamera('environment');
-    
-    // Start GPS
-    $('loadingStatus').textContent = 'Mengaktifkan GPS...';
-    startGPS();
-    
-    // Sembunyikan loading setelah video siap
-    const video = $('video');
-    video.addEventListener('loadeddata', () => {
-      setTimeout(() => {
-        $('loadingScreen').style.display = 'none';
-        showToast('🚀 SUPER TRACKING SIAP! Klik ▶ mulai tracking');
-      }, 500);
-    });
-    
-    // Auto-save waypoints & cache
-    setInterval(() => {
-      saveWaypoints();
-      saveRGCache();
-    }, 10000);
-    
-    console.log('SUPER TRACKING INITIALIZED');
-  } catch (err) {
-    console.error('Init error:', err);
-    $('loadingScreen').style.display = 'none';
-    showToast(`Error: ${err.message}`);
+// ---------- GPS WATCH (OTOMATIS RECORD SETIAP GERAKAN) ----------
+function startGPSWatcher() {
+  if (!navigator.geolocation) {
+    showToast('❌ GPS tidak didukung');
+    return;
   }
+  
+  watchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
+      const speed = position.coords.speed || 0;
+      const timestamp = position.timestamp;
+      
+      // Update UI speed & accuracy
+      $('speed').innerHTML = formatSpeed(speed);
+      $('accuracy').innerHTML = `${Math.round(accuracy)}m`;
+      
+      // Update current position
+      const newPos = { lat, lng, timestamp };
+      currentPos = newPos;
+      
+      // Update marker di map
+      updateMapPosition();
+      
+      // HILANGKAN LOADING jika masih ada
+      const loading = $('loading');
+      if (loading.style.display !== 'none') {
+        loading.style.display = 'none';
+        showToast('📍 GPS siap, klik ▶ mulai record');
+      }
+      
+      // JIKA SEDANG RECORD, REKAM TITIK
+      if (isRecording) {
+        if (points.length === 0) {
+          // Titik pertama
+          points.push({ lat, lng, timestamp });
+          updateStatsUI();
+          console.log(`🎯 TITIK AWAL: ${lat}, ${lng}`);
+        } else {
+          const last = points[points.length - 1];
+          const dist = haversineDistance(last.lat, last.lng, lat, lng);
+          
+          // Rekam setiap kali bergerak > 2 meter (sensitif buat di hutan)
+          if (dist >= 2) {
+            totalDistance += dist;
+            points.push({ lat, lng, timestamp });
+            updateStatsUI();
+            renderPolyline();  // Update garis di map
+            console.log(`➕ +${dist.toFixed(1)}m | Total: ${totalDistance.toFixed(1)}m | Arah: ${lat},${lng}`);
+            
+            // Toast kecil biar tau lagi record (opsional, bisa dimatiin)
+            // showToast(`➕ ${Math.round(dist)}m`, 500);
+          }
+        }
+      }
+    },
+    (error) => {
+      console.error('GPS Error:', error);
+      let msg = '';
+      switch(error.code) {
+        case error.PERMISSION_DENIED: msg = 'Izin lokasi ditolak!'; break;
+        case error.POSITION_UNAVAILABLE: msg = 'Signal GPS lemah!'; break;
+        case error.TIMEOUT: msg = 'Timeout GPS!'; break;
+        default: msg = error.message;
+      }
+      showToast(`⚠️ ${msg}`);
+      $('loading').style.display = 'flex';
+      $('loading').innerHTML = `<div class="spinner"></div><div>⚠️ ${msg}</div><div style="font-size:12px;">Coba refresh halaman</div>`;
+    },
+    { enableHighAccuracy: true, maximumAge: 500, timeout: 15000 }
+  );
 }
 
-// Start
+// ---------- EVENT LISTENER ----------
+$('recordBtn').addEventListener('click', () => {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
+
+$('resetBtn').addEventListener('click', resetTracking);
+$('exportBtn').addEventListener('click', exportGPX);
+$('saveBtn').addEventListener('click', saveCurrentSession);
+
+// Toggle saved list
+let savedVisible = false;
+$('saveBtn').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const list = $('savedList');
+  savedVisible = !savedVisible;
+  if (savedVisible) {
+    list.classList.add('show');
+    renderSavedList();
+  } else {
+    list.classList.remove('show');
+  }
+});
+
+// ---------- INIT ----------
+function init() {
+  initMap();
+  loadSavedSessions();
+  startGPSWatcher();
+  
+  // Sembunyikan loading setelah 3 detik kalo GPS aktif
+  setTimeout(() => {
+    if (currentPos) {
+      $('loading').style.display = 'none';
+    }
+  }, 5000);
+}
+
 init();
 </script>
 </body>
