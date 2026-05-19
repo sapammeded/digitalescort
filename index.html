@@ -315,15 +315,15 @@
         'use strict';
 
         // ======================= KONFIGURASI =======================
-        const CONFIG = {
-            // GANTI DENGAN WORKER URL ATAU APPS SCRIPT URL jika ingin langsung
-            SYNC_URL: 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec', 
-            MAX_POINTS: 5000,
-            BATCH_SYNC: 20,
-            AUTO_SYNC_INTERVAL: 30000,
-            STORAGE_KEY: 'vms_saved_tracks_pro',
-            GPS_OPTIONS: { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        };
+// Konfigurasi wajib di index.html Anda
+const CONFIG = {
+    SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/sync', 
+    MAX_POINTS: 5000,
+    BATCH_SYNC: 20,
+    AUTO_SYNC_INTERVAL: 30000,
+    STORAGE_KEY: 'vms_saved_tracks_pro',
+    GPS_OPTIONS: { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+};
 
         // ======================= GLOBAL STATE =======================
         let map = null;
