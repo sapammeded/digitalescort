@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | Tactical Tracker Pro · Working</title>
+    <title>VMS | Tactical Tracker · Adaptive GPS Engine</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -45,6 +45,9 @@
         @media (max-width:640px){button{padding:7px 10px;font-size:10px;}.status-bar{font-size:9px;}}
         .playback-bar{position:fixed;bottom:85px;left:12px;right:12px;background:#111a28cc;backdrop-filter:blur(16px);border-radius:60px;padding:10px 16px;display:flex;gap:12px;align-items:center;z-index:1080;border:1px solid #3a4c70;display:none;}
         .playback-bar.show{display:flex;}
+        .profile-badge{position:fixed;bottom:80px;left:16px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;z-index:1060;pointer-events:none;}
+        .wake-badge{position:fixed;bottom:80px;right:16px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#ffb347;z-index:1060;pointer-events:none;}
+        @media (max-width:640px){.profile-badge,.wake-badge{font-size:7px;padding:2px 8px;bottom:75px;}}
     </style>
 </head>
 <body>
@@ -52,7 +55,10 @@
 <canvas id="canvas3D"></canvas>
 <div class="status-bar"><div class="status-grid"><div class="status-item"><span class="led" id="gpsLed"></span><span id="gpsText">GPS: --</span></div>
 <div class="status-item"><span class="led" id="syncLed"></span><span id="syncText">Sync: --</span></div><div class="status-item">📍<span id="pointCounter">0</span></div>
-<div class="status-item">🎯<span id="accuracyText">--m</span></div><div class="status-item">⬆️<span id="altText">0m</span></div></div></div>
+<div class="status-item">🎯<span id="accuracyText">--m</span></div><div class="status-item">⬆️<span id="altText">0m</span></div>
+<div class="status-item">⚡<span id="speedText">0</span></div></div></div>
+<div class="profile-badge" id="profileBadge">PROFILE: WALKING</div>
+<div class="wake-badge" id="wakeBadge">🔋 WAKE LOCK OFF</div>
 <div class="tab-bar"><button id="btn2D" class="tab-btn active">🗺️ 2D MAP</button><button id="btn3D" class="tab-btn">📐 3D TRAIL</button></div>
 <div class="control-panel"><button id="startBtn" class="btn-start">▶ START</button><button id="stopBtn" class="btn-stop" style="display:none">⏹ STOP</button>
 <button id="syncBtn" class="btn-sync">🔄 SYNC</button><button id="clearBtn" class="btn-clear">🗑 CLEAR</button><button id="centerBtn" class="btn-center">🎯 CENTER</button>
@@ -64,29 +70,57 @@
 <div class="playback-bar" id="playbackBar"><span>🎞️ REPLAY</span><input type="range" id="playbackSlider" min="0" max="100" value="0" style="flex:1"><span id="playbackPercent">0%</span><button id="playPauseBtn" style="background:#6c5ce7;padding:4px 12px;">⏸️</button><button id="stopPlaybackBtn" style="background:#e74c3c;">⏹️</button></div>
 <script>
 (function(){
-    // ======================= CONFIG =======================
+    // ======================= ADAPTIVE GPS ENGINE - TACTICAL GRADE =======================
+    
+    // GPS Profiles untuk berbagai kondisi
+    const GPS_PROFILES = {
+        STATIONARY: {
+            name: 'STATIONARY',
+            enableHighAccuracy: false,
+            timeout: 20000,
+            maximumAge: 15000
+        },
+        WALKING: {
+            name: 'WALKING',
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 3000
+        },
+        VEHICLE: {
+            name: 'VEHICLE',
+            enableHighAccuracy: true,
+            timeout: 4000,
+            maximumAge: 0
+        }
+    };
+    
+    let currentProfile = 'WALKING';
+    let wakeLock = null;
+    let lastRecalibrationTime = 0;
+    let lastSpeed = 0;
+    
+    // Config utama
     const CONFIG = {
         SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/api/v1/sync',
-        MAX_POINTS_RAM: 5000,
+        MAX_POINTS_RAM: 10000,
         BATCH_SYNC: 20,
         AUTO_SYNC_INTERVAL_MS: 30000,
-        GPS_OPTIONS: { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
-        MAX_SPEED_MS: 38.0,
-        MAX_JUMP_METERS: 65,
-        MIN_ACCURACY_METERS: 18,
-        SMOOTHING_FACTOR: 0.35,
-        DB_NAME: 'vms_tactical_db',
+        MAX_SPEED_MS: 45.0,
+        MAX_JUMP_METERS: 100,
+        MIN_ACCURACY_METERS: 50,
+        SMOOTHING_FACTOR: 0.3,
+        DB_NAME: 'vms_tactical_sar',
         PENDING_STORE: 'wal_pending',
         SYNCED_STORE: 'wal_synced',
         TRACKS_STORE: 'saved_tracks',
-        CAMERA_THROTTLE_MS: 2000,
+        CAMERA_THROTTLE_MS: 1500,
         PLAYBACK_FRAME_MS: 80,
-        CIRCULAR_BUFFER_SIZE: 5000,
-        SEGMENT_SIZE: 500
+        CIRCULAR_BUFFER_SIZE: 10000,
+        RECALIBRATION_INTERVAL_MS: 60000,
+        FRESHNESS_THRESHOLD_MS: 5000
     };
     
-    // DOM Elements
-    let map, trailLine, currentMarker;
+    let map, trailLine, currentMarker, accuracyCircle;
     let watchId = null;
     let isTracking = false;
     
@@ -96,6 +130,95 @@
     let bufferLen = 0;
     let totalPoints = 0;
     let lastPosition = null;
+    let currentAccuracy = 0;
+    let lastPositionTimestamp = 0;
+    
+    // Adaptive GPS detector
+    function detectGPSProfile(speed, accuracy) {
+        if(speed > 8.0) { // > 28 km/jam
+            return 'VEHICLE';
+        }
+        if(speed < 0.5 && accuracy < 15) {
+            return 'STATIONARY';
+        }
+        return 'WALKING';
+    }
+    
+    // Update GPS profile dynamically
+    function updateGPSProfile(speed, accuracy) {
+        const newProfile = detectGPSProfile(speed, accuracy);
+        if(newProfile !== currentProfile) {
+            currentProfile = newProfile;
+            document.getElementById('profileBadge').innerHTML = `📡 PROFILE: ${currentProfile}`;
+            console.log(`[GPS PROFILE] Switching to ${currentProfile}`);
+            
+            // Restart geolocation with new profile
+            if(watchId && isTracking) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = navigator.geolocation.watchPosition(
+                    onGPSPosition, 
+                    onGPSError, 
+                    GPS_PROFILES[currentProfile]
+                );
+                console.log(`[GPS] Restarted with ${currentProfile} settings`);
+            }
+        }
+    }
+    
+    // WakeLock API untuk mencegah GPS mati saat screen off
+    async function acquireWakeLock() {
+        try {
+            if('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                document.getElementById('wakeBadge').innerHTML = '🔋 WAKE LOCK ON';
+                console.log('[WAKE LOCK] Screen wake lock acquired');
+                
+                // Re-acquire if page becomes visible again
+                document.addEventListener('visibilitychange', async () => {
+                    if(document.visibilityState === 'visible' && isTracking && !wakeLock) {
+                        await acquireWakeLock();
+                    }
+                });
+            } else {
+                console.warn('[WAKE LOCK] Not supported');
+                document.getElementById('wakeBadge').innerHTML = '⚠️ NO WAKE LOCK';
+            }
+        } catch(e) {
+            console.warn('[WAKE LOCK] Failed:', e);
+            document.getElementById('wakeBadge').innerHTML = '❌ WAKE LOCK FAILED';
+        }
+    }
+    
+    function releaseWakeLock() {
+        if(wakeLock) {
+            wakeLock.release();
+            wakeLock = null;
+            document.getElementById('wakeBadge').innerHTML = '🔋 WAKE LOCK OFF';
+            console.log('[WAKE LOCK] Released');
+        }
+    }
+    
+    // Recalibration periodik dengan getCurrentPosition
+    async function recalibratePosition() {
+        if(!isTracking) return;
+        
+        const now = Date.now();
+        if(now - lastRecalibrationTime < CONFIG.RECALIBRATION_INTERVAL_MS) return;
+        lastRecalibrationTime = now;
+        
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                console.log('[RECALIBRATE] Fresh fix obtained');
+                const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords;
+                if(accuracy && accuracy < 30) {
+                    // Force update with fresh data
+                    lastValidCoord = { lat: latitude, lng: longitude, t: Date.now() };
+                }
+            },
+            (err) => { console.log('[RECALIBRATE] Failed:', err.message); },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+    }
     
     function pushPoint(point) {
         const pos = (bufferStart + bufferLen) % CONFIG.CIRCULAR_BUFFER_SIZE;
@@ -136,13 +259,10 @@
     
     function getAllPoints() {
         const result = [];
-        for(let i = 0; i < bufferLen; i++) {
-            result.push(getPoint(i));
-        }
+        for(let i = 0; i < bufferLen; i++) result.push(getPoint(i));
         return result;
     }
     
-    // Distance
     function haversine(lat1, lon1, lat2, lon2) {
         const R = 6371000;
         const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -165,7 +285,7 @@
         return dist;
     }
     
-    // IndexedDB
+    // IndexedDB WAL
     let db = null;
     let syncLock = false;
     
@@ -255,7 +375,7 @@
                 const res = await fetch(CONFIG.SYNC_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ points: payload, deviceId: 'vms-android', batchId, version: '3.9' })
+                    body: JSON.stringify({ points: payload, deviceId: 'vms-tactical', batchId, version: '4.0' })
                 });
                 const result = await res.json();
                 if(result && result.success === true) {
@@ -276,7 +396,6 @@
         }
     }
     
-    // FIXED: recoverFromWAL - using cursor without IDBKeyRange.only on boolean
     async function recoverFromWAL() {
         if(!db) await openDB();
         const tx = db.transaction([CONFIG.PENDING_STORE], 'readonly');
@@ -309,7 +428,6 @@
         }
     }
     
-    // Trail rendering
     function updateTrail() {
         if(!trailLine) return;
         const latlngs = [];
@@ -322,16 +440,25 @@
             const last = getLastPoint();
             if(!currentMarker) {
                 currentMarker = L.circleMarker([last.lat, last.lng], {
-                    radius: 11, fillColor: '#ff5a5f', color: '#fff', weight: 2
+                    radius: 11, fillColor: '#ff5a5f', color: '#fff', weight: 2, fillOpacity: 0.95
                 }).addTo(map);
             } else {
                 currentMarker.setLatLng([last.lat, last.lng]);
+            }
+            if(accuracyCircle && map) map.removeLayer(accuracyCircle);
+            if(currentAccuracy > 0 && currentAccuracy < 100) {
+                accuracyCircle = L.circle([last.lat, last.lng], {
+                    radius: currentAccuracy,
+                    color: '#ffb347',
+                    weight: 1,
+                    fillColor: '#ffb347',
+                    fillOpacity: 0.15
+                }).addTo(map);
             }
         }
         if(currentTab === '3D') draw3D();
     }
     
-    // 3D Canvas
     let canvas3D, ctx3D;
     let last3DHash = '';
     
@@ -425,18 +552,29 @@
         }
     }
     
-    // GPS Filtering
     let lastValidCoord = null;
     
-    function isPointValid(lat, lng, accuracy, timestamp) {
-        if(accuracy && accuracy > CONFIG.MIN_ACCURACY_METERS) return false;
+    function isPointValid(lat, lng, accuracy, timestamp, speed) {
+        // Reject jika akurasi sangat buruk
+        if(accuracy && accuracy > 100) return false;
+        
+        // Reject jika timestamp terlalu lama (cached coordinate)
+        if(timestamp && (Date.now() - timestamp) > CONFIG.FRESHNESS_THRESHOLD_MS) {
+            console.log('[GPS] Stale coordinate rejected');
+            return false;
+        }
+        
         if(!lastValidCoord) return true;
+        
         const dt = (timestamp - lastValidCoord.t) / 1000;
-        if(dt < 0.1) return false;
+        if(dt < 0.05) return false;
+        
         const dist = haversine(lastValidCoord.lat, lastValidCoord.lng, lat, lng);
         if(dist > CONFIG.MAX_JUMP_METERS) return false;
-        const speed = dist / dt;
-        if(speed > CONFIG.MAX_SPEED_MS) return false;
+        
+        const spd = dist / dt;
+        if(spd > CONFIG.MAX_SPEED_MS) return false;
+        
         return true;
     }
     
@@ -459,7 +597,7 @@
             speed: speed || 0, timestamp: timestamp || Date.now()
         };
         const last = getLastPoint();
-        if(last && haversine(last.lat, last.lng, point.lat, point.lng) < 0.8) return;
+        if(last && haversine(last.lat, last.lng, point.lat, point.lng) < 1.5) return;
         
         pushPoint(point);
         await addToWAL(point);
@@ -476,28 +614,40 @@
     }
     
     function onGPSPosition(pos) {
-        const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords;
+        const { latitude, longitude, accuracy, heading, speed, altitude, timestamp } = pos.coords;
+        currentAccuracy = accuracy;
         const now = Date.now();
-        if(!isPointValid(latitude, longitude, accuracy, now)) {
+        const ts = timestamp || now;
+        const currentSpeed = speed || 0;
+        
+        document.getElementById('speedText').innerHTML = currentSpeed.toFixed(1);
+        lastSpeed = currentSpeed;
+        
+        // Adaptive GPS profile switching
+        updateGPSProfile(currentSpeed, accuracy);
+        
+        if(!isPointValid(latitude, longitude, accuracy, ts, currentSpeed)) {
             document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m (reject)`;
             return;
         }
-        lastValidCoord = { lat: latitude, lng: longitude, t: now };
-        updateGPSStatus('TRACKING', 'green', accuracy);
-        addPoint(latitude, longitude, accuracy, heading, speed, altitude, now);
+        
+        lastValidCoord = { lat: latitude, lng: longitude, t: ts };
+        updateGPSStatus('ACTIVE', 'green', accuracy);
+        document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m`;
+        addPoint(latitude, longitude, accuracy, heading, currentSpeed, altitude, ts);
     }
     
     function onGPSError(err) {
         let msg = err.code === 1 ? 'DENIED' : (err.code === 2 ? 'SIGNAL WEAK' : 'TIMEOUT');
         updateGPSStatus(msg, 'red', null);
+        document.getElementById('accuracyText').innerHTML = `--m`;
     }
     
-    // UI Updates
     function updateGPSStatus(status, ledColor, accuracy) {
         const led = document.getElementById('gpsLed');
         led.className = 'led';
         led.classList.add(ledColor === 'green' ? 'led-green' : (ledColor === 'red' ? 'led-red' : 'led-yellow'));
-        document.getElementById('gpsText').innerText = `GPS: ${status}`;
+        document.getElementById('gpsText').innerHTML = `GPS: ${status}`;
         if(accuracy) document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m`;
     }
     
@@ -505,7 +655,7 @@
         const led = document.getElementById('syncLed');
         led.className = 'led';
         led.classList.add(ledColor === 'green' ? 'led-green' : (ledColor === 'red' ? 'led-red' : 'led-yellow'));
-        document.getElementById('syncText').innerText = `Sync: ${status}`;
+        document.getElementById('syncText').innerHTML = `Sync: ${status}`;
     }
     
     function updateUI() {
@@ -516,7 +666,6 @@
         }
     }
     
-    // Map
     function initMap() {
         map = L.map('map', { preferCanvas: true }).setView([-6.2088, 106.8456], 15);
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -538,15 +687,35 @@
         }
     }
     
-    // Tracking Control
     function startTracking() {
         if(isTracking) return;
-        if(!navigator.geolocation) { alert("GPS not supported"); return; }
-        watchId = navigator.geolocation.watchPosition(onGPSPosition, onGPSError, CONFIG.GPS_OPTIONS);
-        isTracking = true;
-        document.getElementById('startBtn').style.display = 'none';
-        document.getElementById('stopBtn').style.display = 'inline-block';
-        updateGPSStatus('ACTIVE', 'green', null);
+        if(!navigator.geolocation) { alert("GPS tidak didukung"); return; }
+        
+        acquireWakeLock();
+        
+        navigator.permissions.query({ name: 'geolocation' }).then(result => {
+            if(result.state === 'denied') {
+                alert("Izinkan akses lokasi untuk tracking");
+                return;
+            }
+            watchId = navigator.geolocation.watchPosition(onGPSPosition, onGPSError, GPS_PROFILES[currentProfile]);
+            isTracking = true;
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            updateGPSStatus('ACTIVE', 'green', null);
+            
+            // Start recalibration interval
+            if(window.recalInterval) clearInterval(window.recalInterval);
+            window.recalInterval = setInterval(() => recalibratePosition(), CONFIG.RECALIBRATION_INTERVAL_MS);
+        }).catch(() => {
+            watchId = navigator.geolocation.watchPosition(onGPSPosition, onGPSError, GPS_PROFILES[currentProfile]);
+            isTracking = true;
+            document.getElementById('startBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'inline-block';
+            updateGPSStatus('ACTIVE', 'green', null);
+            if(window.recalInterval) clearInterval(window.recalInterval);
+            window.recalInterval = setInterval(() => recalibratePosition(), CONFIG.RECALIBRATION_INTERVAL_MS);
+        });
     }
     
     function stopTracking() {
@@ -555,17 +724,18 @@
             watchId = null;
         }
         isTracking = false;
+        releaseWakeLock();
+        if(window.recalInterval) clearInterval(window.recalInterval);
         document.getElementById('startBtn').style.display = 'inline-block';
         document.getElementById('stopBtn').style.display = 'none';
         updateGPSStatus('STOP', 'red', null);
     }
     
-    // Save/Load Tracks
     let savedTracks = [];
     
     async function saveCurrentTrack() {
-        if(bufferLen === 0) { alert("Tidak ada titik"); return; }
-        const name = prompt("Nama track:", `Track ${new Date().toLocaleString()}`);
+        if(bufferLen === 0) { alert("Tidak ada titik untuk disimpan"); return; }
+        const name = prompt("Nama track:", `SAR Track ${new Date().toLocaleString()}`);
         if(!name) return;
         const distance = computeTotalDistance();
         const trackId = Date.now() + '_' + Math.random().toString(36);
@@ -581,7 +751,7 @@
         if(savedTracks.length > 25) savedTracks.pop();
         updateHistoryList();
         updateUI();
-        alert(`✅ Track "${name}" tersimpan (${distance.toFixed(0)}m)`);
+        alert(`✅ Track "${name}" tersimpan (${distance.toFixed(0)} meter)`);
     }
     
     function updateHistoryList() {
@@ -648,7 +818,6 @@
         }
     }
     
-    // Backtrack Mode
     let returnMode = false;
     let returnInterval = null;
     let returnLine = null;
@@ -659,7 +828,7 @@
         const btn = document.getElementById('returnBtn');
         const info = document.getElementById('breadcrumbInfo');
         if(returnMode) {
-            btn.innerHTML = '📍 RETURN ON';
+            btn.innerHTML = '📍 BACKTRACK ON';
             btn.style.background = '#2c6e2f';
             info.classList.add('show');
             if(returnInterval) clearInterval(returnInterval);
@@ -687,7 +856,6 @@
         document.getElementById('returnDistance').innerHTML = `${Math.round(dist)} meter (true path)`;
     }
     
-    // Playback Engine
     let playbackActive = false;
     let playbackTimer = null;
     let playbackPoints = [];
@@ -781,7 +949,6 @@
         }
     }
     
-    // Worker for auto sync
     let syncWorker = null;
     let workerBlobUrl = null;
     
@@ -808,7 +975,6 @@
         syncWorker.postMessage({ type: 'START' });
     }
     
-    // Tab switching
     let currentTab = '2D';
     
     function switchTab(tab) {
@@ -856,22 +1022,23 @@
         return str.replace(/[&<>]/g, (m) => m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;'));
     }
     
-    // Lifecycle
     window.addEventListener('pagehide', () => {
         if(watchId) navigator.geolocation.clearWatch(watchId);
         if(syncWorker) syncWorker.terminate();
+        releaseWakeLock();
     });
     
     document.addEventListener('visibilitychange', () => {
         if(document.visibilityState === 'visible') {
             if(syncWorker) { syncWorker.terminate(); syncWorker = null; }
             initWorker();
+            if(isTracking && !wakeLock) acquireWakeLock();
         }
     });
     
-    // Bootstrap
     async function bootstrap() {
-        console.log("VMS v3.9 - Tactical Tracker Pro");
+        console.log("VMS v4.0 - Adaptive GPS Engine | Tactical Grade");
+        console.log("Features: 3 GPS Profiles | WakeLock API | Auto Recalibration | Freshness Check");
         await openDB();
         await recoverFromWAL();
         initMap();
@@ -917,7 +1084,12 @@
         updateSyncStatus('STANDBY', 'yellow');
         updateUI();
         
-        console.log("System ready - waiting for GPS");
+        console.log("[BOOT] Adaptive GPS Engine Active");
+        console.log("  - STATIONARY: power saving mode");
+        console.log("  - WALKING: balanced mode");
+        console.log("  - VEHICLE: high accuracy mode");
+        console.log("  - WakeLock: screen on protection");
+        console.log("  - Recalibration: every 60 seconds");
     }
     
     bootstrap();
