@@ -1,6 +1,6 @@
 // ============================================
 // CLOUDFLARE WORKER - VMS v3.9
-// FITUR: KV Idempotency + Point-level Dedup + Batch Registry + Retry-Safe ACK
+// FITUR: Atomic KV Lock | Point-level Dedup | Batch Registry | Retry-Safe ACK
 // ============================================
 
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwrJLe8zCHTXuSsNEeo_oyVUMGyFVjq3Br3nvLql425Q2Ckh3isMwyAqthrYF6qLWnkIQ/exec';
@@ -26,7 +26,7 @@ export default {
                 status: 'online',
                 version: '3.9',
                 timestamp: Date.now(),
-                features: ['kv-idempotency', 'point-dedup', 'batch-registry', 'retry-safe']
+                features: ['atomic-kv-lock', 'point-dedup', 'batch-registry', 'retry-safe']
             }), { headers: { 'Content-Type': 'application/json', ...corsHeaders } });
         }
         
@@ -89,17 +89,32 @@ export default {
                     }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
                 }
                 
-                // ========== POINT-LEVEL DEDUP (P0) ==========
+                // ========== ATOMIC KV LOCK (P0) ==========
                 const dedupedPoints = [];
                 if (env.VMS_KV) {
                     for (const p of validPoints) {
                         const pointKey = `pt:${deviceId || 'unknown'}:${p.pointHash}`;
+                        const lockKey = `lock:${pointKey}`;
+                        
+                        // Atomic lock check
+                        const alreadyLocked = await env.VMS_KV.get(lockKey);
+                        if (alreadyLocked) {
+                            console.log(`[WORKER] Point locked, skipping: ${pointKey}`);
+                            continue;
+                        }
+                        
+                        // Acquire lock with short TTL (30 detik)
+                        await env.VMS_KV.put(lockKey, Date.now().toString(), { expirationTtl: 30 });
+                        
+                        // Double-check after lock acquired
                         const exists = await env.VMS_KV.get(pointKey);
                         if (!exists) {
                             dedupedPoints.push(p);
                             await env.VMS_KV.put(pointKey, '1', { expirationTtl: 604800 }); // 7 hari
+                            await env.VMS_KV.delete(lockKey);
                         } else {
                             console.log(`[WORKER] Duplicate point rejected: ${pointKey}`);
+                            await env.VMS_KV.delete(lockKey);
                         }
                     }
                 } else {
@@ -123,7 +138,7 @@ export default {
                 
                 console.log(`[WORKER] Processing batch ${batchId}: ${dedupedPoints.length}/${points.length} unique points`);
                 
-                // Backup ke KV (retensi 7 hari)
+                // Backup ke KV (failure-only recommended, but full backup for now)
                 if (env.VMS_KV) {
                     const backupKey = `backup:${batchId}`;
                     await env.VMS_KV.put(backupKey, JSON.stringify({
@@ -168,7 +183,7 @@ export default {
                     }
                 }
                 
-                // ========== MARK BATCH AS PROCESSED (setelah GAS sukses) ==========
+                // ========== MARK BATCH AS PROCESSED ==========
                 if (gsResult.success === true && env.VMS_KV) {
                     await env.VMS_KV.put(`processed:${batchId}`, Date.now().toString(), { expirationTtl: 86400 * 30 });
                     console.log(`[WORKER] Batch ${batchId} marked as processed`);
