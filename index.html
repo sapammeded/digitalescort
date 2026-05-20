@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | Tactical Tracker v3.9 · WORKING</title>
+    <title>VMS | Tactical Tracker Pro · Working</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -64,7 +64,7 @@
 <div class="playback-bar" id="playbackBar"><span>🎞️ REPLAY</span><input type="range" id="playbackSlider" min="0" max="100" value="0" style="flex:1"><span id="playbackPercent">0%</span><button id="playPauseBtn" style="background:#6c5ce7;padding:4px 12px;">⏸️</button><button id="stopPlaybackBtn" style="background:#e74c3c;">⏹️</button></div>
 <script>
 (function(){
-    // ======================= V3.9 WORKING - FULLY TESTED =======================
+    // ======================= CONFIG =======================
     const CONFIG = {
         SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/api/v1/sync',
         MAX_POINTS_RAM: 5000,
@@ -82,8 +82,7 @@
         CAMERA_THROTTLE_MS: 2000,
         PLAYBACK_FRAME_MS: 80,
         CIRCULAR_BUFFER_SIZE: 5000,
-        SEGMENT_SIZE: 500,
-        MAX_UNSYNCED_POINTS: 8000
+        SEGMENT_SIZE: 500
     };
     
     // DOM Elements
@@ -206,17 +205,17 @@
         if(!db) await openDB();
         return new Promise((resolve) => {
             const tx = db.transaction([CONFIG.PENDING_STORE], 'readonly');
-            const index = tx.objectStore(CONFIG.PENDING_STORE).index('synced');
-            const range = IDBKeyRange.only(false);
-            const cursor = index.openCursor(range);
+            const store = tx.objectStore(CONFIG.PENDING_STORE);
+            const cursor = store.openCursor();
             const results = [];
             cursor.onsuccess = (e) => {
                 const cur = e.target.result;
-                if(cur && results.length < limit) {
+                if(cur && results.length < limit && cur.value.synced === false) {
                     results.push({ id: cur.primaryKey, ...cur.value });
                     cur.continue();
                 } else resolve(results);
             };
+            cursor.onerror = () => resolve(results);
         });
     }
     
@@ -277,38 +276,40 @@
         }
     }
     
+    // FIXED: recoverFromWAL - using cursor without IDBKeyRange.only on boolean
     async function recoverFromWAL() {
         if(!db) await openDB();
         const tx = db.transaction([CONFIG.PENDING_STORE], 'readonly');
-        const index = tx.objectStore(CONFIG.PENDING_STORE).index('synced');
-        const range = IDBKeyRange.only(false);
-        const cursor = index.openCursor(range);
+        const store = tx.objectStore(CONFIG.PENDING_STORE);
+        const cursor = store.openCursor();
         let restored = 0;
         await new Promise((resolve) => {
             cursor.onsuccess = (e) => {
                 const cur = e.target.result;
                 if(cur && bufferLen < CONFIG.CIRCULAR_BUFFER_SIZE) {
                     const val = cur.value;
-                    pushPoint({
-                        lat: val.lat, lng: val.lng, alt: val.alt || 0,
-                        accuracy: val.accuracy, timestamp: val.timestamp,
-                        heading: val.heading, speed: val.speed
-                    });
-                    restored++;
+                    if(val.synced === false) {
+                        pushPoint({
+                            lat: val.lat, lng: val.lng, alt: val.alt || 0,
+                            accuracy: val.accuracy, timestamp: val.timestamp,
+                            heading: val.heading, speed: val.speed
+                        });
+                        restored++;
+                    }
                     cur.continue();
                 } else resolve();
             };
+            cursor.onerror = () => resolve();
         });
         if(restored > 0) {
             updateTrail();
             updateUI();
+            if(currentTab === '3D') draw3D();
             console.log(`[RECOVERY] Restored ${restored} points from WAL`);
         }
     }
     
     // Trail rendering
-    let lastRenderCount = 0;
-    
     function updateTrail() {
         if(!trailLine) return;
         const latlngs = [];
