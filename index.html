@@ -6,7 +6,6 @@
     <meta name="theme-color" content="#ffffff">
     <title>VMS Tactical Tracker Pro - GPS 2D/3D dengan Altitude & Breadcrumb</title>
     
-    <!-- Leaflet CSS untuk peta 2D -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
@@ -261,11 +260,9 @@
 </head>
 <body>
 
-<!-- Peta 2D + Canvas 3D -->
 <div id="map"></div>
 <canvas id="canvas3D"></canvas>
 
-<!-- Status Real-time -->
 <div class="status-bar">
     <div class="status-grid">
         <div class="status-item"><span class="led" id="gpsLed"></span><span id="gpsText">GPS: --</span></div>
@@ -276,13 +273,11 @@
     </div>
 </div>
 
-<!-- Tab 2D / 3D -->
 <div class="tab-bar">
     <button id="btn2D" class="tab-btn active">🗺️ 2D MAP</button>
     <button id="btn3D" class="tab-btn">📐 3D TRAIL (ALT)</button>
 </div>
 
-<!-- Panel Tombol Aksi -->
 <div class="control-panel">
     <button id="startBtn" class="btn-start">▶ START</button>
     <button id="stopBtn" class="btn-stop" style="display:none">⏹ STOP</button>
@@ -299,13 +294,11 @@
     Points: 0 | Queue: 0 | Saved: 0
 </div>
 
-<!-- History Panel (track tersimpan) -->
 <div class="history-panel" id="historyPanel">
     <div class="history-title">📁 SAVED TRACKS (klik muat ulang)</div>
     <div id="historyList">Belum ada track tersimpan</div>
 </div>
 
-<!-- Breadcrumb return guide -->
 <div class="breadcrumb-info" id="breadcrumbInfo">
     🧭 RETURN MODE AKTIF → Jarak ke titik awal: <span id="returnDistance">0</span> meter
 </div>
@@ -315,15 +308,14 @@
         'use strict';
 
         // ======================= KONFIGURASI =======================
-// Konfigurasi wajib di index.html Anda
-const CONFIG = {
-    SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/sync', 
-    MAX_POINTS: 5000,
-    BATCH_SYNC: 20,
-    AUTO_SYNC_INTERVAL: 30000,
-    STORAGE_KEY: 'vms_saved_tracks_pro',
-    GPS_OPTIONS: { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-};
+        const CONFIG = {
+            SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/sync', 
+            MAX_POINTS: 5000,
+            BATCH_SYNC: 20,
+            AUTO_SYNC_INTERVAL: 30000,
+            STORAGE_KEY: 'vms_saved_tracks_pro',
+            GPS_OPTIONS: { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        };
 
         // ======================= GLOBAL STATE =======================
         let map = null;
@@ -331,7 +323,7 @@ const CONFIG = {
         let currentMarker = null;
         let watchId = null;
         let isTracking = false;
-        let trackPoints = [];          // array {lat, lng, alt, accuracy, heading, speed, timestamp}
+        let trackPoints = [];          
         let syncQueue = [];
         let isSyncing = false;
         let lastPosition = null;
@@ -432,7 +424,7 @@ const CONFIG = {
             if(lastPosition){
                 const dx = Math.abs(lastPosition.lat - lat);
                 const dy = Math.abs(lastPosition.lng - lng);
-                if(dx < 0.000008 && dy < 0.000008) return; // dedup ~0.8m
+                if(dx < 0.000008 && dy < 0.000008) return; 
             }
             const point = {
                 lat, lng,
@@ -445,7 +437,7 @@ const CONFIG = {
             trackPoints.push(point);
             lastPosition = point;
             totalPoints++;
-            syncQueue.push({...point}); // copy ke antrian sync
+            syncQueue.push({...point}); 
             
             if(trackPoints.length > CONFIG.MAX_POINTS) trackPoints.shift();
             updateTrail();
@@ -454,9 +446,18 @@ const CONFIG = {
             if(syncQueue.length >= CONFIG.BATCH_SYNC) syncToServer();
         }
 
-        // ======================= GPS EVENT =======================
+        // ======================= GPS EVENT (DENGAN TAMBALAN FILTER AKURASI) =======================
         function onGPSPosition(position) {
             const { latitude, longitude, accuracy, heading, speed, altitude } = position.coords;
+            
+            // 🛑 FILTER UTAMA: Jika akurasi jelek/melesat di atas 15 meter, BLOKIR & BUANG LANGSUNG.
+            if (accuracy && accuracy > 15) {
+                console.warn(`[GPS FILTER] Mengabaikan data goyang. Akurasi: ${accuracy}m (Batas: 15m)`);
+                // Tetap update UI teks akurasi di bar atas agar user tahu kondisi real sinyal saat ini
+                document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m`;
+                return; 
+            }
+
             updateGPSStatus('ACTIVE', 'green', accuracy);
             addPoint(latitude, longitude, accuracy, heading, speed, altitude);
             if(isTracking && map && currentTab === '2D') map.setView([latitude, longitude], map.getZoom());
@@ -662,7 +663,6 @@ const CONFIG = {
         function draw3DCanvas() {
             if(!ctx3D || !canvas3D) return;
             ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
-            // gradasi langit malam
             const grad = ctx3D.createLinearGradient(0, 0, 0, canvas3D.height);
             grad.addColorStop(0, '#0b1424');
             grad.addColorStop(1, '#1a2538');
@@ -676,7 +676,6 @@ const CONFIG = {
                 return;
             }
             
-            // Cari bounding box
             let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
             let minAlt = Infinity, maxAlt = -Infinity;
             trackPoints.forEach(p => {
@@ -691,16 +690,14 @@ const CONFIG = {
             const w = canvas3D.width - margin*2;
             const h = canvas3D.height - margin*2;
             
-            // fungsi proyeksi dengan Z (altitude naikkan Y)
             function project(lat, lng, alt){
                 let x = margin + ((lng - minLng) / lngRange) * w;
                 let y = margin + ((maxLat - lat) / latRange) * h;
-                const altFactor = ((alt - minAlt) / altRange) * 45; // offset vertikal
+                const altFactor = ((alt - minAlt) / altRange) * 45; 
                 y -= altFactor;
                 return {x, y};
             }
             
-            // gambar grid
             ctx3D.strokeStyle = "#2a3a55";
             ctx3D.lineWidth = 0.6;
             for(let i=0;i<=5;i++){
@@ -710,7 +707,6 @@ const CONFIG = {
                 ctx3D.beginPath(); ctx3D.moveTo(margin, y); ctx3D.lineTo(margin+w, y); ctx3D.stroke();
             }
             
-            // gambar jalur 3D
             ctx3D.beginPath();
             ctx3D.strokeStyle = "#3bc0fc";
             ctx3D.lineWidth = 3;
@@ -722,7 +718,6 @@ const CONFIG = {
             }
             ctx3D.stroke();
             
-            // titik-titik penting
             for(let i=0;i<trackPoints.length;i++){
                 const p = trackPoints[i];
                 const {x, y} = project(p.lat, p.lng, p.alt || 0);
@@ -794,7 +789,6 @@ const CONFIG = {
             initMap();
             init3DCanvas();
             loadSavedTracksFromStorage();
-            // Auto sync berkala
             setInterval(() => { if(syncQueue.length > 0 && !isSyncing) syncToServer(); }, CONFIG.AUTO_SYNC_INTERVAL);
             
             document.getElementById('startBtn').addEventListener('click', startTracking);
