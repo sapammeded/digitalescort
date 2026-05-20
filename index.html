@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | Tactical Movement Intelligence · v4.4 Production</title>
+    <title>VMS | v4.5 · Tactical Navigation + Route Following</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -12,6 +12,8 @@
         body{font-family:'Segoe UI',Roboto,system-ui;background:#0a0f1a;overflow:hidden;position:fixed;width:100%;height:100%;}
         #map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:#101624;}
         #canvas3D{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;background:#0c1122;display:none;}
+        
+        /* Status Bar */
         .status-bar{position:fixed;top:12px;left:12px;right:12px;z-index:1100;background:rgba(10,15,26,0.95);backdrop-filter:blur(12px);border-radius:28px;padding:8px 12px;font-family:'SF Mono',monospace;font-size:10px;box-shadow:0 4px 14px rgba(0,0,0,0.5);border:1px solid rgba(72,187,255,0.2);pointer-events:none;color:#eef2ff;}
         .status-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;}
         .status-item{display:flex;align-items:center;gap:4px;}
@@ -20,9 +22,13 @@
         .led-red{background:#ff4d6d;}
         .led-yellow{background:#ffb347;}
         @keyframes pulseGreen{0%{opacity:0.4;}100%{opacity:1;transform:scale(1.2);}}
+        
+        /* Tab Bar */
         .tab-bar{position:fixed;top:75px;left:12px;right:12px;z-index:1100;display:flex;gap:10px;}
         .tab-btn{flex:1;background:#141c2c;border:none;border-radius:40px;padding:8px 0;font-weight:700;font-size:12px;cursor:pointer;color:#9aaec5;}
         .tab-btn.active{background:#1e88e5;color:white;box-shadow:0 0 12px #1e88e5;}
+        
+        /* Control Panel */
         .control-panel{position:fixed;bottom:20px;left:12px;right:12px;z-index:1050;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;pointer-events:none;}
         button{pointer-events:auto;background:#1e2a3e;border:none;padding:8px 12px;border-radius:40px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;color:#f0f3fa;}
         button:active{transform:scale(0.96);}
@@ -35,26 +41,45 @@
         .btn-history{background:#9b59b6;}
         .btn-return{background:#fd7e2c;}
         .btn-sheet{background:#2c6e2f;}
+        
+        /* Info Panel */
         .info-panel{position:fixed;top:130px;right:12px;width:180px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;border-left:3px solid #1e88e5;pointer-events:none;}
         .info-panel-item{font-size:9px;margin:6px 0;display:flex;justify-content:space-between;}
         .info-panel-label{color:#9aaec5;}
         .info-panel-value{color:#00f2a0;font-weight:bold;}
+        
+        /* Badges */
         .state-badge{position:fixed;bottom:95px;left:12px;background:#000000aa;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;color:#ffb347;}
         .confidence-badge{position:fixed;bottom:95px;right:12px;background:#000000aa;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;}
         .profile-badge{position:fixed;top:130px;left:12px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;z-index:1050;pointer-events:none;}
         .wake-badge{position:fixed;top:130px;right:12px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#ffb347;z-index:1050;pointer-events:none;}
+        
+        /* Navigation Panel (TAMBAHAN - tidak menghapus apapun) */
+        .nav-panel{position:fixed;bottom:100px;left:12px;right:12px;z-index:1080;background:rgba(10,15,26,0.95);backdrop-filter:blur(16px);border-radius:28px;padding:12px 16px;border-left:4px solid #2c6e2f;display:none;}
+        .nav-panel.show{display:block;}
+        .nav-instruction{font-size:16px;font-weight:bold;color:#00f2a0;margin-bottom:6px;}
+        .nav-detail{font-size:10px;color:#9aaec5;display:flex;justify-content:space-between;margin-top:6px;}
+        .nav-progress{height:3px;background:#2a3a55;border-radius:2px;margin-top:8px;overflow:hidden;}
+        .nav-progress-fill{height:100%;background:#2c6e2f;width:0%;transition:width 0.3s;}
+        .nav-close{position:absolute;top:8px;right:12px;background:none;border:none;color:#9aaec5;font-size:14px;cursor:pointer;padding:0;}
+        
+        /* Panels */
         .semantic-panel{position:fixed;top:170px;left:12px;width:200px;max-height:250px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;overflow-y:auto;display:none;font-size:9px;border-left:3px solid #1e88e5;}
         .semantic-panel.show{display:block;}
         .semantic-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #2a3a55;}
         .history-panel{position:fixed;top:135px;left:12px;right:12px;bottom:100px;z-index:1150;background:rgba(18,25,40,0.98);border-radius:28px;padding:16px;overflow-y:auto;box-shadow:0 12px 28px rgba(0,0,0,0.5);border:1px solid #2c3e5c;display:none;backdrop-filter:blur(8px);color:#eef2ff;}
         .history-panel.show{display:block;}
         .history-item{background:#0f172a;margin:8px 0;padding:10px;border-radius:20px;cursor:pointer;border:1px solid #2a3a55;}
+        .history-buttons{display:flex;gap:8px;margin-top:8px;}
+        .history-buttons button{padding:4px 8px;font-size:9px;border-radius:20px;}
+        
         .breadcrumb-info{position:fixed;bottom:95px;left:16px;background:rgba(0,0,0,0.85);backdrop-filter:blur(16px);padding:8px 18px;border-radius:40px;font-family:monospace;font-size:12px;color:#ffd966;z-index:1060;display:none;gap:8px;pointer-events:none;}
         .breadcrumb-info.show{display:flex;}
         .stats-mini{position:fixed;bottom:20px;right:16px;background:rgba(0,0,0,0.7);padding:5px 12px;border-radius:40px;font-size:10px;font-family:monospace;color:#b9e6ff;z-index:1020;pointer-events:none;}
         .playback-bar{position:fixed;bottom:85px;left:12px;right:12px;background:#111a28cc;backdrop-filter:blur(16px);border-radius:60px;padding:10px 16px;display:flex;gap:12px;align-items:center;z-index:1080;border:1px solid #3a4c70;display:none;}
         .playback-bar.show{display:flex;}
-        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge{font-size:7px;padding:2px 8px;}}
+        
+        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge{font-size:7px;padding:2px 8px;}.nav-instruction{font-size:14px;}}
     </style>
 </head>
 <body>
@@ -86,17 +111,28 @@
 <div class="info-panel-item"><span class="info-panel-label">🔋 Mode</span><span class="info-panel-value" id="powerMode">NORMAL</span></div>
 </div>
 <div class="stats-mini" id="statsBox">Points:0 | Saved:0</div>
-<div class="history-panel" id="historyPanel"><div class="history-title">📁 SAVED TRACKS (klik muat)</div><div id="historyList">Kosong</div></div>
+<div class="history-panel" id="historyPanel"><div class="history-title">📁 SAVED TRACKS (klik muat / navigasi)</div><div id="historyList">Kosong</div></div>
 <div class="breadcrumb-info" id="breadcrumbInfo">🧭 BACKTRACK (true path): <span id="returnDistance">0</span> meter</div>
 <div class="playback-bar" id="playbackBar"><span>🎞️ REPLAY</span><input type="range" id="playbackSlider" min="0" max="100" value="0" style="flex:1"><span id="playbackPercent">0%</span><button id="playPauseBtn" style="background:#6c5ce7;padding:4px 12px;">⏸️</button><button id="stopPlaybackBtn" style="background:#e74c3c;">⏹️</button></div>
 <div class="semantic-panel" id="semanticPanel"><div class="semantic-title" style="margin-bottom:8px;font-weight:bold;">📜 SEMANTIC BREADCRUMB</div><div id="semanticList"></div></div>
 
+<!-- NAVIGATION PANEL - TAMBAHAN -->
+<div class="nav-panel" id="navPanel">
+    <button class="nav-close" id="navCloseBtn">✕</button>
+    <div class="nav-instruction" id="navInstruction">▶ MULAI NAVIGASI</div>
+    <div class="nav-detail">
+        <span id="navDistance">Sisa: 0 m</span>
+        <span id="navNextTurn">Belokan: --</span>
+    </div>
+    <div class="nav-progress"><div class="nav-progress-fill" id="navProgress"></div></div>
+</div>
+
 <script>
 (function(){
-    // ======================= v4.4 - PRODUCTION HARDENED =======================
-    // P0 Fixes: Track load rebuild semantic, Persistent pointHash, Accuracy circle reuse, Map panTo throttle, IndexedDB retention, WAL batch write, GPS hysteresis, Dead reckoning
+    // ======================= v4.5 - FULL v4.4 + ROUTE NAVIGATION =======================
+    // SEMUA FITUR v4.4 DI PERTAHANKAN, DITAMBAH: Route Following (Turn-by-Turn)
     
-    // ======================= MOVEMENT INTELLIGENCE =======================
+    // ======================= MOVEMENT INTELLIGENCE (SAMA PERSIS DENGAN v4.4) =======================
     const MOVEMENT_STATES = {
         WALKING_STRAIGHT: 'BERJALAN LURUS',
         TURNING_LEFT: 'BELOK KIRI',
@@ -140,7 +176,7 @@
     let lostPatternDetected = false;
     let lostConfirmedCount = 0;
     let lostCooldownUntil = 0;
-    let patrolMode = false; // P1: patrol mode untuk reduce false lost
+    let patrolMode = false;
     const LOST_CONFIRMATION_NEEDED = 3;
     const LOST_COOLDOWN_MS = 30000;
     
@@ -193,11 +229,9 @@
     function updateLostPattern() {
         const now = Date.now();
         if(now < lostCooldownUntil) return;
-        
         const vectors = getSemanticVectors();
         const recent = vectors.filter(v => (now - v.timestamp) < 60000);
         if(recent.length < 15) return;
-        
         let minLat=Infinity, maxLat=-Infinity, minLng=Infinity, maxLng=-Infinity;
         let totalTravel = 0;
         for(let i = 1; i < recent.length; i++) {
@@ -209,7 +243,6 @@
         }
         let radius = haversineFast(minLat, minLng, maxLat, maxLng);
         if(patrolMode) radius *= MOVEMENT_CONFIG.PATROL_RADIUS_MULTIPLIER;
-        
         const first = recent[0];
         const last = recent[recent.length-1];
         const netProgress = haversineFast(first.lat, first.lng, last.lat, last.lng);
@@ -218,7 +251,6 @@
         const isPotentiallyLost = (radius < MOVEMENT_CONFIG.LOST_RADIUS) || 
                                   (travelEfficiency > 3 && netProgress < 20) ||
                                   (headingChaos > recent.length * 0.6);
-        
         if(isPotentiallyLost) {
             lostConfirmedCount++;
             if(lostConfirmedCount >= LOST_CONFIRMATION_NEEDED && !lostPatternDetected) {
@@ -244,12 +276,10 @@
             document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`;
             return;
         }
-        
         const distance = haversineFast(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
         const deltaTime = (point.timestamp - prevPoint.timestamp) / 1000;
         const speed = deltaTime > 0 ? distance / deltaTime : 0;
         const currentBearing = calculateBearing(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
-        
         let headingChange = 0;
         if(prevPoint.bearing !== undefined && prevPoint.bearing !== null) {
             let diff = currentBearing - prevPoint.bearing;
@@ -257,17 +287,14 @@
             if(diff < -180) diff += 360;
             headingChange = diff;
         }
-        
         let slope = 0;
         if(distance > 0 && point.alt !== undefined && prevPoint.alt !== undefined) {
             slope = (point.alt - prevPoint.alt) / distance * 100;
         }
-        
         const state = detectMovementState(speed, headingChange, slope);
         const isSignificant = (Math.abs(headingChange) > MOVEMENT_CONFIG.TURN_ANGLE || 
                                Math.abs(slope) > MOVEMENT_CONFIG.CLIMB_RATE ||
                                state === MOVEMENT_STATES.STOPPED);
-        
         const vector = {...point, state, headingChange, slope, speed, distance, isSignificant, timestamp: point.timestamp || Date.now(), bearing: currentBearing};
         pushSemanticVector(vector);
         currentMovementState = state;
@@ -319,7 +346,6 @@
         document.getElementById('totalDescent').innerHTML = `${Math.round(totalDescent)} m`;
         document.getElementById('turnCount').innerHTML = turnCount;
         document.getElementById('lostPattern').innerHTML = lostPatternDetected ? '⚠️ YA' : 'TIDAK';
-        
         let confidence = 100;
         if(lostPatternDetected) confidence -= 40;
         if(turnCount > 20) confidence -= 15;
@@ -351,7 +377,7 @@
         return `${timestamp}_${++globalSeq}_${lat.toFixed(7)}_${lng.toFixed(7)}`;
     }
     
-    // ======================= CORE GPS & TRACKING ENGINE =======================
+    // ======================= CORE GPS & TRACKING ENGINE (SAMA PERSIS v4.4) =======================
     const GPS_PROFILES = {
         STATIONARY: { name: 'STATIONARY', enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 },
         WALKING: { name: 'WALKING', enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 },
@@ -359,8 +385,8 @@
     };
     
     let currentProfile = 'WALKING';
-    let profileSpeedThresholdHigh = 10; // hysteresis masuk
-    let profileSpeedThresholdLow = 6;   // hysteresis keluar
+    let profileSpeedThresholdHigh = 10;
+    let profileSpeedThresholdLow = 6;
     let wakeLock = null;
     let lastRecalibrationTime = 0;
     let lastSpeed = 0;
@@ -400,17 +426,158 @@
     let totalPoints = 0;
     let lastPosition = null;
     let currentAccuracy = 0;
-    
-    // WAL batch queue
     let walQueue = [];
     let walBatchTimer = null;
-    
-    // Dead reckoning
     let deadReckoningActive = false;
     let estimatedPos = null;
     let lastSensorHeading = 0;
     let lastSensorTimestamp = 0;
     
+    // ======================= NAVIGATION FOLLOW MODE (TAMBAHAN) =======================
+    let followMode = false;
+    let followRoute = [];
+    let followTurns = [];
+    let followProgress = 0;
+    let followInterval = null;
+    let followLine = null;
+    let followTurnMarkers = [];
+    
+    function detectTurns(points) {
+        if(points.length < 3) return [];
+        const turns = [];
+        for(let i = 2; i < points.length; i++) {
+            const p1 = points[i-2];
+            const p2 = points[i-1];
+            const p3 = points[i];
+            const bearing1 = calculateBearing(p1.lat, p1.lng, p2.lat, p2.lng);
+            const bearing2 = calculateBearing(p2.lat, p2.lng, p3.lat, p3.lng);
+            let diff = bearing2 - bearing1;
+            if(diff > 180) diff -= 360;
+            if(diff < -180) diff += 360;
+            if(Math.abs(diff) > MOVEMENT_CONFIG.TURN_ANGLE) {
+                let distFromStart = 0;
+                for(let j = 1; j <= i; j++) {
+                    distFromStart += haversineFast(points[j-1].lat, points[j-1].lng, points[j].lat, points[j].lng);
+                }
+                turns.push({
+                    index: i,
+                    lat: p3.lat,
+                    lng: p3.lng,
+                    angle: diff,
+                    direction: diff > 0 ? 'KANAN' : 'KIRI',
+                    distanceFromStart: distFromStart
+                });
+            }
+        }
+        return turns;
+    }
+    
+    function startFollowMode(track) {
+        if(!track || track.points.length < 2) {
+            alert("Track tidak valid untuk navigasi");
+            return;
+        }
+        stopFollowMode();
+        followRoute = track.points.map(p => ({...p}));
+        followTurns = detectTurns(followRoute);
+        followProgress = 0;
+        followMode = true;
+        
+        document.getElementById('navPanel').classList.add('show');
+        document.getElementById('navInstruction').innerHTML = `🚶 MENGIKUTI: ${track.name}`;
+        
+        if(followLine && map) map.removeLayer(followLine);
+        const routeLatLngs = followRoute.map(p => [p.lat, p.lng]);
+        followLine = L.polyline(routeLatLngs, { color: '#2c6e2f', weight: 5, opacity: 0.8 }).addTo(map);
+        
+        if(followTurnMarkers.length) followTurnMarkers.forEach(m => map.removeLayer(m));
+        followTurnMarkers = [];
+        followTurns.forEach(turn => {
+            const marker = L.circleMarker([turn.lat, turn.lng], {
+                radius: 6, color: '#ffb347', fillColor: '#ffb347', fillOpacity: 0.8
+            }).addTo(map).bindTooltip(`Belok ${turn.direction} ${Math.round(Math.abs(turn.angle))}°`);
+            followTurnMarkers.push(marker);
+        });
+        
+        if(followInterval) clearInterval(followInterval);
+        followInterval = setInterval(() => updateNavigation(), 1000);
+        updateNavigation();
+        alert(`🚶 Navigasi dimulai: "${track.name}"\n📏 Total: ${Math.round(track.distance)}m\n🔄 ${followTurns.length} belokan`);
+    }
+    
+    function stopFollowMode() {
+        followMode = false;
+        if(followInterval) clearInterval(followInterval);
+        document.getElementById('navPanel').classList.remove('show');
+        if(followLine && map) map.removeLayer(followLine);
+        if(followTurnMarkers.length) followTurnMarkers.forEach(m => map.removeLayer(m));
+        followTurnMarkers = [];
+        followRoute = [];
+    }
+    
+    function updateNavigation() {
+        if(!followMode || !lastPosition || followRoute.length === 0) return;
+        
+        let minDist = Infinity;
+        let nearestIdx = 0;
+        for(let i = 0; i < followRoute.length; i++) {
+            const dist = haversineFast(lastPosition.lat, lastPosition.lng, followRoute[i].lat, followRoute[i].lng);
+            if(dist < minDist) { minDist = dist; nearestIdx = i; }
+        }
+        followProgress = nearestIdx;
+        
+        let remainingDist = 0;
+        for(let i = nearestIdx; i < followRoute.length - 1; i++) {
+            remainingDist += haversineFast(followRoute[i].lat, followRoute[i].lng, followRoute[i+1].lat, followRoute[i+1].lng);
+        }
+        
+        const totalDist = followRoute.reduce((sum, p, i) => {
+            if(i === 0) return 0;
+            return sum + haversineFast(followRoute[i-1].lat, followRoute[i-1].lng, p.lat, p.lng);
+        }, 0);
+        const progressPercent = ((totalDist - remainingDist) / totalDist) * 100;
+        document.getElementById('navProgress').style.width = `${Math.min(100, Math.max(0, progressPercent))}%`;
+        document.getElementById('navDistance').innerHTML = `Sisa: ${Math.round(remainingDist)}m`;
+        
+        if(minDist > 30) {
+            document.getElementById('navInstruction').innerHTML = '⚠️ PERINGATAN: ANDA KELUAR JALUR';
+            document.getElementById('navInstruction').style.color = '#ff5a5f';
+            return;
+        }
+        document.getElementById('navInstruction').style.color = '#00f2a0';
+        
+        let nextTurn = null;
+        for(const turn of followTurns) {
+            if(turn.distanceFromStart > (totalDist - remainingDist)) {
+                nextTurn = turn;
+                break;
+            }
+        }
+        
+        if(nextTurn) {
+            const distToTurn = nextTurn.distanceFromStart - (totalDist - remainingDist);
+            if(distToTurn < 50) {
+                document.getElementById('navInstruction').innerHTML = `🔄 BELOK ${nextTurn.direction} ${Math.round(distToTurn)} METER LAGI!`;
+                document.getElementById('navNextTurn').innerHTML = `Segera belok ${nextTurn.direction}`;
+            } else if(distToTurn < 150) {
+                document.getElementById('navInstruction').innerHTML = `⚠️ PERSIAPAN BELOK ${nextTurn.direction} ${Math.round(distToTurn)}m`;
+                document.getElementById('navNextTurn').innerHTML = `Belok ${nextTurn.direction}: ${Math.round(distToTurn)}m`;
+            } else {
+                document.getElementById('navInstruction').innerHTML = `⬆️ JALAN LURUS ${Math.round(distToTurn)} METER`;
+                document.getElementById('navNextTurn').innerHTML = `Belok ${nextTurn.direction}: ${Math.round(distToTurn)}m`;
+            }
+        } else {
+            if(remainingDist < 50) {
+                document.getElementById('navInstruction').innerHTML = '🏁 TUJUAN HAMPIR SAMPAI!';
+                document.getElementById('navNextTurn').innerHTML = `${Math.round(remainingDist)}m lagi`;
+            } else {
+                document.getElementById('navInstruction').innerHTML = `⬆️ JALAN LURUS ${Math.round(remainingDist)} METER`;
+                document.getElementById('navNextTurn').innerHTML = `Tujuan: ${Math.round(remainingDist)}m`;
+            }
+        }
+    }
+    
+    // ======================= FUNGSI LENGKAP v4.4 (DI PERTAHANKAN) =======================
     function detectGPSProfile(speed) {
         if(speed > profileSpeedThresholdHigh) return 'VEHICLE';
         if(speed < profileSpeedThresholdLow) return 'STATIONARY';
@@ -488,6 +655,7 @@
         currentMarker = null;
         updateUI();
         resetMovementEngine();
+        stopFollowMode();
     }
     
     function getAllPoints() { const r=[]; for(let i=0;i<bufferLen;i++) r.push(getPoint(i)); return r; }
@@ -530,7 +698,6 @@
         });
     }
     
-    // WAL batch write non-blocking
     async function flushWalQueue() {
         if(walQueue.length === 0) return;
         const batch = [...walQueue];
@@ -554,7 +721,6 @@
         }
     }
     
-    // IndexedDB retention policy
     async function cleanOldSyncedPoints() {
         if(!db) return;
         const cutoff = Date.now() - (CONFIG.SYNCED_RETENTION_DAYS * 24 * 3600000);
@@ -573,8 +739,6 @@
         });
         for(const key of toDelete) store.delete(key);
         console.log(`[RETENTION] Deleted ${toDelete.length} old synced points`);
-        
-        // Juga cek total records limit
         const countReq = store.count();
         countReq.onsuccess = () => {
             if(countReq.result > CONFIG.MAX_SYNCED_RECORDS) {
@@ -650,7 +814,7 @@
                 if(pending.length){
                     const batchId = Date.now() + '_' + Math.random().toString(36);
                     const payload = pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,heading:p.heading,speed:p.speed,pointHash:p.pointHash}));
-                    const res = await fetch(CONFIG.SYNC_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:payload, deviceId:'vms-tactical', batchId, version:'4.4'})});
+                    const res = await fetch(CONFIG.SYNC_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:payload, deviceId:'vms-tactical', batchId, version:'4.5'})});
                     const result = await res.json();
                     if(result && result.success===true){
                         await markSynced(pending.map(p=>p.id));
@@ -685,7 +849,6 @@
             };
             cursor.onerror = () => resolve();
         });
-        
         if(recoveredPoints.length > 0) {
             trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
             bufferStart = 0; bufferLen = 0; totalPoints = 0; lastPosition = null;
@@ -711,7 +874,6 @@
             const last=getLastPoint();
             if(!currentMarker) currentMarker=L.circleMarker([last.lat,last.lng],{radius:11,fillColor:'#ff5a5f',color:'#fff',weight:2,fillOpacity:0.95}).addTo(map);
             else currentMarker.setLatLng([last.lat,last.lng]);
-            // P0: Reuse accuracy circle, jangan recreate
             if(accuracyCircle && map) {
                 accuracyCircle.setLatLng([last.lat, last.lng]);
                 if(currentAccuracy > 0 && currentAccuracy < 100) accuracyCircle.setRadius(currentAccuracy);
@@ -723,7 +885,6 @@
         if(currentTab==='3D') draw3D();
     }
     
-    // P0: Map center throttle dengan panTo (lebih ringan dari setView)
     function smartCenterMap(lat, lng) {
         if(!map || currentTab !== '2D') return;
         const now = Date.now();
@@ -782,7 +943,6 @@
         return {lat:lastPosition.lat*(1-f)+newLat*f, lng:lastPosition.lng*(1-f)+newLng*f};
     }
     
-    // Dead reckoning sensors
     function initSensors() {
         if(window.DeviceOrientationEvent) {
             window.addEventListener('deviceorientation', (e) => {
@@ -816,21 +976,19 @@
         const smoothed=smoothPoint(lat,lng);
         const pointHash = generatePointHash(smoothed.lat, smoothed.lng, timestamp);
         const point={lat:smoothed.lat,lng:smoothed.lng,alt:altitude||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now(), pointHash: pointHash};
-        
         const prevPoint = getLastPoint();
         if(prevPoint && haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng) < 1.5) return;
-        
         if(prevPoint) {
             const vectorBearing = calculateBearing(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
             if(vectorBearing !== null) point.heading = vectorBearing;
         }
-        
         addMovementVector(point, prevPoint);
         pushPoint(point);
         queueToWAL(point);
         updateTrail();
         smartCenterMap(lat, lng);
         if(currentTab==='3D') draw3D();
+        if(followMode) updateNavigation();
     }
     
     function onGPSPosition(pos){
@@ -948,7 +1106,17 @@
     function updateHistoryList(){
         const container=document.getElementById('historyList');
         if(savedTracks.length===0){ container.innerHTML='<div>Belum ada track tersimpan</div>'; return; }
-        container.innerHTML=savedTracks.map(t=>`<div class="history-item" onclick="window.loadTrack('${t.trackId}')"><div>📌 ${escapeHtml(t.name)}</div><div>📅 ${t.dateStr} | ${t.totalPoints} titik | 🧭 ${t.distance.toFixed(0)} m</div><div style="color:#ff8a7a;" onclick="event.stopPropagation();window.deleteTrack('${t.trackId}')">🗑 Hapus</div></div>`).join('');
+        container.innerHTML=savedTracks.map(t=>`
+            <div class="history-item">
+                <div>📌 ${escapeHtml(t.name)}</div>
+                <div>📅 ${t.dateStr} | ${t.totalPoints} titik | 🧭 ${t.distance.toFixed(0)} m</div>
+                <div class="history-buttons">
+                    <button onclick="window.loadTrack('${t.trackId}')">📂 MUAT</button>
+                    <button onclick="window.followTrack('${t.trackId}')" style="background:#2c6e2f;">🚶 NAVIGASI</button>
+                    <button onclick="window.deleteTrack('${t.trackId}')" style="background:#ff5a5f;">🗑 HAPUS</button>
+                </div>
+            </div>
+        `).join('');
     }
     
     window.loadTrack=async(trackId)=>{
@@ -974,6 +1142,19 @@
         };
     };
     
+    window.followTrack=async(trackId)=>{
+        if(!db) await openDB();
+        const tx=db.transaction([CONFIG.TRACKS_STORE],'readonly');
+        const req=tx.objectStore(CONFIG.TRACKS_STORE).get(trackId);
+        req.onsuccess=()=>{
+            const track=req.result;
+            if(track && confirm(`Mulai navigasi mengikuti track "${track.name}"?`)){
+                startFollowMode(track);
+                document.getElementById('historyPanel').classList.remove('show');
+            }
+        };
+    };
+    
     window.deleteTrack=async(trackId)=>{
         if(confirm("Hapus track ini?")){
             savedTracks=savedTracks.filter(t=>t.trackId!==trackId);
@@ -981,7 +1162,6 @@
             const tx=db.transaction([CONFIG.TRACKS_STORE],'readwrite');
             tx.objectStore(CONFIG.TRACKS_STORE).delete(trackId);
             updateHistoryList();
-            updateUI();
         }
     };
     
@@ -1107,6 +1287,7 @@
             updateUI();
             if(currentTab==='3D') draw3D();
             updateGPSStatus('CLEARED','red',null);
+            stopFollowMode();
         }
     }
     
@@ -1116,10 +1297,12 @@
     
     window.addEventListener('pagehide',()=>{ if(watchId) navigator.geolocation.clearWatch(watchId); if(syncWorker) syncWorker.terminate(); releaseWakeLock(); });
     document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(syncWorker){ syncWorker.terminate(); syncWorker=null; } initWorker(); if(isTracking && !wakeLock) acquireWakeLock(); } });
+    document.getElementById('navCloseBtn')?.addEventListener('click', () => stopFollowMode());
     
     async function bootstrap(){
-        console.log("VMS v4.4 - Production Tactical Movement Intelligence");
-        console.log("Patches: Track load rebuild semantic | Persistent pointHash | Accuracy circle reuse | PanTo throttle | IndexedDB retention | WAL batch | GPS hysteresis | Dead reckoning");
+        console.log("VMS v4.5 - FULL v4.4 + Route Navigation (Turn-by-Turn)");
+        console.log("Semua fitur v4.4 dipertahankan: WAL, Worker, 3D, Semantic Engine, Lost Pattern, dll");
+        console.log("Fitur tambahan: Navigasi ikuti rekaman jalur dengan instruksi belok otomatis");
         await openDB();
         await recoverFromWAL();
         initMap();
@@ -1159,7 +1342,7 @@
         updateGPSStatus('READY','yellow',null);
         updateSyncStatus('STANDBY','yellow');
         updateUI();
-        console.log("[BOOT] Production Tactical Movement Intelligence v4.4 Active - All P0+P1 patches applied");
+        console.log("[BOOT] VMS v4.5 Siap - Rekam jalur, Simpan, Navigasi ikuti rekaman");
     }
     
     bootstrap();
