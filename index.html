@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | Tactical Tracker · Adaptive GPS Engine</title>
+    <title>VMS | Digital Escort · Movement Intelligence v4.2</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -12,86 +12,326 @@
         body{font-family:'Segoe UI',Roboto,system-ui;background:#0a0f1a;overflow:hidden;position:fixed;width:100%;height:100%;}
         #map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:#101624;}
         #canvas3D{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;background:#0c1122;display:none;}
-        .status-bar{position:fixed;top:12px;left:12px;right:12px;z-index:1100;background:rgba(10,15,26,0.92);backdrop-filter:blur(12px);border-radius:28px;padding:8px 16px;font-family:'SF Mono','Courier New',monospace;font-size:11px;font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,0.5);border:1px solid rgba(72,187,255,0.2);pointer-events:none;color:#eef2ff;}
-        .status-grid{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;}
-        .status-item{display:flex;align-items:center;gap:6px;letter-spacing:0.2px;}
-        .led{width:8px;height:8px;border-radius:50%;transition:all 0.1s;}
+        .status-bar{position:fixed;top:12px;left:12px;right:12px;z-index:1100;background:rgba(10,15,26,0.95);backdrop-filter:blur(12px);border-radius:28px;padding:8px 12px;font-family:'SF Mono',monospace;font-size:10px;box-shadow:0 4px 14px rgba(0,0,0,0.5);border:1px solid rgba(72,187,255,0.2);pointer-events:none;color:#eef2ff;}
+        .status-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;}
+        .status-item{display:flex;align-items:center;gap:4px;}
+        .led{width:8px;height:8px;border-radius:50%;}
         .led-green{background:#00f2a0;box-shadow:0 0 8px #00f2a0;animation:pulseGreen 1.2s infinite;}
         .led-red{background:#ff4d6d;}
-        .led-yellow{background:#ffb347;animation:pulseYellow 0.9s infinite;}
+        .led-yellow{background:#ffb347;}
         @keyframes pulseGreen{0%{opacity:0.4;}100%{opacity:1;transform:scale(1.2);}}
-        @keyframes pulseYellow{0%{opacity:0.5;}100%{opacity:1;}}
-        .tab-bar{position:fixed;top:80px;left:12px;right:12px;z-index:1100;display:flex;gap:10px;}
-        .tab-btn{flex:1;background:#141c2c;border:none;border-radius:40px;padding:10px 0;font-weight:700;font-size:13px;cursor:pointer;color:#9aaec5;transition:0.2s;backdrop-filter:blur(4px);}
+        .tab-bar{position:fixed;top:75px;left:12px;right:12px;z-index:1100;display:flex;gap:10px;}
+        .tab-btn{flex:1;background:#141c2c;border:none;border-radius:40px;padding:8px 0;font-weight:700;font-size:12px;cursor:pointer;color:#9aaec5;}
         .tab-btn.active{background:#1e88e5;color:white;box-shadow:0 0 12px #1e88e5;}
-        .control-panel{position:fixed;bottom:20px;left:12px;right:12px;z-index:1050;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;pointer-events:none;}
-        button{pointer-events:auto;background:#1e2a3e;border:none;padding:9px 14px;border-radius:44px;font-size:11px;font-weight:700;font-family:monospace;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.4);color:#f0f3fa;transition:0.05s linear;}
+        .control-panel{position:fixed;bottom:20px;left:12px;right:12px;z-index:1050;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;pointer-events:none;}
+        button{pointer-events:auto;background:#1e2a3e;border:none;padding:8px 12px;border-radius:40px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;color:#f0f3fa;}
         button:active{transform:scale(0.96);}
         .btn-start{background:#00c48a;color:#0a0f1a;}
-        .btn-stop{background:#ff5a5f;color:white;}
+        .btn-stop{background:#ff5a5f;}
         .btn-sync{background:#ffb347;}
         .btn-clear{background:#6c7a89;}
         .btn-center{background:#1e88e5;}
         .btn-save{background:#00b0b9;}
         .btn-history{background:#9b59b6;}
         .btn-return{background:#fd7e2c;}
-        .btn-sheet{background:#2c6e2f;}
+        .info-panel{position:fixed;top:130px;right:12px;width:180px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;border-left:3px solid #1e88e5;pointer-events:none;}
+        .info-panel-item{font-size:9px;margin:6px 0;display:flex;justify-content:space-between;}
+        .info-panel-label{color:#9aaec5;}
+        .info-panel-value{color:#00f2a0;font-weight:bold;}
+        .state-badge{position:fixed;bottom:95px;left:12px;background:#000000aa;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;color:#ffb347;}
+        .confidence-badge{position:fixed;bottom:95px;right:12px;background:#000000aa;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;}
+        .profile-badge{position:fixed;top:130px;left:12px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;z-index:1050;pointer-events:none;}
+        .wake-badge{position:fixed;top:130px;right:12px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#ffb347;z-index:1050;pointer-events:none;}
+        .semantic-panel{position:fixed;top:170px;left:12px;width:200px;max-height:250px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;overflow-y:auto;display:none;font-size:9px;border-left:3px solid #1e88e5;}
+        .semantic-panel.show{display:block;}
+        .semantic-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #2a3a55;}
         .history-panel{position:fixed;top:135px;left:12px;right:12px;bottom:100px;z-index:1150;background:rgba(18,25,40,0.98);border-radius:28px;padding:16px;overflow-y:auto;box-shadow:0 12px 28px rgba(0,0,0,0.5);border:1px solid #2c3e5c;display:none;backdrop-filter:blur(8px);color:#eef2ff;}
         .history-panel.show{display:block;}
         .history-item{background:#0f172a;margin:8px 0;padding:10px;border-radius:20px;cursor:pointer;border:1px solid #2a3a55;}
         .breadcrumb-info{position:fixed;bottom:95px;left:16px;background:rgba(0,0,0,0.85);backdrop-filter:blur(16px);padding:8px 18px;border-radius:40px;font-family:monospace;font-size:12px;color:#ffd966;z-index:1060;display:none;gap:8px;pointer-events:none;}
         .breadcrumb-info.show{display:flex;}
         .stats-mini{position:fixed;bottom:20px;right:16px;background:rgba(0,0,0,0.7);padding:5px 12px;border-radius:40px;font-size:10px;font-family:monospace;color:#b9e6ff;z-index:1020;pointer-events:none;}
-        @media (max-width:640px){button{padding:7px 10px;font-size:10px;}.status-bar{font-size:9px;}}
         .playback-bar{position:fixed;bottom:85px;left:12px;right:12px;background:#111a28cc;backdrop-filter:blur(16px);border-radius:60px;padding:10px 16px;display:flex;gap:12px;align-items:center;z-index:1080;border:1px solid #3a4c70;display:none;}
         .playback-bar.show{display:flex;}
-        .profile-badge{position:fixed;bottom:80px;left:16px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;z-index:1060;pointer-events:none;}
-        .wake-badge{position:fixed;bottom:80px;right:16px;background:#000000aa;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#ffb347;z-index:1060;pointer-events:none;}
-        @media (max-width:640px){.profile-badge,.wake-badge{font-size:7px;padding:2px 8px;bottom:75px;}}
+        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge{font-size:7px;padding:2px 8px;}}
     </style>
 </head>
 <body>
 <div id="map"></div>
 <canvas id="canvas3D"></canvas>
-<div class="status-bar"><div class="status-grid"><div class="status-item"><span class="led" id="gpsLed"></span><span id="gpsText">GPS: --</span></div>
-<div class="status-item"><span class="led" id="syncLed"></span><span id="syncText">Sync: --</span></div><div class="status-item">📍<span id="pointCounter">0</span></div>
-<div class="status-item">🎯<span id="accuracyText">--m</span></div><div class="status-item">⬆️<span id="altText">0m</span></div>
-<div class="status-item">⚡<span id="speedText">0</span></div></div></div>
-<div class="profile-badge" id="profileBadge">PROFILE: WALKING</div>
+<div class="status-bar"><div class="status-grid">
+<div class="status-item"><span class="led" id="gpsLed"></span><span id="gpsText">GPS: --</span></div>
+<div class="status-item"><span class="led" id="syncLed"></span><span id="syncText">Sync: --</span></div>
+<div class="status-item">📍<span id="pointCounter">0</span></div>
+<div class="status-item">🎯<span id="accuracyText">--m</span></div>
+<div class="status-item">⬆️<span id="altText">0m</span></div>
+<div class="status-item">⚡<span id="speedText">0</span></div>
+</div></div>
+<div class="profile-badge" id="profileBadge">📡 PROFILE: WALKING</div>
 <div class="wake-badge" id="wakeBadge">🔋 WAKE LOCK OFF</div>
-<div class="tab-bar"><button id="btn2D" class="tab-btn active">🗺️ 2D MAP</button><button id="btn3D" class="tab-btn">📐 3D TRAIL</button></div>
+<div class="state-badge" id="movementBadge">🚶 BERJALAN LURUS</div>
+<div class="confidence-badge" id="confidenceBadge">🎯 RETURN: HIGH</div>
+<div class="tab-bar"><button id="btn2D" class="tab-btn active">🗺️ 2D MAP</button><button id="btn3D" class="tab-btn">📐 3D TRAIL</button><button id="btnSemantic" class="tab-btn">📜 BREADCRUMB</button></div>
 <div class="control-panel"><button id="startBtn" class="btn-start">▶ START</button><button id="stopBtn" class="btn-stop" style="display:none">⏹ STOP</button>
 <button id="syncBtn" class="btn-sync">🔄 SYNC</button><button id="clearBtn" class="btn-clear">🗑 CLEAR</button><button id="centerBtn" class="btn-center">🎯 CENTER</button>
 <button id="saveBtn" class="btn-save">💾 SAVE</button><button id="historyBtn" class="btn-history">📋 LIST</button><button id="returnBtn" class="btn-return">🏠 RETURN</button>
 <button id="sheetBtn" class="btn-sheet">📊 SHEET</button><button id="playbackToggleBtn" class="btn-sheet" style="background:#6c5ce7;">🎬 REPLAY</button></div>
+<div class="info-panel" id="infoPanel">
+<div class="info-panel-item"><span class="info-panel-label">📏 Total Jarak</span><span class="info-panel-value" id="totalDistance">0 m</span></div>
+<div class="info-panel-item"><span class="info-panel-label">⬆️ Total Naik</span><span class="info-panel-value" id="totalClimb">0 m</span></div>
+<div class="info-panel-item"><span class="info-panel-label">⬇️ Total Turun</span><span class="info-panel-value" id="totalDescent">0 m</span></div>
+<div class="info-panel-item"><span class="info-panel-label">🔄 Belokan</span><span class="info-panel-value" id="turnCount">0</span></div>
+<div class="info-panel-item"><span class="info-panel-label">⚠️ Lost Pattern</span><span class="info-panel-value" id="lostPattern">TIDAK</span></div>
+<div class="info-panel-item"><span class="info-panel-label">🔋 Mode</span><span class="info-panel-value" id="powerMode">NORMAL</span></div>
+</div>
 <div class="stats-mini" id="statsBox">Points:0 | Saved:0</div>
 <div class="history-panel" id="historyPanel"><div class="history-title">📁 SAVED TRACKS (klik muat)</div><div id="historyList">Kosong</div></div>
 <div class="breadcrumb-info" id="breadcrumbInfo">🧭 BACKTRACK (true path): <span id="returnDistance">0</span> meter</div>
 <div class="playback-bar" id="playbackBar"><span>🎞️ REPLAY</span><input type="range" id="playbackSlider" min="0" max="100" value="0" style="flex:1"><span id="playbackPercent">0%</span><button id="playPauseBtn" style="background:#6c5ce7;padding:4px 12px;">⏸️</button><button id="stopPlaybackBtn" style="background:#e74c3c;">⏹️</button></div>
+<div class="semantic-panel" id="semanticPanel"><div class="semantic-title" style="margin-bottom:8px;font-weight:bold;">📜 SEMANTIC BREADCRUMB</div><div id="semanticList"></div></div>
+
 <script>
 (function(){
-    // ======================= ADAPTIVE GPS ENGINE - TACTICAL GRADE =======================
+    // ======================= MOVEMENT INTELLIGENCE ENGINE v2 (PATCHED) =======================
+    const MOVEMENT_STATES = {
+        WALKING_STRAIGHT: 'BERJALAN LURUS',
+        TURNING_LEFT: 'BELOK KIRI',
+        TURNING_RIGHT: 'BELOK KANAN',
+        CLIMBING: 'MENAIKI',
+        DESCENDING: 'MENURUNI',
+        SEARCHING: 'MENCARI JALUR',
+        STOPPED: 'BERHENTI',
+        LOST_PATTERN: 'TERSESAT - BERPUTAR'
+    };
     
-    // GPS Profiles untuk berbagai kondisi
-    const GPS_PROFILES = {
-        STATIONARY: {
-            name: 'STATIONARY',
-            enableHighAccuracy: false,
-            timeout: 20000,
-            maximumAge: 15000
-        },
-        WALKING: {
-            name: 'WALKING',
-            enableHighAccuracy: true,
-            timeout: 8000,
-            maximumAge: 3000
-        },
-        VEHICLE: {
-            name: 'VEHICLE',
-            enableHighAccuracy: true,
-            timeout: 4000,
-            maximumAge: 0
+    // P0: Circular buffer untuk semantic events
+    let movementVectors = [];
+    const MAX_SEMANTIC_EVENTS = 500;
+    let semanticStart = 0;
+    let semanticLen = 0;
+    
+    function pushSemanticVector(vector) {
+        const pos = (semanticStart + semanticLen) % MAX_SEMANTIC_EVENTS;
+        if(movementVectors[pos]) movementVectors[pos] = vector;
+        else movementVectors.push(vector);
+        if(semanticLen < MAX_SEMANTIC_EVENTS) semanticLen++;
+        else semanticStart = (semanticStart + 1) % MAX_SEMANTIC_EVENTS;
+    }
+    
+    function getSemanticVectors() {
+        const result = [];
+        for(let i = 0; i < semanticLen; i++) {
+            const pos = (semanticStart + i) % MAX_SEMANTIC_EVENTS;
+            if(movementVectors[pos]) result.push(movementVectors[pos]);
         }
+        return result;
+    }
+    
+    function clearSemanticVectors() {
+        movementVectors = [];
+        semanticStart = 0;
+        semanticLen = 0;
+    }
+    
+    let currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT;
+    let lostPatternDetected = false;
+    let lostConfirmedCount = 0;
+    let lostCooldownUntil = 0;
+    const LOST_CONFIRMATION_NEEDED = 3;
+    const LOST_COOLDOWN_MS = 30000;
+    
+    const MOVEMENT_CONFIG = {
+        TURN_ANGLE: 30,
+        LOST_RADIUS: 30,
+        LOST_DURATION: 60000,
+        CLIMB_RATE: 2,
+        SEARCH_SPEED_MAX: 0.8
+    };
+    
+    function haversineFast(lat1, lon1, lat2, lon2) {
+        const R = 6371000;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+    
+    function calculateBearing(lat1, lon1, lat2, lon2) {
+        const toRad = Math.PI / 180;
+        const toDeg = 180 / Math.PI;
+        const dLon = (lon2 - lon1) * toRad;
+        const y = Math.sin(dLon) * Math.cos(lat2 * toRad);
+        const x = Math.cos(lat1 * toRad) * Math.sin(lat2 * toRad) -
+                  Math.sin(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.cos(dLon);
+        let brng = Math.atan2(y, x) * toDeg;
+        if(brng < 0) brng += 360;
+        return brng;
+    }
+    
+    function detectMovementState(speed, headingChange, slope) {
+        if(lostPatternDetected && Date.now() < lostCooldownUntil) return MOVEMENT_STATES.LOST_PATTERN;
+        if(speed < 0.3) return MOVEMENT_STATES.STOPPED;
+        if(speed > 0.5) {
+            if(headingChange > MOVEMENT_CONFIG.TURN_ANGLE) return MOVEMENT_STATES.TURNING_RIGHT;
+            if(headingChange < -MOVEMENT_CONFIG.TURN_ANGLE) return MOVEMENT_STATES.TURNING_LEFT;
+        }
+        if(Math.abs(slope) > MOVEMENT_CONFIG.CLIMB_RATE) {
+            return slope > 0 ? MOVEMENT_STATES.CLIMBING : MOVEMENT_STATES.DESCENDING;
+        }
+        if(speed < MOVEMENT_CONFIG.SEARCH_SPEED_MAX && Math.abs(headingChange) > 15) {
+            return MOVEMENT_STATES.SEARCHING;
+        }
+        return MOVEMENT_STATES.WALKING_STRAIGHT;
+    }
+    
+    function updateLostPattern() {
+        const now = Date.now();
+        if(now < lostCooldownUntil) return;
+        
+        const recent = getSemanticVectors().filter(v => (now - v.timestamp) < 30000);
+        if(recent.length < 10) return;
+        
+        let minLat=Infinity, maxLat=-Infinity, minLng=Infinity, maxLng=-Infinity;
+        let totalDistance = 0;
+        for(let i = 1; i < recent.length; i++) {
+            const prev = recent[i-1];
+            const curr = recent[i];
+            minLat=Math.min(minLat,curr.lat); maxLat=Math.max(maxLat,curr.lat);
+            minLng=Math.min(minLng,curr.lng); maxLng=Math.max(maxLng,curr.lng);
+            totalDistance += haversineFast(prev.lat, prev.lng, curr.lat, curr.lng);
+        }
+        const radius = haversineFast(minLat, minLng, maxLat, maxLng);
+        const progressEfficiency = radius > 0 ? totalDistance / radius : 1;
+        const isPotentiallyLost = (radius < MOVEMENT_CONFIG.LOST_RADIUS) || (progressEfficiency > 3);
+        
+        if(isPotentiallyLost) {
+            lostConfirmedCount++;
+            if(lostConfirmedCount >= LOST_CONFIRMATION_NEEDED && !lostPatternDetected) {
+                lostPatternDetected = true;
+                lostCooldownUntil = now + LOST_COOLDOWN_MS;
+                console.log('[LOST] Pattern detected');
+            }
+        } else {
+            if(lostConfirmedCount > 0) lostConfirmedCount--;
+            if(lostConfirmedCount <= 0 && lostPatternDetected) {
+                lostPatternDetected = false;
+                lostCooldownUntil = now + LOST_COOLDOWN_MS / 2;
+                console.log('[LOST] Pattern cleared');
+            }
+        }
+    }
+    
+    function addMovementVector(point, prevPoint) {
+        if(!prevPoint) {
+            const vector = {...point, state: MOVEMENT_STATES.WALKING_STRAIGHT, headingChange: 0, slope: 0, speed: 0, distance: 0, isSignificant: true, timestamp: point.timestamp || Date.now()};
+            pushSemanticVector(vector);
+            currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT;
+            document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`;
+            return;
+        }
+        const distance = haversineFast(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
+        const deltaTime = (point.timestamp - prevPoint.timestamp) / 1000;
+        const speed = deltaTime > 0 ? distance / deltaTime : 0;
+        const prevBearing = calculateBearing(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
+        let headingChange = 0;
+        if(prevBearing !== undefined && point.heading !== undefined) {
+            let diff = point.heading - prevBearing;
+            if(diff > 180) diff -= 360;
+            if(diff < -180) diff += 360;
+            headingChange = diff;
+        }
+        let slope = 0;
+        if(distance > 0 && point.alt !== undefined && prevPoint.alt !== undefined) {
+            slope = (point.alt - prevPoint.alt) / distance * 100;
+        }
+        const state = detectMovementState(speed, headingChange, slope);
+        const isSignificant = (Math.abs(headingChange) > MOVEMENT_CONFIG.TURN_ANGLE || 
+                               Math.abs(slope) > MOVEMENT_CONFIG.CLIMB_RATE ||
+                               state === MOVEMENT_STATES.STOPPED);
+        const vector = {...point, state, headingChange, slope, speed, distance, isSignificant, timestamp: point.timestamp || Date.now()};
+        pushSemanticVector(vector);
+        currentMovementState = state;
+        document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`;
+        updateLostPattern();
+        updateSemanticBreadcrumb();
+        updateMovementStats();
+        return vector;
+    }
+    
+    function updateSemanticBreadcrumb() {
+        const significant = getSemanticVectors().filter(v => v.isSignificant);
+        const last10 = significant.slice(-15);
+        const container = document.getElementById('semanticList');
+        if(!container) return;
+        if(last10.length === 0) {
+            container.innerHTML = '<div class="semantic-item">Belum ada data pergerakan</div>';
+            return;
+        }
+        container.innerHTML = last10.map(v => {
+            let text = '';
+            let icon = '📍';
+            switch(v.state) {
+                case MOVEMENT_STATES.TURNING_LEFT: text = `Belok kiri ${Math.round(Math.abs(v.headingChange))}°`; icon = '⬅️'; break;
+                case MOVEMENT_STATES.TURNING_RIGHT: text = `Belok kanan ${Math.round(Math.abs(v.headingChange))}°`; icon = '➡️'; break;
+                case MOVEMENT_STATES.CLIMBING: text = `Naik ${Math.round(Math.abs(v.slope))}%`; icon = '⛰️'; break;
+                case MOVEMENT_STATES.DESCENDING: text = `Turun ${Math.round(Math.abs(v.slope))}%`; icon = '⛰️'; break;
+                case MOVEMENT_STATES.STOPPED: text = 'Berhenti'; icon = '⏸️'; break;
+                case MOVEMENT_STATES.LOST_PATTERN: text = '⚠️ Tersesat - berputar'; icon = '⚠️'; break;
+                case MOVEMENT_STATES.SEARCHING: text = 'Mencari jalur'; icon = '🔍'; break;
+                default: if(v.distance > 50) { text = `Lurus ${Math.round(v.distance)}m`; icon = '➡️'; }
+            }
+            if(!text) return null;
+            return `<div class="semantic-item"><span>${icon}</span><span>${text}</span></div>`;
+        }).filter(v => v).join('');
+        if(container.innerHTML === '') container.innerHTML = '<div class="semantic-item">Belum ada data signifikan</div>';
+    }
+    
+    function updateMovementStats() {
+        const vectors = getSemanticVectors();
+        let totalClimb = 0, totalDescent = 0, turnCount = 0;
+        for(let i = 1; i < vectors.length; i++) {
+            const slope = vectors[i].slope || 0;
+            if(slope > 0) totalClimb += vectors[i].distance * (slope / 100);
+            if(slope < 0) totalDescent += vectors[i].distance * (Math.abs(slope) / 100);
+            if(Math.abs(vectors[i].headingChange) > MOVEMENT_CONFIG.TURN_ANGLE) turnCount++;
+        }
+        document.getElementById('totalClimb').innerHTML = `${Math.round(totalClimb)} m`;
+        document.getElementById('totalDescent').innerHTML = `${Math.round(totalDescent)} m`;
+        document.getElementById('turnCount').innerHTML = turnCount;
+        document.getElementById('lostPattern').innerHTML = lostPatternDetected ? '⚠️ YA' : 'TIDAK';
+        
+        let confidence = 100;
+        if(lostPatternDetected) confidence -= 40;
+        if(turnCount > 20) confidence -= 15;
+        let level = confidence > 70 ? 'HIGH' : (confidence > 40 ? 'MEDIUM' : 'LOW');
+        let color = confidence > 70 ? '#00c48a' : (confidence > 40 ? '#ffb347' : '#ff5a5f');
+        document.getElementById('confidenceBadge').innerHTML = `🎯 RETURN: ${level}`;
+        document.getElementById('confidenceBadge').style.borderLeft = `3px solid ${color}`;
+    }
+    
+    function resetMovementEngine() {
+        clearSemanticVectors();
+        lostPatternDetected = false;
+        lostConfirmedCount = 0;
+        lostCooldownUntil = 0;
+        currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT;
+        document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`;
+        updateSemanticBreadcrumb();
+        updateMovementStats();
+    }
+    
+    function toggleSemanticPanel() {
+        document.getElementById('semanticPanel').classList.toggle('show');
+        updateSemanticBreadcrumb();
+    }
+    
+    // ======================= CORE GPS & TRACKING ENGINE =======================
+    const GPS_PROFILES = {
+        STATIONARY: { name: 'STATIONARY', enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 },
+        WALKING: { name: 'WALKING', enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 },
+        VEHICLE: { name: 'VEHICLE', enableHighAccuracy: true, timeout: 4000, maximumAge: 0 }
     };
     
     let currentProfile = 'WALKING';
@@ -99,7 +339,6 @@
     let lastRecalibrationTime = 0;
     let lastSpeed = 0;
     
-    // Config utama
     const CONFIG = {
         SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/api/v1/sync',
         MAX_POINTS_RAM: 10000,
@@ -124,110 +363,65 @@
     let watchId = null;
     let isTracking = false;
     
-    // Circular Buffer
     let trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
     let bufferStart = 0;
     let bufferLen = 0;
     let totalPoints = 0;
     let lastPosition = null;
     let currentAccuracy = 0;
-    let lastPositionTimestamp = 0;
     
-    // Adaptive GPS detector
     function detectGPSProfile(speed, accuracy) {
-        if(speed > 8.0) { // > 28 km/jam
-            return 'VEHICLE';
-        }
-        if(speed < 0.5 && accuracy < 15) {
-            return 'STATIONARY';
-        }
+        if(speed > 8.0) return 'VEHICLE';
+        if(speed < 0.5 && accuracy < 15) return 'STATIONARY';
         return 'WALKING';
     }
     
-    // Update GPS profile dynamically
     function updateGPSProfile(speed, accuracy) {
         const newProfile = detectGPSProfile(speed, accuracy);
         if(newProfile !== currentProfile) {
             currentProfile = newProfile;
             document.getElementById('profileBadge').innerHTML = `📡 PROFILE: ${currentProfile}`;
-            console.log(`[GPS PROFILE] Switching to ${currentProfile}`);
-            
-            // Restart geolocation with new profile
             if(watchId && isTracking) {
                 navigator.geolocation.clearWatch(watchId);
-                watchId = navigator.geolocation.watchPosition(
-                    onGPSPosition, 
-                    onGPSError, 
-                    GPS_PROFILES[currentProfile]
-                );
-                console.log(`[GPS] Restarted with ${currentProfile} settings`);
+                watchId = navigator.geolocation.watchPosition(onGPSPosition, onGPSError, GPS_PROFILES[currentProfile]);
             }
         }
     }
     
-    // WakeLock API untuk mencegah GPS mati saat screen off
     async function acquireWakeLock() {
         try {
             if('wakeLock' in navigator) {
                 wakeLock = await navigator.wakeLock.request('screen');
                 document.getElementById('wakeBadge').innerHTML = '🔋 WAKE LOCK ON';
-                console.log('[WAKE LOCK] Screen wake lock acquired');
-                
-                // Re-acquire if page becomes visible again
                 document.addEventListener('visibilitychange', async () => {
-                    if(document.visibilityState === 'visible' && isTracking && !wakeLock) {
-                        await acquireWakeLock();
-                    }
+                    if(document.visibilityState === 'visible' && isTracking && !wakeLock) await acquireWakeLock();
                 });
             } else {
-                console.warn('[WAKE LOCK] Not supported');
                 document.getElementById('wakeBadge').innerHTML = '⚠️ NO WAKE LOCK';
             }
-        } catch(e) {
-            console.warn('[WAKE LOCK] Failed:', e);
-            document.getElementById('wakeBadge').innerHTML = '❌ WAKE LOCK FAILED';
-        }
+        } catch(e) { document.getElementById('wakeBadge').innerHTML = '❌ WAKE LOCK FAILED'; }
     }
     
     function releaseWakeLock() {
-        if(wakeLock) {
-            wakeLock.release();
-            wakeLock = null;
-            document.getElementById('wakeBadge').innerHTML = '🔋 WAKE LOCK OFF';
-            console.log('[WAKE LOCK] Released');
-        }
+        if(wakeLock) { wakeLock.release(); wakeLock = null; document.getElementById('wakeBadge').innerHTML = '🔋 WAKE LOCK OFF'; }
     }
     
-    // Recalibration periodik dengan getCurrentPosition
     async function recalibratePosition() {
         if(!isTracking) return;
-        
         const now = Date.now();
         if(now - lastRecalibrationTime < CONFIG.RECALIBRATION_INTERVAL_MS) return;
         lastRecalibrationTime = now;
-        
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                console.log('[RECALIBRATE] Fresh fix obtained');
-                const { latitude, longitude, accuracy, heading, speed, altitude } = pos.coords;
-                if(accuracy && accuracy < 30) {
-                    // Force update with fresh data
-                    lastValidCoord = { lat: latitude, lng: longitude, t: Date.now() };
-                }
-            },
-            (err) => { console.log('[RECALIBRATE] Failed:', err.message); },
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-        );
+        navigator.geolocation.getCurrentPosition((pos) => {
+            const { latitude, longitude, accuracy } = pos.coords;
+            if(accuracy && accuracy < 30) lastValidCoord = { lat: latitude, lng: longitude, t: Date.now() };
+        }, null, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
     }
     
     function pushPoint(point) {
         const pos = (bufferStart + bufferLen) % CONFIG.CIRCULAR_BUFFER_SIZE;
         trackBuffer[pos] = point;
-        if(bufferLen < CONFIG.CIRCULAR_BUFFER_SIZE) {
-            bufferLen++;
-        } else {
-            bufferStart = (bufferStart + 1) % CONFIG.CIRCULAR_BUFFER_SIZE;
-        }
+        if(bufferLen < CONFIG.CIRCULAR_BUFFER_SIZE) { bufferLen++; }
+        else { bufferStart = (bufferStart + 1) % CONFIG.CIRCULAR_BUFFER_SIZE; }
         totalPoints++;
         lastPosition = point;
         updateUI();
@@ -247,798 +441,507 @@
     
     function clearBuffer() {
         trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
-        bufferStart = 0;
-        bufferLen = 0;
-        totalPoints = 0;
-        lastPosition = null;
+        bufferStart = 0; bufferLen = 0; totalPoints = 0; lastPosition = null;
         if(trailLine) trailLine.setLatLngs([]);
         if(currentMarker && map) map.removeLayer(currentMarker);
         currentMarker = null;
         updateUI();
+        resetMovementEngine();
     }
     
-    function getAllPoints() {
-        const result = [];
-        for(let i = 0; i < bufferLen; i++) result.push(getPoint(i));
-        return result;
-    }
+    function getAllPoints() { const r=[]; for(let i=0;i<bufferLen;i++) r.push(getPoint(i)); return r; }
     
     function haversine(lat1, lon1, lat2, lon2) {
-        const R = 6371000;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const R=6371000, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+        const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+        return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
     }
     
     function computeTotalDistance() {
-        if(bufferLen < 2) return 0;
-        let dist = 0;
-        let prev = getPoint(0);
-        for(let i = 1; i < bufferLen; i++) {
-            const curr = getPoint(i);
-            dist += haversine(prev.lat, prev.lng, curr.lat, curr.lng);
-            prev = curr;
-        }
+        if(bufferLen<2) return 0;
+        let dist=0, prev=getPoint(0);
+        for(let i=1;i<bufferLen;i++) { const curr=getPoint(i); dist+=haversine(prev.lat,prev.lng,curr.lat,curr.lng); prev=curr; }
         return dist;
     }
     
-    // IndexedDB WAL
-    let db = null;
-    let syncLock = false;
+    let db=null, syncLock=false;
     
     function openDB() {
-        return new Promise((resolve, reject) => {
-            const req = indexedDB.open(CONFIG.DB_NAME, 3);
-            req.onupgradeneeded = (e) => {
-                const dbInst = e.target.result;
-                if(!dbInst.objectStoreNames.contains(CONFIG.PENDING_STORE)) {
-                    const store = dbInst.createObjectStore(CONFIG.PENDING_STORE, { keyPath: 'id', autoIncrement: true });
-                    store.createIndex('synced', 'synced');
+        return new Promise((resolve,reject)=>{
+            const req=indexedDB.open(CONFIG.DB_NAME,3);
+            req.onupgradeneeded=(e)=>{
+                const dbInst=e.target.result;
+                if(!dbInst.objectStoreNames.contains(CONFIG.PENDING_STORE)){
+                    const store=dbInst.createObjectStore(CONFIG.PENDING_STORE,{keyPath:'id',autoIncrement:true});
+                    store.createIndex('synced','synced');
                 }
-                if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)) {
-                    dbInst.createObjectStore(CONFIG.SYNCED_STORE, { keyPath: 'id', autoIncrement: true });
-                }
-                if(!dbInst.objectStoreNames.contains(CONFIG.TRACKS_STORE)) {
-                    dbInst.createObjectStore(CONFIG.TRACKS_STORE, { keyPath: 'trackId' });
-                }
+                if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)) dbInst.createObjectStore(CONFIG.SYNCED_STORE,{keyPath:'id',autoIncrement:true});
+                if(!dbInst.objectStoreNames.contains(CONFIG.TRACKS_STORE)) dbInst.createObjectStore(CONFIG.TRACKS_STORE,{keyPath:'trackId'});
             };
-            req.onsuccess = () => { db = req.result; resolve(db); };
-            req.onerror = reject;
+            req.onsuccess=()=>{ db=req.result; resolve(db); };
+            req.onerror=reject;
         });
     }
     
     async function addToWAL(point) {
         if(!db) await openDB();
-        const record = { ...point, synced: false, timestampMs: Date.now() };
-        return new Promise((res, rej) => {
-            const tx = db.transaction([CONFIG.PENDING_STORE], 'readwrite');
-            tx.objectStore(CONFIG.PENDING_STORE).add(record);
-            tx.oncomplete = () => res(true);
-            tx.onerror = rej;
-        });
+        const record={...point, synced:false, timestampMs:Date.now()};
+        return new Promise((res,rej)=>{ const tx=db.transaction([CONFIG.PENDING_STORE],'readwrite'); tx.objectStore(CONFIG.PENDING_STORE).add(record); tx.oncomplete=()=>res(true); tx.onerror=rej; });
     }
     
-    async function getUnsyncedBatch(limit = 20) {
+    async function getUnsyncedBatch(limit=20) {
         if(!db) await openDB();
-        return new Promise((resolve) => {
-            const tx = db.transaction([CONFIG.PENDING_STORE], 'readonly');
-            const store = tx.objectStore(CONFIG.PENDING_STORE);
-            const cursor = store.openCursor();
-            const results = [];
-            cursor.onsuccess = (e) => {
-                const cur = e.target.result;
-                if(cur && results.length < limit && cur.value.synced === false) {
-                    results.push({ id: cur.primaryKey, ...cur.value });
-                    cur.continue();
-                } else resolve(results);
-            };
-            cursor.onerror = () => resolve(results);
+        return new Promise((resolve)=>{
+            const tx=db.transaction([CONFIG.PENDING_STORE],'readonly');
+            const cursor=tx.objectStore(CONFIG.PENDING_STORE).openCursor();
+            const results=[];
+            cursor.onsuccess=(e)=>{ const cur=e.target.result; if(cur && results.length<limit && cur.value.synced===false){ results.push({id:cur.primaryKey,...cur.value}); cur.continue(); } else resolve(results); };
+            cursor.onerror=()=>resolve(results);
         });
     }
     
     async function markSynced(ids) {
         if(!db) await openDB();
-        const tx = db.transaction([CONFIG.PENDING_STORE, CONFIG.SYNCED_STORE], 'readwrite');
-        const pending = tx.objectStore(CONFIG.PENDING_STORE);
-        const synced = tx.objectStore(CONFIG.SYNCED_STORE);
-        for(const id of ids) {
-            const req = pending.get(id);
-            req.onsuccess = () => {
-                const data = req.result;
-                if(data) {
-                    data.synced = true;
-                    data.syncedAt = Date.now();
-                    synced.add(data);
-                    pending.delete(id);
-                }
-            };
+        const tx=db.transaction([CONFIG.PENDING_STORE,CONFIG.SYNCED_STORE],'readwrite');
+        const pending=tx.objectStore(CONFIG.PENDING_STORE);
+        const synced=tx.objectStore(CONFIG.SYNCED_STORE);
+        for(const id of ids){
+            const req=pending.get(id);
+            req.onsuccess=()=>{ const data=req.result; if(data){ data.synced=true; data.syncedAt=Date.now(); synced.add(data); pending.delete(id); } };
         }
-        tx.oncomplete = () => {};
+    }
+    
+    async function compressWAL() {
+        if(!db) return;
+        console.log('[WAL] Starting compression...');
+        const significantVectors = getSemanticVectors().filter(v => v.isSignificant);
+        const tx = db.transaction([CONFIG.PENDING_STORE], 'readwrite');
+        const store = tx.objectStore(CONFIG.PENDING_STORE);
+        const toDelete = [];
+        await new Promise(r => {
+            store.openCursor().onsuccess = (e) => {
+                const cur = e.target.result;
+                if(cur && cur.value.synced === false) {
+                    const isSignificant = significantVectors.some(v => 
+                        Math.abs(v.lat - cur.value.lat) < 0.00001 && Math.abs(v.lng - cur.value.lng) < 0.00001);
+                    if(!isSignificant) toDelete.push(cur.primaryKey);
+                    cur.continue();
+                } else r();
+            };
+        });
+        for(const key of toDelete) store.delete(key);
+        tx.commit();
+        console.log(`[WAL] Compressed: kept ${significantVectors.length}, deleted ${toDelete.length} redundant points`);
     }
     
     async function syncToServer() {
         if(syncLock) return;
-        syncLock = true;
-        updateSyncStatus('SYNCING', 'yellow');
-        try {
-            const pending = await getUnsyncedBatch(CONFIG.BATCH_SYNC);
-            if(pending.length) {
-                const batchId = Date.now() + '_' + Math.random().toString(36);
-                const payload = pending.map(p => ({
-                    lat: p.lat, lng: p.lng, alt: p.alt || 0,
-                    accuracy: p.accuracy, timestamp: p.timestamp,
-                    heading: p.heading, speed: p.speed
-                }));
-                const res = await fetch(CONFIG.SYNC_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ points: payload, deviceId: 'vms-tactical', batchId, version: '4.0' })
-                });
-                const result = await res.json();
-                if(result && result.success === true) {
-                    await markSynced(pending.map(p => p.id));
-                    updateSyncStatus('ONLINE', 'green');
-                    console.log(`[SYNC] Batch ${batchId} success, ${pending.length} points`);
-                } else {
-                    throw new Error('Sync failed');
-                }
-            } else {
-                updateSyncStatus('IDLE', 'green');
-            }
-        } catch(e) {
-            updateSyncStatus('ERROR', 'red');
-            console.error(e);
-        } finally {
-            syncLock = false;
-        }
+        syncLock=true;
+        updateSyncStatus('SYNCING','yellow');
+        try{
+            const pending=await getUnsyncedBatch(CONFIG.BATCH_SYNC);
+            if(pending.length){
+                const batchId=Date.now()+'_'+Math.random().toString(36);
+                const payload=pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,heading:p.heading,speed:p.speed}));
+                const res=await fetch(CONFIG.SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:payload,deviceId:'vms-tactical',batchId,version:'4.2'})});
+                const result=await res.json();
+                if(result && result.success===true){
+                    await markSynced(pending.map(p=>p.id));
+                    await compressWAL();
+                    updateSyncStatus('ONLINE','green');
+                } else throw new Error('Sync failed');
+            } else updateSyncStatus('IDLE','green');
+        } catch(e){ updateSyncStatus('ERROR','red'); }
+        finally{ syncLock=false; }
     }
     
     async function recoverFromWAL() {
         if(!db) await openDB();
-        const tx = db.transaction([CONFIG.PENDING_STORE], 'readonly');
-        const store = tx.objectStore(CONFIG.PENDING_STORE);
-        const cursor = store.openCursor();
-        let restored = 0;
-        await new Promise((resolve) => {
-            cursor.onsuccess = (e) => {
-                const cur = e.target.result;
-                if(cur && bufferLen < CONFIG.CIRCULAR_BUFFER_SIZE) {
-                    const val = cur.value;
-                    if(val.synced === false) {
-                        pushPoint({
-                            lat: val.lat, lng: val.lng, alt: val.alt || 0,
-                            accuracy: val.accuracy, timestamp: val.timestamp,
-                            heading: val.heading, speed: val.speed
-                        });
-                        restored++;
-                    }
+        const tx=db.transaction([CONFIG.PENDING_STORE],'readonly');
+        const cursor=tx.objectStore(CONFIG.PENDING_STORE).openCursor();
+        let restored=0;
+        await new Promise((resolve)=>{
+            cursor.onsuccess=(e)=>{
+                const cur=e.target.result;
+                if(cur && bufferLen<CONFIG.CIRCULAR_BUFFER_SIZE && cur.value.synced===false){
+                    pushPoint({lat:cur.value.lat,lng:cur.value.lng,alt:cur.value.alt||0,accuracy:cur.value.accuracy,timestamp:cur.value.timestamp,heading:cur.value.heading,speed:cur.value.speed});
+                    restored++;
                     cur.continue();
                 } else resolve();
             };
-            cursor.onerror = () => resolve();
+            cursor.onerror=()=>resolve();
         });
-        if(restored > 0) {
-            updateTrail();
-            updateUI();
-            if(currentTab === '3D') draw3D();
-            console.log(`[RECOVERY] Restored ${restored} points from WAL`);
-        }
+        if(restored>0){ updateTrail(); updateUI(); if(currentTab==='3D') draw3D(); }
     }
     
     function updateTrail() {
         if(!trailLine) return;
-        const latlngs = [];
-        for(let i = 0; i < bufferLen; i++) {
-            const p = getPoint(i);
-            latlngs.push([p.lat, p.lng]);
-        }
+        const latlngs=[]; for(let i=0;i<bufferLen;i++){ const p=getPoint(i); latlngs.push([p.lat,p.lng]); }
         trailLine.setLatLngs(latlngs);
-        if(bufferLen > 0) {
-            const last = getLastPoint();
-            if(!currentMarker) {
-                currentMarker = L.circleMarker([last.lat, last.lng], {
-                    radius: 11, fillColor: '#ff5a5f', color: '#fff', weight: 2, fillOpacity: 0.95
-                }).addTo(map);
-            } else {
-                currentMarker.setLatLng([last.lat, last.lng]);
-            }
+        if(bufferLen>0){
+            const last=getLastPoint();
+            if(!currentMarker) currentMarker=L.circleMarker([last.lat,last.lng],{radius:11,fillColor:'#ff5a5f',color:'#fff',weight:2,fillOpacity:0.95}).addTo(map);
+            else currentMarker.setLatLng([last.lat,last.lng]);
             if(accuracyCircle && map) map.removeLayer(accuracyCircle);
-            if(currentAccuracy > 0 && currentAccuracy < 100) {
-                accuracyCircle = L.circle([last.lat, last.lng], {
-                    radius: currentAccuracy,
-                    color: '#ffb347',
-                    weight: 1,
-                    fillColor: '#ffb347',
-                    fillOpacity: 0.15
-                }).addTo(map);
+            if(currentAccuracy>0 && currentAccuracy<100){
+                accuracyCircle=L.circle([last.lat,last.lng],{radius:currentAccuracy,color:'#ffb347',weight:1,fillColor:'#ffb347',fillOpacity:0.15}).addTo(map);
             }
         }
-        if(currentTab === '3D') draw3D();
+        if(currentTab==='3D') draw3D();
     }
     
-    let canvas3D, ctx3D;
-    let last3DHash = '';
+    let canvas3D, ctx3D, last3DHash='';
+    function init3D(){ canvas3D=document.getElementById('canvas3D'); ctx3D=canvas3D.getContext('2d'); window.addEventListener('resize',()=>{ resize3D(); if(currentTab==='3D') draw3D(); }); resize3D(); }
+    function resize3D(){ if(canvas3D){ canvas3D.width=window.innerWidth; canvas3D.height=window.innerHeight; } }
     
-    function init3D() {
-        canvas3D = document.getElementById('canvas3D');
-        ctx3D = canvas3D.getContext('2d');
-        window.addEventListener('resize', () => { resize3D(); if(currentTab === '3D') draw3D(); });
-        resize3D();
-    }
-    
-    function resize3D() {
-        if(canvas3D) {
-            canvas3D.width = window.innerWidth;
-            canvas3D.height = window.innerHeight;
-        }
-    }
-    
-    function draw3D() {
-        if(!ctx3D || bufferLen < 2) {
-            if(ctx3D) {
-                ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
-                ctx3D.fillStyle = '#aaa';
-                ctx3D.fillText("Menunggu data GPS...", 30, 80);
-            }
-            return;
-        }
-        const hash = bufferLen + '_' + (getLastPoint()?.lat || 0);
-        if(hash === last3DHash) return;
-        last3DHash = hash;
-        
-        ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
-        let minAlt = Infinity, maxAlt = -Infinity;
-        for(let i = 0; i < bufferLen; i++) {
-            const p = getPoint(i);
-            minAlt = Math.min(minAlt, p.alt || 0);
-            maxAlt = Math.max(maxAlt, p.alt || 0);
-        }
-        const altRange = Math.max(maxAlt - minAlt, 1);
-        const margin = 50;
-        const w = canvas3D.width - margin * 2;
-        const h = canvas3D.height - margin * 2;
-        
-        ctx3D.fillStyle = '#0f172a';
-        ctx3D.fillRect(0, 0, canvas3D.width, canvas3D.height);
-        
-        ctx3D.strokeStyle = '#2a3f6e';
-        ctx3D.lineWidth = 0.5;
-        for(let i = 0; i <= 5; i++) {
-            let x = margin + (w * i / 5);
-            ctx3D.beginPath();
-            ctx3D.moveTo(x, margin);
-            ctx3D.lineTo(x, margin + h);
-            ctx3D.stroke();
-            let y = margin + (h * i / 5);
-            ctx3D.beginPath();
-            ctx3D.moveTo(margin, y);
-            ctx3D.lineTo(margin + w, y);
-            ctx3D.stroke();
-        }
-        
-        const first = getPoint(0);
-        const last = getPoint(bufferLen - 1);
-        const latSpan = Math.abs(last.lat - first.lat) + 0.00001;
-        const lngSpan = Math.abs(last.lng - first.lng) + 0.00001;
-        
-        ctx3D.beginPath();
-        ctx3D.strokeStyle = '#3bc0fc';
-        ctx3D.lineWidth = 2.5;
-        const step = Math.max(1, Math.floor(bufferLen / 500));
-        for(let i = 0; i < bufferLen; i += step) {
-            const p = getPoint(i);
-            let x = margin + ((p.lng - first.lng) / lngSpan) * w;
-            let y = margin + ((first.lat - p.lat) / latSpan) * h;
-            let altOff = ((p.alt - minAlt) / altRange) * 35;
-            y -= altOff;
-            if(i === 0) ctx3D.moveTo(x, y);
-            else ctx3D.lineTo(x, y);
-        }
+    function draw3D(){
+        if(!ctx3D || bufferLen<2){ if(ctx3D){ ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height); ctx3D.fillStyle='#aaa'; ctx3D.fillText("Menunggu data GPS...",30,80); } return; }
+        const hash=bufferLen+'_'+(getLastPoint()?.lat||0);
+        if(hash===last3DHash) return;
+        last3DHash=hash;
+        ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height);
+        let minAlt=Infinity,maxAlt=-Infinity;
+        for(let i=0;i<bufferLen;i++){ const p=getPoint(i); minAlt=Math.min(minAlt,p.alt||0); maxAlt=Math.max(maxAlt,p.alt||0); }
+        const altRange=Math.max(maxAlt-minAlt,1), margin=50, w=canvas3D.width-margin*2, h=canvas3D.height-margin*2;
+        ctx3D.fillStyle='#0f172a'; ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height);
+        ctx3D.strokeStyle='#2a3f6e'; ctx3D.lineWidth=0.5;
+        for(let i=0;i<=5;i++){ let x=margin+(w*i/5); ctx3D.beginPath(); ctx3D.moveTo(x,margin); ctx3D.lineTo(x,margin+h); ctx3D.stroke(); let y=margin+(h*i/5); ctx3D.beginPath(); ctx3D.moveTo(margin,y); ctx3D.lineTo(margin+w,y); ctx3D.stroke(); }
+        const first=getPoint(0), last=getPoint(bufferLen-1);
+        const latSpan=Math.abs(last.lat-first.lat)+0.00001, lngSpan=Math.abs(last.lng-first.lng)+0.00001;
+        ctx3D.beginPath(); ctx3D.strokeStyle='#3bc0fc'; ctx3D.lineWidth=2.5;
+        const step=Math.max(1,Math.floor(bufferLen/500));
+        for(let i=0;i<bufferLen;i+=step){ const p=getPoint(i); let x=margin+((p.lng-first.lng)/lngSpan)*w; let y=margin+((first.lat-p.lat)/latSpan)*h; let altOff=((p.alt-minAlt)/altRange)*35; y-=altOff; if(i===0) ctx3D.moveTo(x,y); else ctx3D.lineTo(x,y); }
         ctx3D.stroke();
-        
-        for(let i = 0; i < bufferLen; i += step) {
-            const p = getPoint(i);
-            let x = margin + ((p.lng - first.lng) / lngSpan) * w;
-            let y = margin + ((first.lat - p.lat) / latSpan) * h;
-            let altOff = ((p.alt - minAlt) / altRange) * 35;
-            y -= altOff;
-            ctx3D.fillStyle = i === bufferLen-1 ? '#ff7760' : '#22ddbb';
-            ctx3D.beginPath();
-            ctx3D.arc(x, y, i === bufferLen-1 ? 5 : 3, 0, Math.PI*2);
-            ctx3D.fill();
-        }
+        for(let i=0;i<bufferLen;i+=step){ const p=getPoint(i); let x=margin+((p.lng-first.lng)/lngSpan)*w; let y=margin+((first.lat-p.lat)/latSpan)*h; let altOff=((p.alt-minAlt)/altRange)*35; y-=altOff; ctx3D.fillStyle=i===bufferLen-1?'#ff7760':'#22ddbb'; ctx3D.beginPath(); ctx3D.arc(x,y,i===bufferLen-1?5:3,0,Math.PI*2); ctx3D.fill(); }
     }
     
-    let lastValidCoord = null;
+    let lastValidCoord=null;
     
-    function isPointValid(lat, lng, accuracy, timestamp, speed) {
-        // Reject jika akurasi sangat buruk
-        if(accuracy && accuracy > 100) return false;
-        
-        // Reject jika timestamp terlalu lama (cached coordinate)
-        if(timestamp && (Date.now() - timestamp) > CONFIG.FRESHNESS_THRESHOLD_MS) {
-            console.log('[GPS] Stale coordinate rejected');
-            return false;
-        }
-        
+    function isPointValid(lat,lng,accuracy,timestamp,speed){
+        if(accuracy && accuracy>100) return false;
+        if(timestamp && (Date.now()-timestamp)>CONFIG.FRESHNESS_THRESHOLD_MS) return false;
         if(!lastValidCoord) return true;
-        
-        const dt = (timestamp - lastValidCoord.t) / 1000;
-        if(dt < 0.05) return false;
-        
-        const dist = haversine(lastValidCoord.lat, lastValidCoord.lng, lat, lng);
-        if(dist > CONFIG.MAX_JUMP_METERS) return false;
-        
-        const spd = dist / dt;
-        if(spd > CONFIG.MAX_SPEED_MS) return false;
-        
+        const dt=(timestamp-lastValidCoord.t)/1000;
+        if(dt<0.05) return false;
+        const dist=haversine(lastValidCoord.lat,lastValidCoord.lng,lat,lng);
+        if(dist>CONFIG.MAX_JUMP_METERS) return false;
+        const spd=dist/dt;
+        if(spd>CONFIG.MAX_SPEED_MS) return false;
         return true;
     }
     
-    function smoothPoint(newLat, newLng) {
-        if(!lastPosition) return { lat: newLat, lng: newLng };
-        const f = CONFIG.SMOOTHING_FACTOR;
-        return {
-            lat: lastPosition.lat * (1-f) + newLat * f,
-            lng: lastPosition.lng * (1-f) + newLng * f
-        };
+    function smoothPoint(newLat,newLng){
+        if(!lastPosition) return {lat:newLat,lng:newLng};
+        const f=CONFIG.SMOOTHING_FACTOR;
+        return {lat:lastPosition.lat*(1-f)+newLat*f, lng:lastPosition.lng*(1-f)+newLng*f};
     }
     
-    let lastCenterTime = 0;
+    let lastCenterTime=0;
     
-    async function addPoint(lat, lng, accuracy, heading, speed, altitude, timestamp) {
-        const smoothed = smoothPoint(lat, lng);
-        const point = {
-            lat: smoothed.lat, lng: smoothed.lng, alt: altitude || 0,
-            accuracy: accuracy || 0, heading: heading || 0,
-            speed: speed || 0, timestamp: timestamp || Date.now()
-        };
-        const last = getLastPoint();
-        if(last && haversine(last.lat, last.lng, point.lat, point.lng) < 1.5) return;
+    async function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
+        const smoothed=smoothPoint(lat,lng);
+        const point={lat:smoothed.lat,lng:smoothed.lng,alt:altitude||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now()};
+        
+        // FIX P0: Get previous point BEFORE push
+        const prevPoint = getLastPoint();
+        if(prevPoint && haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng) < 1.5) return;
+        
+        // Calculate vector-based bearing (lebih akurat dari GPS heading)
+        if(prevPoint) {
+            const vectorBearing = calculateBearing(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
+            if(vectorBearing !== null) point.heading = vectorBearing;
+        }
+        
+        // Add to movement intelligence dengan prevPoint yang benar
+        addMovementVector(point, prevPoint);
         
         pushPoint(point);
         await addToWAL(point);
         updateTrail();
         
-        if(isTracking && map && currentTab === '2D') {
-            const now = Date.now();
-            if(now - lastCenterTime >= CONFIG.CAMERA_THROTTLE_MS) {
-                map.setView([lat, lng], map.getZoom());
-                lastCenterTime = now;
-            }
+        if(isTracking && map && currentTab==='2D'){
+            const now=Date.now();
+            if(now-lastCenterTime>=CONFIG.CAMERA_THROTTLE_MS){ map.setView([lat,lng],map.getZoom()); lastCenterTime=now; }
         }
-        if(currentTab === '3D') draw3D();
+        if(currentTab==='3D') draw3D();
     }
     
-    function onGPSPosition(pos) {
-        const { latitude, longitude, accuracy, heading, speed, altitude, timestamp } = pos.coords;
-        currentAccuracy = accuracy;
-        const now = Date.now();
-        const ts = timestamp || now;
-        const currentSpeed = speed || 0;
-        
-        document.getElementById('speedText').innerHTML = currentSpeed.toFixed(1);
-        lastSpeed = currentSpeed;
-        
-        // Adaptive GPS profile switching
-        updateGPSProfile(currentSpeed, accuracy);
-        
-        if(!isPointValid(latitude, longitude, accuracy, ts, currentSpeed)) {
-            document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m (reject)`;
+    function onGPSPosition(pos){
+        const {latitude,longitude,accuracy,heading,speed,altitude,timestamp}=pos.coords;
+        currentAccuracy=accuracy;
+        const now=Date.now();
+        const ts=timestamp||now;
+        const currentSpeed=speed||0;
+        document.getElementById('speedText').innerHTML=currentSpeed.toFixed(1);
+        lastSpeed=currentSpeed;
+        updateGPSProfile(currentSpeed,accuracy);
+        if(!isPointValid(latitude,longitude,accuracy,ts,currentSpeed)){
+            document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m (reject)`;
             return;
         }
-        
-        lastValidCoord = { lat: latitude, lng: longitude, t: ts };
-        updateGPSStatus('ACTIVE', 'green', accuracy);
-        document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m`;
-        addPoint(latitude, longitude, accuracy, heading, currentSpeed, altitude, ts);
+        lastValidCoord={lat:latitude,lng:longitude,t:ts};
+        updateGPSStatus('ACTIVE','green',accuracy);
+        document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m`;
+        addPoint(latitude,longitude,accuracy,heading,currentSpeed,altitude,ts);
     }
     
-    function onGPSError(err) {
-        let msg = err.code === 1 ? 'DENIED' : (err.code === 2 ? 'SIGNAL WEAK' : 'TIMEOUT');
-        updateGPSStatus(msg, 'red', null);
-        document.getElementById('accuracyText').innerHTML = `--m`;
+    function onGPSError(err){
+        let msg=err.code===1?'DENIED':(err.code===2?'SIGNAL WEAK':'TIMEOUT');
+        updateGPSStatus(msg,'red',null);
+        document.getElementById('accuracyText').innerHTML=`--m`;
     }
     
-    function updateGPSStatus(status, ledColor, accuracy) {
-        const led = document.getElementById('gpsLed');
-        led.className = 'led';
-        led.classList.add(ledColor === 'green' ? 'led-green' : (ledColor === 'red' ? 'led-red' : 'led-yellow'));
-        document.getElementById('gpsText').innerHTML = `GPS: ${status}`;
-        if(accuracy) document.getElementById('accuracyText').innerHTML = `${Math.round(accuracy)}m`;
+    function updateGPSStatus(status,ledColor,accuracy){
+        const led=document.getElementById('gpsLed');
+        led.className='led';
+        led.classList.add(ledColor==='green'?'led-green':(ledColor==='red'?'led-red':'led-yellow'));
+        document.getElementById('gpsText').innerHTML=`GPS: ${status}`;
+        if(accuracy) document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m`;
     }
     
-    function updateSyncStatus(status, ledColor) {
-        const led = document.getElementById('syncLed');
-        led.className = 'led';
-        led.classList.add(ledColor === 'green' ? 'led-green' : (ledColor === 'red' ? 'led-red' : 'led-yellow'));
-        document.getElementById('syncText').innerHTML = `Sync: ${status}`;
+    function updateSyncStatus(status,ledColor){
+        const led=document.getElementById('syncLed');
+        led.className='led';
+        led.classList.add(ledColor==='green'?'led-green':(ledColor==='red'?'led-red':'led-yellow'));
+        document.getElementById('syncText').innerHTML=`Sync: ${status}`;
     }
     
-    function updateUI() {
-        document.getElementById('pointCounter').innerText = totalPoints;
-        document.getElementById('statsBox').innerHTML = `Points:${totalPoints} | Saved:${savedTracks.length}`;
-        if(lastPosition && lastPosition.alt !== undefined) {
-            document.getElementById('altText').innerHTML = `${Math.round(lastPosition.alt)}m`;
-        }
+    function updateUI(){
+        document.getElementById('pointCounter').innerText=totalPoints;
+        document.getElementById('statsBox').innerHTML=`Points:${totalPoints} | Saved:${savedTracks.length}`;
+        if(lastPosition && lastPosition.alt!==undefined) document.getElementById('altText').innerHTML=`${Math.round(lastPosition.alt)}m`;
+        const totalDist = computeTotalDistance();
+        document.getElementById('totalDistance').innerHTML = `${Math.round(totalDist)} m`;
     }
     
-    function initMap() {
-        map = L.map('map', { preferCanvas: true }).setView([-6.2088, 106.8456], 15);
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© OSM',
-            subdomains: 'abcd'
-        }).addTo(map);
-        trailLine = L.polyline([], { color: '#1e88e5', weight: 4, smoothFactor: 2 }).addTo(map);
-        if(navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(pos => {
-                map.setView([pos.coords.latitude, pos.coords.longitude], 16);
-            }, null, { timeout: 4000 });
-        }
+    function initMap(){
+        map=L.map('map',{preferCanvas:true}).setView([-6.2088,106.8456],15);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'© OSM',subdomains:'abcd'}).addTo(map);
+        trailLine=L.polyline([],{color:'#1e88e5',weight:4,smoothFactor:2}).addTo(map);
+        if(navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],16),null,{timeout:4000});
     }
     
-    function centerMap() {
-        if(lastPosition && map && currentTab === '2D') {
-            map.setView([lastPosition.lat, lastPosition.lng], 18);
-            lastCenterTime = Date.now();
-        }
-    }
+    function centerMap(){ if(lastPosition && map && currentTab==='2D'){ map.setView([lastPosition.lat,lastPosition.lng],18); lastCenterTime=Date.now(); } }
     
-    function startTracking() {
+    function startTracking(){
         if(isTracking) return;
-        if(!navigator.geolocation) { alert("GPS tidak didukung"); return; }
-        
+        if(!navigator.geolocation){ alert("GPS tidak didukung"); return; }
         acquireWakeLock();
-        
-        navigator.permissions.query({ name: 'geolocation' }).then(result => {
-            if(result.state === 'denied') {
-                alert("Izinkan akses lokasi untuk tracking");
-                return;
-            }
-            watchId = navigator.geolocation.watchPosition(onGPSPosition, onGPSError, GPS_PROFILES[currentProfile]);
-            isTracking = true;
-            document.getElementById('startBtn').style.display = 'none';
-            document.getElementById('stopBtn').style.display = 'inline-block';
-            updateGPSStatus('ACTIVE', 'green', null);
-            
-            // Start recalibration interval
+        navigator.permissions.query({name:'geolocation'}).then(result=>{
+            if(result.state==='denied'){ alert("Izinkan akses lokasi"); return; }
+            watchId=navigator.geolocation.watchPosition(onGPSPosition,onGPSError,GPS_PROFILES[currentProfile]);
+            isTracking=true;
+            document.getElementById('startBtn').style.display='none';
+            document.getElementById('stopBtn').style.display='inline-block';
+            updateGPSStatus('ACTIVE','green',null);
             if(window.recalInterval) clearInterval(window.recalInterval);
-            window.recalInterval = setInterval(() => recalibratePosition(), CONFIG.RECALIBRATION_INTERVAL_MS);
-        }).catch(() => {
-            watchId = navigator.geolocation.watchPosition(onGPSPosition, onGPSError, GPS_PROFILES[currentProfile]);
-            isTracking = true;
-            document.getElementById('startBtn').style.display = 'none';
-            document.getElementById('stopBtn').style.display = 'inline-block';
-            updateGPSStatus('ACTIVE', 'green', null);
+            window.recalInterval=setInterval(()=>recalibratePosition(),CONFIG.RECALIBRATION_INTERVAL_MS);
+        }).catch(()=>{
+            watchId=navigator.geolocation.watchPosition(onGPSPosition,onGPSError,GPS_PROFILES[currentProfile]);
+            isTracking=true;
+            document.getElementById('startBtn').style.display='none';
+            document.getElementById('stopBtn').style.display='inline-block';
+            updateGPSStatus('ACTIVE','green',null);
             if(window.recalInterval) clearInterval(window.recalInterval);
-            window.recalInterval = setInterval(() => recalibratePosition(), CONFIG.RECALIBRATION_INTERVAL_MS);
+            window.recalInterval=setInterval(()=>recalibratePosition(),CONFIG.RECALIBRATION_INTERVAL_MS);
         });
     }
     
-    function stopTracking() {
-        if(watchId) {
-            navigator.geolocation.clearWatch(watchId);
-            watchId = null;
-        }
-        isTracking = false;
+    function stopTracking(){
+        if(watchId){ navigator.geolocation.clearWatch(watchId); watchId=null; }
+        isTracking=false;
         releaseWakeLock();
         if(window.recalInterval) clearInterval(window.recalInterval);
-        document.getElementById('startBtn').style.display = 'inline-block';
-        document.getElementById('stopBtn').style.display = 'none';
-        updateGPSStatus('STOP', 'red', null);
+        document.getElementById('startBtn').style.display='inline-block';
+        document.getElementById('stopBtn').style.display='none';
+        updateGPSStatus('STOP','red',null);
     }
     
-    let savedTracks = [];
+    let savedTracks=[];
     
-    async function saveCurrentTrack() {
-        if(bufferLen === 0) { alert("Tidak ada titik untuk disimpan"); return; }
-        const name = prompt("Nama track:", `SAR Track ${new Date().toLocaleString()}`);
+    async function saveCurrentTrack(){
+        if(bufferLen===0){ alert("Tidak ada titik untuk disimpan"); return; }
+        const name=prompt("Nama track:",`Track ${new Date().toLocaleString()}`);
         if(!name) return;
-        const distance = computeTotalDistance();
-        const trackId = Date.now() + '_' + Math.random().toString(36);
-        const points = getAllPoints();
-        const trackData = {
-            trackId, name, date: Date.now(), dateStr: new Date().toLocaleString(),
-            totalPoints: bufferLen, distance, points
-        };
+        const distance=computeTotalDistance();
+        const trackId=Date.now()+'_'+Math.random().toString(36);
+        const points=getAllPoints();
+        const trackData={trackId,name,date:Date.now(),dateStr:new Date().toLocaleString(),totalPoints:bufferLen,distance,points};
         if(!db) await openDB();
-        const tx = db.transaction([CONFIG.TRACKS_STORE], 'readwrite');
+        const tx=db.transaction([CONFIG.TRACKS_STORE],'readwrite');
         tx.objectStore(CONFIG.TRACKS_STORE).add(trackData);
-        savedTracks.unshift({ trackId, name, dateStr: trackData.dateStr, totalPoints: bufferLen, distance });
-        if(savedTracks.length > 25) savedTracks.pop();
+        savedTracks.unshift({trackId,name,dateStr:trackData.dateStr,totalPoints:bufferLen,distance});
+        if(savedTracks.length>25) savedTracks.pop();
         updateHistoryList();
         updateUI();
         alert(`✅ Track "${name}" tersimpan (${distance.toFixed(0)} meter)`);
     }
     
-    function updateHistoryList() {
-        const container = document.getElementById('historyList');
-        if(savedTracks.length === 0) {
-            container.innerHTML = '<div>Belum ada track tersimpan</div>';
-            return;
-        }
-        container.innerHTML = savedTracks.map(t => `
-            <div class="history-item" onclick="window.loadTrack('${t.trackId}')">
-                <div>📌 ${escapeHtml(t.name)}</div>
-                <div>📅 ${t.dateStr} | ${t.totalPoints} titik | 🧭 ${t.distance.toFixed(0)} m</div>
-                <div style="color:#ff8a7a;" onclick="event.stopPropagation();window.deleteTrack('${t.trackId}')">🗑 Hapus</div>
-            </div>
-        `).join('');
+    function updateHistoryList(){
+        const container=document.getElementById('historyList');
+        if(savedTracks.length===0){ container.innerHTML='<div>Belum ada track tersimpan</div>'; return; }
+        container.innerHTML=savedTracks.map(t=>`<div class="history-item" onclick="window.loadTrack('${t.trackId}')"><div>📌 ${escapeHtml(t.name)}</div><div>📅 ${t.dateStr} | ${t.totalPoints} titik | 🧭 ${t.distance.toFixed(0)} m</div><div style="color:#ff8a7a;" onclick="event.stopPropagation();window.deleteTrack('${t.trackId}')">🗑 Hapus</div></div>`).join('');
     }
     
-    window.loadTrack = async (trackId) => {
+    window.loadTrack=async(trackId)=>{
         if(!db) await openDB();
-        const tx = db.transaction([CONFIG.TRACKS_STORE], 'readonly');
-        const req = tx.objectStore(CONFIG.TRACKS_STORE).get(trackId);
-        req.onsuccess = () => {
-            const track = req.result;
-            if(track && confirm(`Muat track "${track.name}"? Data saat ini akan diganti.`)) {
+        const tx=db.transaction([CONFIG.TRACKS_STORE],'readonly');
+        const req=tx.objectStore(CONFIG.TRACKS_STORE).get(trackId);
+        req.onsuccess=()=>{
+            const track=req.result;
+            if(track && confirm(`Muat track "${track.name}"?`)){
                 clearBuffer();
                 for(const p of track.points) pushPoint(p);
                 updateTrail();
-                if(map && lastPosition) map.setView([lastPosition.lat, lastPosition.lng], 16);
-                if(currentTab === '3D') draw3D();
+                if(map && lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16);
+                if(currentTab==='3D') draw3D();
                 document.getElementById('historyPanel').classList.remove('show');
             }
         };
     };
     
-    window.deleteTrack = async (trackId) => {
-        if(confirm("Hapus track ini?")) {
-            savedTracks = savedTracks.filter(t => t.trackId !== trackId);
+    window.deleteTrack=async(trackId)=>{
+        if(confirm("Hapus track ini?")){
+            savedTracks=savedTracks.filter(t=>t.trackId!==trackId);
             if(!db) await openDB();
-            const tx = db.transaction([CONFIG.TRACKS_STORE], 'readwrite');
+            const tx=db.transaction([CONFIG.TRACKS_STORE],'readwrite');
             tx.objectStore(CONFIG.TRACKS_STORE).delete(trackId);
             updateHistoryList();
             updateUI();
         }
     };
     
-    async function loadSavedTracks() {
+    async function loadSavedTracks(){
         if(!db) await openDB();
-        const tx = db.transaction([CONFIG.TRACKS_STORE], 'readonly');
-        const store = tx.objectStore(CONFIG.TRACKS_STORE);
-        const tracks = [];
-        await new Promise(r => {
-            store.openCursor().onsuccess = (e) => {
-                const cur = e.target.result;
-                if(cur) {
-                    const { points, ...meta } = cur.value;
-                    tracks.push(meta);
-                    cur.continue();
-                } else r();
-            };
-        });
-        if(tracks.length) {
-            savedTracks = tracks.sort((a,b) => b.date - a.date);
-            updateHistoryList();
-        }
+        const tx=db.transaction([CONFIG.TRACKS_STORE],'readonly');
+        const store=tx.objectStore(CONFIG.TRACKS_STORE);
+        const tracks=[];
+        await new Promise(r=>{ store.openCursor().onsuccess=(e)=>{ const cur=e.target.result; if(cur){ const {points,...meta}=cur.value; tracks.push(meta); cur.continue(); } else r(); }; });
+        if(tracks.length){ savedTracks=tracks.sort((a,b)=>b.date-a.date); updateHistoryList(); }
     }
     
-    let returnMode = false;
-    let returnInterval = null;
-    let returnLine = null;
+    let returnMode=false, returnInterval=null, returnLine=null;
     
-    function toggleReturnMode() {
-        if(bufferLen === 0) { alert("Tidak ada jalur untuk kembali"); return; }
-        returnMode = !returnMode;
-        const btn = document.getElementById('returnBtn');
-        const info = document.getElementById('breadcrumbInfo');
-        if(returnMode) {
-            btn.innerHTML = '📍 BACKTRACK ON';
-            btn.style.background = '#2c6e2f';
-            info.classList.add('show');
+    function toggleReturnMode(){
+        if(bufferLen===0){ alert("Tidak ada jalur untuk kembali"); return; }
+        returnMode=!returnMode;
+        const btn=document.getElementById('returnBtn');
+        const info=document.getElementById('breadcrumbInfo');
+        if(returnMode){
+            btn.innerHTML='📍 BACKTRACK ON'; btn.style.background='#2c6e2f'; info.classList.add('show');
             if(returnInterval) clearInterval(returnInterval);
-            returnInterval = setInterval(updateReturnDistance, 1500);
+            returnInterval=setInterval(updateReturnDistance,1500);
             updateReturnDistance();
             if(returnLine && map) map.removeLayer(returnLine);
-            const start = getPoint(0);
-            const now = getLastPoint();
-            returnLine = L.polyline([[now.lat, now.lng], [start.lat, start.lng]], {
-                color: '#fd7e2c', weight: 3, dashArray: '8,8'
-            }).addTo(map);
+            const start=getPoint(0), now=getLastPoint();
+            returnLine=L.polyline([[now.lat,now.lng],[start.lat,start.lng]],{color:'#fd7e2c',weight:3,dashArray:'8,8'}).addTo(map);
         } else {
-            btn.innerHTML = '🏠 RETURN';
-            btn.style.background = '#fd7e2c';
-            info.classList.remove('show');
+            btn.innerHTML='🏠 RETURN'; btn.style.background='#fd7e2c'; info.classList.remove('show');
             if(returnInterval) clearInterval(returnInterval);
             if(returnLine && map) map.removeLayer(returnLine);
-            returnLine = null;
+            returnLine=null;
         }
     }
     
-    function updateReturnDistance() {
-        if(!returnMode || bufferLen < 1) return;
-        const dist = computeTotalDistance();
-        document.getElementById('returnDistance').innerHTML = `${Math.round(dist)} meter (true path)`;
-    }
+    function updateReturnDistance(){ if(!returnMode || bufferLen<1) return; const dist=computeTotalDistance(); document.getElementById('returnDistance').innerHTML=`${Math.round(dist)} meter (true path)`; }
     
-    let playbackActive = false;
-    let playbackTimer = null;
-    let playbackPoints = [];
-    let playbackIndex = 0;
-    let playbackMarker = null;
-    let isPlaying = false;
+    let playbackActive=false, playbackTimer=null, playbackPoints=[], playbackIndex=0, playbackMarker=null, isPlaying=false;
     
-    function stopPlayback() {
-        if(playbackTimer) cancelAnimationFrame(playbackTimer);
-        playbackActive = false;
-        isPlaying = false;
-        if(playbackMarker && map) map.removeLayer(playbackMarker);
-        playbackMarker = null;
-        document.getElementById('playbackBar').classList.remove('show');
-    }
+    function stopPlayback(){ if(playbackTimer) cancelAnimationFrame(playbackTimer); playbackActive=false; isPlaying=false; if(playbackMarker && map) map.removeLayer(playbackMarker); playbackMarker=null; document.getElementById('playbackBar').classList.remove('show'); }
     
-    function startPlayback() {
-        if(bufferLen < 2) { alert("Tidak ada titik untuk replay"); return; }
+    function startPlayback(){
+        if(bufferLen<2){ alert("Tidak ada titik untuk replay"); return; }
         stopPlayback();
-        const maxPoints = 2000;
-        const step = Math.max(1, Math.ceil(bufferLen / maxPoints));
-        playbackPoints = [];
-        for(let i = 0; i < bufferLen; i += step) playbackPoints.push(getPoint(i));
-        const last = getLastPoint();
-        if(playbackPoints[playbackPoints.length-1] !== last) playbackPoints.push(last);
-        
-        playbackIndex = 0;
-        playbackActive = true;
-        isPlaying = true;
-        
-        const bar = document.getElementById('playbackBar');
-        bar.classList.add('show');
-        const slider = document.getElementById('playbackSlider');
-        slider.max = playbackPoints.length - 1;
-        slider.value = 0;
-        document.getElementById('playbackPercent').innerText = "0%";
-        
-        if(!playbackMarker) {
-            playbackMarker = L.circleMarker([playbackPoints[0].lat, playbackPoints[0].lng], {
-                radius: 8, color: '#f1c40f', fillColor: '#f39c12', weight: 3
-            }).addTo(map);
-        }
-        
-        let lastFrame = 0;
-        function animate(now) {
+        const maxPoints=2000, step=Math.max(1,Math.ceil(bufferLen/maxPoints));
+        playbackPoints=[]; for(let i=0;i<bufferLen;i+=step) playbackPoints.push(getPoint(i));
+        const last=getLastPoint(); if(playbackPoints[playbackPoints.length-1]!==last) playbackPoints.push(last);
+        playbackIndex=0; playbackActive=true; isPlaying=true;
+        const bar=document.getElementById('playbackBar'); bar.classList.add('show');
+        const slider=document.getElementById('playbackSlider'); slider.max=playbackPoints.length-1; slider.value=0;
+        document.getElementById('playbackPercent').innerText="0%";
+        if(!playbackMarker) playbackMarker=L.circleMarker([playbackPoints[0].lat,playbackPoints[0].lng],{radius:8,color:'#f1c40f',fillColor:'#f39c12',weight:3}).addTo(map);
+        let lastFrame=0;
+        function animate(now){
             if(!playbackActive || !isPlaying) return;
-            if(now - lastFrame >= CONFIG.PLAYBACK_FRAME_MS) {
-                lastFrame = now;
-                if(playbackIndex < playbackPoints.length) {
-                    const p = playbackPoints[playbackIndex];
-                    playbackMarker.setLatLng([p.lat, p.lng]);
-                    if(map && currentTab === '2D') {
-                        map.setView([p.lat, p.lng], map.getZoom());
-                    }
-                    document.getElementById('playbackSlider').value = playbackIndex;
-                    document.getElementById('playbackPercent').innerText = Math.round((playbackIndex / playbackPoints.length) * 100) + "%";
+            if(now-lastFrame>=CONFIG.PLAYBACK_FRAME_MS){
+                lastFrame=now;
+                if(playbackIndex<playbackPoints.length){
+                    const p=playbackPoints[playbackIndex];
+                    playbackMarker.setLatLng([p.lat,p.lng]);
+                    if(map && currentTab==='2D') map.setView([p.lat,p.lng],map.getZoom());
+                    document.getElementById('playbackSlider').value=playbackIndex;
+                    document.getElementById('playbackPercent').innerText=Math.round((playbackIndex/playbackPoints.length)*100)+"%";
                     playbackIndex++;
-                    playbackTimer = requestAnimationFrame(animate);
-                } else {
-                    stopPlayback();
-                    alert("Replay selesai");
-                }
-            } else {
-                playbackTimer = requestAnimationFrame(animate);
-            }
+                    playbackTimer=requestAnimationFrame(animate);
+                } else { stopPlayback(); alert("Replay selesai"); }
+            } else { playbackTimer=requestAnimationFrame(animate); }
         }
-        playbackTimer = requestAnimationFrame(animate);
+        playbackTimer=requestAnimationFrame(animate);
     }
     
-    function pausePlayback() { isPlaying = false; if(playbackTimer) cancelAnimationFrame(playbackTimer); }
-    function resumePlayback() {
-        if(playbackActive && !isPlaying && playbackIndex < playbackPoints.length) {
-            isPlaying = true;
-            let lastFrame = 0;
-            function animate(now) {
+    function pausePlayback(){ isPlaying=false; if(playbackTimer) cancelAnimationFrame(playbackTimer); }
+    function resumePlayback(){
+        if(playbackActive && !isPlaying && playbackIndex<playbackPoints.length){
+            isPlaying=true;
+            let lastFrame=0;
+            function animate(now){
                 if(!playbackActive || !isPlaying) return;
-                if(now - lastFrame >= CONFIG.PLAYBACK_FRAME_MS) {
-                    lastFrame = now;
-                    if(playbackIndex < playbackPoints.length) {
-                        const p = playbackPoints[playbackIndex];
-                        playbackMarker.setLatLng([p.lat, p.lng]);
-                        if(map && currentTab === '2D') map.setView([p.lat, p.lng], map.getZoom());
-                        document.getElementById('playbackSlider').value = playbackIndex;
-                        document.getElementById('playbackPercent').innerText = Math.round((playbackIndex / playbackPoints.length) * 100) + "%";
+                if(now-lastFrame>=CONFIG.PLAYBACK_FRAME_MS){
+                    lastFrame=now;
+                    if(playbackIndex<playbackPoints.length){
+                        const p=playbackPoints[playbackIndex];
+                        playbackMarker.setLatLng([p.lat,p.lng]);
+                        if(map && currentTab==='2D') map.setView([p.lat,p.lng],map.getZoom());
+                        document.getElementById('playbackSlider').value=playbackIndex;
+                        document.getElementById('playbackPercent').innerText=Math.round((playbackIndex/playbackPoints.length)*100)+"%";
                         playbackIndex++;
-                        playbackTimer = requestAnimationFrame(animate);
+                        playbackTimer=requestAnimationFrame(animate);
                     } else stopPlayback();
-                } else { playbackTimer = requestAnimationFrame(animate); }
+                } else { playbackTimer=requestAnimationFrame(animate); }
             }
-            playbackTimer = requestAnimationFrame(animate);
+            playbackTimer=requestAnimationFrame(animate);
         }
     }
     
-    let syncWorker = null;
-    let workerBlobUrl = null;
-    
-    function initWorker() {
-        if(syncWorker) { syncWorker.terminate(); syncWorker = null; }
-        if(workerBlobUrl) { URL.revokeObjectURL(workerBlobUrl); workerBlobUrl = null; }
-        const blob = new Blob([`
-            let interval;
-            let active = true;
-            self.onmessage = (e) => {
-                if(e.data.type === 'START') {
-                    if(interval) clearInterval(interval);
-                    interval = setInterval(() => {
-                        if(active) self.postMessage({type: 'SYNC'});
-                    }, ${CONFIG.AUTO_SYNC_INTERVAL_MS});
-                } else if(e.data.type === 'VISIBILITY') {
-                    active = e.data.visible;
-                }
-            };
-        `], { type: 'application/javascript' });
-        workerBlobUrl = URL.createObjectURL(blob);
-        syncWorker = new Worker(workerBlobUrl);
-        syncWorker.onmessage = () => { syncToServer(); };
-        syncWorker.postMessage({ type: 'START' });
+    let syncWorker=null, workerBlobUrl=null;
+    function initWorker(){
+        if(syncWorker){ syncWorker.terminate(); syncWorker=null; }
+        if(workerBlobUrl){ URL.revokeObjectURL(workerBlobUrl); workerBlobUrl=null; }
+        const blob=new Blob([`let interval,active=true; self.onmessage=(e)=>{ if(e.data.type==='START'){ if(interval) clearInterval(interval); interval=setInterval(()=>{ if(active) self.postMessage({type:'SYNC'}); },${CONFIG.AUTO_SYNC_INTERVAL_MS}); } else if(e.data.type==='VISIBILITY') active=e.data.visible; };`],{type:'application/javascript'});
+        workerBlobUrl=URL.createObjectURL(blob);
+        syncWorker=new Worker(workerBlobUrl);
+        syncWorker.onmessage=()=>{ syncToServer(); };
+        syncWorker.postMessage({type:'START'});
     }
     
-    let currentTab = '2D';
-    
-    function switchTab(tab) {
-        currentTab = tab;
-        const mapDiv = document.getElementById('map');
-        const canvasDiv = document.getElementById('canvas3D');
-        const btn2D = document.getElementById('btn2D');
-        const btn3D = document.getElementById('btn3D');
-        if(tab === '2D') {
-            mapDiv.style.display = 'block';
-            canvasDiv.style.display = 'none';
-            btn2D.classList.add('active');
-            btn3D.classList.remove('active');
-            if(map) map.invalidateSize();
-        } else {
-            mapDiv.style.display = 'none';
-            canvasDiv.style.display = 'block';
-            btn2D.classList.remove('active');
-            btn3D.classList.add('active');
-            resize3D();
-            draw3D();
-        }
+    let currentTab='2D';
+    function switchTab(tab){
+        currentTab=tab;
+        const mapDiv=document.getElementById('map'), canvasDiv=document.getElementById('canvas3D'), btn2D=document.getElementById('btn2D'), btn3D=document.getElementById('btn3D');
+        if(tab==='2D'){ mapDiv.style.display='block'; canvasDiv.style.display='none'; btn2D.classList.add('active'); btn3D.classList.remove('active'); if(map) map.invalidateSize(); }
+        else { mapDiv.style.display='none'; canvasDiv.style.display='block'; btn2D.classList.remove('active'); btn3D.classList.add('active'); resize3D(); draw3D(); }
     }
     
-    function clearAll() {
-        if(confirm("Hapus semua titik tracking? Data tersimpan tetap ada.")) {
+    function clearAll(){
+        if(confirm("Hapus semua titik tracking? Data tersimpan tetap ada.")){
             clearBuffer();
             updateTrail();
             updateUI();
-            if(currentTab === '3D') draw3D();
-            updateGPSStatus('CLEARED', 'red', null);
+            if(currentTab==='3D') draw3D();
+            updateGPSStatus('CLEARED','red',null);
         }
     }
     
-    function openSheet() {
-        window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit', '_blank');
-    }
+    function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit','_blank'); }
+    function toggleHistory(){ document.getElementById('historyPanel').classList.toggle('show'); }
+    function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g,(m)=>m==='&'?'&amp;':(m==='<'?'&lt;':'&gt;')); }
     
-    function toggleHistory() {
-        document.getElementById('historyPanel').classList.toggle('show');
-    }
+    window.addEventListener('pagehide',()=>{ if(watchId) navigator.geolocation.clearWatch(watchId); if(syncWorker) syncWorker.terminate(); releaseWakeLock(); });
+    document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(syncWorker){ syncWorker.terminate(); syncWorker=null; } initWorker(); if(isTracking && !wakeLock) acquireWakeLock(); } });
     
-    function escapeHtml(str) {
-        if(!str) return '';
-        return str.replace(/[&<>]/g, (m) => m === '&' ? '&amp;' : (m === '<' ? '&lt;' : '&gt;'));
-    }
-    
-    window.addEventListener('pagehide', () => {
-        if(watchId) navigator.geolocation.clearWatch(watchId);
-        if(syncWorker) syncWorker.terminate();
-        releaseWakeLock();
-    });
-    
-    document.addEventListener('visibilitychange', () => {
-        if(document.visibilityState === 'visible') {
-            if(syncWorker) { syncWorker.terminate(); syncWorker = null; }
-            initWorker();
-            if(isTracking && !wakeLock) acquireWakeLock();
-        }
-    });
-    
-    async function bootstrap() {
-        console.log("VMS v4.0 - Adaptive GPS Engine | Tactical Grade");
-        console.log("Features: 3 GPS Profiles | WakeLock API | Auto Recalibration | Freshness Check");
+    async function bootstrap(){
+        console.log("VMS v4.2 - Digital Escort Movement Intelligence");
+        console.log("Patches: P0 fixed | Vector bearing | Semantic circular buffer | Lost pattern cooldown | WAL compression");
         await openDB();
         await recoverFromWAL();
         initMap();
@@ -1046,50 +949,38 @@
         await loadSavedTracks();
         initWorker();
         
-        document.getElementById('startBtn').onclick = startTracking;
-        document.getElementById('stopBtn').onclick = stopTracking;
-        document.getElementById('syncBtn').onclick = () => syncToServer();
-        document.getElementById('clearBtn').onclick = clearAll;
-        document.getElementById('centerBtn').onclick = centerMap;
-        document.getElementById('saveBtn').onclick = saveCurrentTrack;
-        document.getElementById('historyBtn').onclick = toggleHistory;
-        document.getElementById('returnBtn').onclick = toggleReturnMode;
-        document.getElementById('sheetBtn').onclick = openSheet;
-        document.getElementById('btn2D').onclick = () => switchTab('2D');
-        document.getElementById('btn3D').onclick = () => switchTab('3D');
-        document.getElementById('playbackToggleBtn').onclick = () => {
-            if(playbackActive) stopPlayback();
-            else startPlayback();
-        };
-        document.getElementById('playPauseBtn')?.addEventListener('click', () => {
+        document.getElementById('startBtn').onclick=startTracking;
+        document.getElementById('stopBtn').onclick=stopTracking;
+        document.getElementById('syncBtn').onclick=()=>syncToServer();
+        document.getElementById('clearBtn').onclick=clearAll;
+        document.getElementById('centerBtn').onclick=centerMap;
+        document.getElementById('saveBtn').onclick=saveCurrentTrack;
+        document.getElementById('historyBtn').onclick=toggleHistory;
+        document.getElementById('returnBtn').onclick=toggleReturnMode;
+        document.getElementById('sheetBtn').onclick=openSheet;
+        document.getElementById('btn2D').onclick=()=>switchTab('2D');
+        document.getElementById('btn3D').onclick=()=>switchTab('3D');
+        document.getElementById('btnSemantic').onclick=toggleSemanticPanel;
+        document.getElementById('playbackToggleBtn').onclick=()=>{ if(playbackActive) stopPlayback(); else startPlayback(); };
+        document.getElementById('playPauseBtn')?.addEventListener('click',()=>{ if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); });
+        document.getElementById('stopPlaybackBtn')?.addEventListener('click',()=>stopPlayback());
+        document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{
             if(!playbackActive) return;
-            if(isPlaying) pausePlayback();
-            else resumePlayback();
-        });
-        document.getElementById('stopPlaybackBtn')?.addEventListener('click', () => stopPlayback());
-        document.getElementById('playbackSlider')?.addEventListener('input', (e) => {
-            if(!playbackActive) return;
-            const idx = parseInt(e.target.value);
-            if(idx >= 0 && idx < playbackPoints.length) {
-                playbackIndex = idx;
-                const p = playbackPoints[playbackIndex];
-                playbackMarker.setLatLng([p.lat, p.lng]);
-                map.setView([p.lat, p.lng], map.getZoom());
-                document.getElementById('playbackPercent').innerText = Math.round((idx / playbackPoints.length) * 100) + "%";
+            const idx=parseInt(e.target.value);
+            if(idx>=0 && idx<playbackPoints.length){
+                playbackIndex=idx;
+                const p=playbackPoints[playbackIndex];
+                playbackMarker.setLatLng([p.lat,p.lng]);
+                map.setView([p.lat,p.lng],map.getZoom());
+                document.getElementById('playbackPercent').innerText=Math.round((idx/playbackPoints.length)*100)+"%";
                 if(isPlaying) pausePlayback();
             }
         });
         
-        updateGPSStatus('READY', 'yellow', null);
-        updateSyncStatus('STANDBY', 'yellow');
+        updateGPSStatus('READY','yellow',null);
+        updateSyncStatus('STANDBY','yellow');
         updateUI();
-        
-        console.log("[BOOT] Adaptive GPS Engine Active");
-        console.log("  - STATIONARY: power saving mode");
-        console.log("  - WALKING: balanced mode");
-        console.log("  - VEHICLE: high accuracy mode");
-        console.log("  - WakeLock: screen on protection");
-        console.log("  - Recalibration: every 60 seconds");
+        console.log("[BOOT] Movement Intelligence v4.2 Active - All P0 patches applied");
     }
     
     bootstrap();
