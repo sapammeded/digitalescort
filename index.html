@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | Digital Escort · v4.3 Production</title>
+    <title>VMS | Tactical Movement Intelligence · v4.4 Production</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -93,9 +93,10 @@
 
 <script>
 (function(){
-    // ======================= v4.3 - PRODUCTION PATCHED =======================
-    // FIXES: Vector bearing fix, PointHash compression, Semantic recovery, Net progress lost detection, Sync mutex, Replay index reference
+    // ======================= v4.4 - PRODUCTION HARDENED =======================
+    // P0 Fixes: Track load rebuild semantic, Persistent pointHash, Accuracy circle reuse, Map panTo throttle, IndexedDB retention, WAL batch write, GPS hysteresis, Dead reckoning
     
+    // ======================= MOVEMENT INTELLIGENCE =======================
     const MOVEMENT_STATES = {
         WALKING_STRAIGHT: 'BERJALAN LURUS',
         TURNING_LEFT: 'BELOK KIRI',
@@ -107,7 +108,6 @@
         LOST_PATTERN: 'TERSESAT - BERPUTAR'
     };
     
-    // P0: Circular buffer untuk semantic events
     let movementVectors = [];
     const MAX_SEMANTIC_EVENTS = 500;
     let semanticStart = 0;
@@ -140,15 +140,16 @@
     let lostPatternDetected = false;
     let lostConfirmedCount = 0;
     let lostCooldownUntil = 0;
+    let patrolMode = false; // P1: patrol mode untuk reduce false lost
     const LOST_CONFIRMATION_NEEDED = 3;
     const LOST_COOLDOWN_MS = 30000;
     
     const MOVEMENT_CONFIG = {
         TURN_ANGLE: 30,
         LOST_RADIUS: 30,
-        LOST_DURATION: 60000,
         CLIMB_RATE: 2,
-        SEARCH_SPEED_MAX: 0.8
+        SEARCH_SPEED_MAX: 0.8,
+        PATROL_RADIUS_MULTIPLIER: 2.5
     };
     
     function haversineFast(lat1, lon1, lat2, lon2) {
@@ -206,7 +207,9 @@
             minLng=Math.min(minLng,curr.lng); maxLng=Math.max(maxLng,curr.lng);
             totalTravel += haversineFast(prev.lat, prev.lng, curr.lat, curr.lng);
         }
-        const radius = haversineFast(minLat, minLng, maxLat, maxLng);
+        let radius = haversineFast(minLat, minLng, maxLat, maxLng);
+        if(patrolMode) radius *= MOVEMENT_CONFIG.PATROL_RADIUS_MULTIPLIER;
+        
         const first = recent[0];
         const last = recent[recent.length-1];
         const netProgress = haversineFast(first.lat, first.lng, last.lat, last.lng);
@@ -245,8 +248,6 @@
         const distance = haversineFast(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
         const deltaTime = (point.timestamp - prevPoint.timestamp) / 1000;
         const speed = deltaTime > 0 ? distance / deltaTime : 0;
-        
-        // FIX P0: Vector bearing dari prev→curr
         const currentBearing = calculateBearing(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
         
         let headingChange = 0;
@@ -344,6 +345,12 @@
         updateSemanticBreadcrumb();
     }
     
+    // ======================= PERSISTENT POINT HASH =======================
+    let globalSeq = 0;
+    function generatePointHash(lat, lng, timestamp) {
+        return `${timestamp}_${++globalSeq}_${lat.toFixed(7)}_${lng.toFixed(7)}`;
+    }
+    
     // ======================= CORE GPS & TRACKING ENGINE =======================
     const GPS_PROFILES = {
         STATIONARY: { name: 'STATIONARY', enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 },
@@ -352,6 +359,8 @@
     };
     
     let currentProfile = 'WALKING';
+    let profileSpeedThresholdHigh = 10; // hysteresis masuk
+    let profileSpeedThresholdLow = 6;   // hysteresis keluar
     let wakeLock = null;
     let lastRecalibrationTime = 0;
     let lastSpeed = 0;
@@ -373,12 +382,17 @@
         PLAYBACK_FRAME_MS: 80,
         CIRCULAR_BUFFER_SIZE: 10000,
         RECALIBRATION_INTERVAL_MS: 60000,
-        FRESHNESS_THRESHOLD_MS: 5000
+        FRESHNESS_THRESHOLD_MS: 5000,
+        SYNCED_RETENTION_DAYS: 7,
+        MAX_SYNCED_RECORDS: 100000,
+        WAL_BATCH_SIZE: 5
     };
     
-    let map, trailLine, currentMarker, accuracyCircle;
+    let map, trailLine, currentMarker, accuracyCircle = null;
     let watchId = null;
     let isTracking = false;
+    let lastPanTime = 0;
+    let lastPanLat = 0, lastPanLng = 0;
     
     let trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
     let bufferStart = 0;
@@ -387,14 +401,24 @@
     let lastPosition = null;
     let currentAccuracy = 0;
     
-    function detectGPSProfile(speed, accuracy) {
-        if(speed > 8.0) return 'VEHICLE';
-        if(speed < 0.5 && accuracy < 15) return 'STATIONARY';
+    // WAL batch queue
+    let walQueue = [];
+    let walBatchTimer = null;
+    
+    // Dead reckoning
+    let deadReckoningActive = false;
+    let estimatedPos = null;
+    let lastSensorHeading = 0;
+    let lastSensorTimestamp = 0;
+    
+    function detectGPSProfile(speed) {
+        if(speed > profileSpeedThresholdHigh) return 'VEHICLE';
+        if(speed < profileSpeedThresholdLow) return 'STATIONARY';
         return 'WALKING';
     }
     
-    function updateGPSProfile(speed, accuracy) {
-        const newProfile = detectGPSProfile(speed, accuracy);
+    function updateGPSProfile(speed) {
+        const newProfile = detectGPSProfile(speed);
         if(newProfile !== currentProfile) {
             currentProfile = newProfile;
             document.getElementById('profileBadge').innerHTML = `📡 PROFILE: ${currentProfile}`;
@@ -487,14 +511,18 @@
     
     function openDB() {
         return new Promise((resolve,reject)=>{
-            const req=indexedDB.open(CONFIG.DB_NAME,3);
+            const req=indexedDB.open(CONFIG.DB_NAME,4);
             req.onupgradeneeded=(e)=>{
                 const dbInst=e.target.result;
                 if(!dbInst.objectStoreNames.contains(CONFIG.PENDING_STORE)){
                     const store=dbInst.createObjectStore(CONFIG.PENDING_STORE,{keyPath:'id',autoIncrement:true});
                     store.createIndex('synced','synced');
+                    store.createIndex('timestamp','timestamp');
                 }
-                if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)) dbInst.createObjectStore(CONFIG.SYNCED_STORE,{keyPath:'id',autoIncrement:true});
+                if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)){
+                    const store=dbInst.createObjectStore(CONFIG.SYNCED_STORE,{keyPath:'id',autoIncrement:true});
+                    store.createIndex('syncedAt','syncedAt');
+                }
                 if(!dbInst.objectStoreNames.contains(CONFIG.TRACKS_STORE)) dbInst.createObjectStore(CONFIG.TRACKS_STORE,{keyPath:'trackId'});
             };
             req.onsuccess=()=>{ db=req.result; resolve(db); };
@@ -502,10 +530,63 @@
         });
     }
     
-    async function addToWAL(point) {
+    // WAL batch write non-blocking
+    async function flushWalQueue() {
+        if(walQueue.length === 0) return;
+        const batch = [...walQueue];
+        walQueue = [];
         if(!db) await openDB();
-        const record={...point, synced:false, timestampMs:Date.now()};
-        return new Promise((res,rej)=>{ const tx=db.transaction([CONFIG.PENDING_STORE],'readwrite'); tx.objectStore(CONFIG.PENDING_STORE).add(record); tx.oncomplete=()=>res(true); tx.onerror=rej; });
+        const tx = db.transaction([CONFIG.PENDING_STORE], 'readwrite');
+        const store = tx.objectStore(CONFIG.PENDING_STORE);
+        for(const record of batch) store.add(record);
+        tx.oncomplete = () => console.log(`[WAL] Flushed ${batch.length} points`);
+        tx.onerror = (e) => console.error('[WAL] Batch failed', e);
+    }
+    
+    function queueToWAL(point) {
+        const record = {...point, synced: false, timestampMs: Date.now()};
+        walQueue.push(record);
+        if(walQueue.length >= CONFIG.WAL_BATCH_SIZE) {
+            if(walBatchTimer) clearTimeout(walBatchTimer);
+            flushWalQueue();
+        } else if(!walBatchTimer) {
+            walBatchTimer = setTimeout(() => { flushWalQueue(); walBatchTimer = null; }, 1000);
+        }
+    }
+    
+    // IndexedDB retention policy
+    async function cleanOldSyncedPoints() {
+        if(!db) return;
+        const cutoff = Date.now() - (CONFIG.SYNCED_RETENTION_DAYS * 24 * 3600000);
+        const tx = db.transaction([CONFIG.SYNCED_STORE], 'readwrite');
+        const store = tx.objectStore(CONFIG.SYNCED_STORE);
+        const index = store.index('syncedAt');
+        const range = IDBKeyRange.upperBound(cutoff);
+        const cursor = index.openCursor(range);
+        const toDelete = [];
+        await new Promise(r => {
+            cursor.onsuccess = (e) => {
+                const cur = e.target.result;
+                if(cur) { toDelete.push(cur.primaryKey); cur.continue(); }
+                else r();
+            };
+        });
+        for(const key of toDelete) store.delete(key);
+        console.log(`[RETENTION] Deleted ${toDelete.length} old synced points`);
+        
+        // Juga cek total records limit
+        const countReq = store.count();
+        countReq.onsuccess = () => {
+            if(countReq.result > CONFIG.MAX_SYNCED_RECORDS) {
+                const toTrim = countReq.result - CONFIG.MAX_SYNCED_RECORDS;
+                const cursor2 = store.openCursor();
+                let trimmed = 0;
+                cursor2.onsuccess = (e) => {
+                    const cur = e.target.result;
+                    if(cur && trimmed < toTrim) { store.delete(cur.primaryKey); trimmed++; cur.continue(); }
+                };
+            }
+        };
     }
     
     async function getUnsyncedBatch(limit=20) {
@@ -528,15 +609,15 @@
             const req=pending.get(id);
             req.onsuccess=()=>{ const data=req.result; if(data){ data.synced=true; data.syncedAt=Date.now(); synced.add(data); pending.delete(id); } };
         }
+        tx.oncomplete = () => cleanOldSyncedPoints();
     }
     
     async function compressWAL() {
         if(!db) return;
-        console.log('[WAL] Starting compression...');
         const significantVectors = getSemanticVectors().filter(v => v.isSignificant);
         const significantHashes = new Set();
         for(const v of significantVectors) {
-            const hash = `${v.lat.toFixed(7)}_${v.lng.toFixed(7)}_${v.timestamp}`;
+            const hash = v.pointHash || generatePointHash(v.lat, v.lng, v.timestamp);
             significantHashes.add(hash);
         }
         const tx = db.transaction([CONFIG.PENDING_STORE], 'readwrite');
@@ -546,20 +627,19 @@
             store.openCursor().onsuccess = (e) => {
                 const cur = e.target.result;
                 if(cur && cur.value.synced === false) {
-                    const pointHash = `${cur.value.lat.toFixed(7)}_${cur.value.lng.toFixed(7)}_${cur.value.timestamp}`;
+                    const pointHash = cur.value.pointHash;
                     if(!significantHashes.has(pointHash)) toDelete.push(cur.primaryKey);
                     cur.continue();
                 } else r();
             };
         });
         for(const key of toDelete) store.delete(key);
-        console.log(`[WAL] Compressed: kept ${significantHashes.size}, deleted ${toDelete.length} redundant points`);
+        console.log(`[WAL] Compressed: kept ${significantHashes.size}, deleted ${toDelete.length}`);
     }
     
     async function syncToServer() {
         const currentToken = ++syncMutexToken;
         if(activeSyncPromise) {
-            console.log('[SYNC] Waiting for active sync...');
             await activeSyncPromise;
             if(currentToken !== syncMutexToken) return;
         }
@@ -569,8 +649,8 @@
                 const pending = await getUnsyncedBatch(CONFIG.BATCH_SYNC);
                 if(pending.length){
                     const batchId = Date.now() + '_' + Math.random().toString(36);
-                    const payload = pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,heading:p.heading,speed:p.speed}));
-                    const res = await fetch(CONFIG.SYNC_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:payload, deviceId:'vms-tactical', batchId, version:'4.3'})});
+                    const payload = pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,heading:p.heading,speed:p.speed,pointHash:p.pointHash}));
+                    const res = await fetch(CONFIG.SYNC_URL, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:payload, deviceId:'vms-tactical', batchId, version:'4.4'})});
                     const result = await res.json();
                     if(result && result.success===true){
                         await markSynced(pending.map(p=>p.id));
@@ -597,7 +677,8 @@
                     recoveredPoints.push({
                         lat: cur.value.lat, lng: cur.value.lng, alt: cur.value.alt || 0,
                         accuracy: cur.value.accuracy, timestamp: cur.value.timestamp,
-                        heading: cur.value.heading, speed: cur.value.speed
+                        heading: cur.value.heading, speed: cur.value.speed,
+                        pointHash: cur.value.pointHash
                     });
                     cur.continue();
                 } else resolve();
@@ -630,12 +711,29 @@
             const last=getLastPoint();
             if(!currentMarker) currentMarker=L.circleMarker([last.lat,last.lng],{radius:11,fillColor:'#ff5a5f',color:'#fff',weight:2,fillOpacity:0.95}).addTo(map);
             else currentMarker.setLatLng([last.lat,last.lng]);
-            if(accuracyCircle && map) map.removeLayer(accuracyCircle);
-            if(currentAccuracy>0 && currentAccuracy<100){
-                accuracyCircle=L.circle([last.lat,last.lng],{radius:currentAccuracy,color:'#ffb347',weight:1,fillColor:'#ffb347',fillOpacity:0.15}).addTo(map);
+            // P0: Reuse accuracy circle, jangan recreate
+            if(accuracyCircle && map) {
+                accuracyCircle.setLatLng([last.lat, last.lng]);
+                if(currentAccuracy > 0 && currentAccuracy < 100) accuracyCircle.setRadius(currentAccuracy);
+                else if(accuracyCircle) map.removeLayer(accuracyCircle);
+            } else if(currentAccuracy > 0 && currentAccuracy < 100) {
+                accuracyCircle = L.circle([last.lat, last.lng], {radius: currentAccuracy, color: '#ffb347', weight: 1, fillColor: '#ffb347', fillOpacity: 0.15}).addTo(map);
             }
         }
         if(currentTab==='3D') draw3D();
+    }
+    
+    // P0: Map center throttle dengan panTo (lebih ringan dari setView)
+    function smartCenterMap(lat, lng) {
+        if(!map || currentTab !== '2D') return;
+        const now = Date.now();
+        if(now - lastPanTime < CONFIG.CAMERA_THROTTLE_MS) return;
+        const lastDist = haversine(lastPanLat, lastPanLng, lat, lng);
+        if(lastDist < 15) return;
+        map.panTo([lat, lng]);
+        lastPanTime = now;
+        lastPanLat = lat;
+        lastPanLng = lng;
     }
     
     let canvas3D, ctx3D, last3DHash='';
@@ -684,11 +782,40 @@
         return {lat:lastPosition.lat*(1-f)+newLat*f, lng:lastPosition.lng*(1-f)+newLng*f};
     }
     
-    let lastCenterTime=0;
+    // Dead reckoning sensors
+    function initSensors() {
+        if(window.DeviceOrientationEvent) {
+            window.addEventListener('deviceorientation', (e) => {
+                lastSensorHeading = e.webkitCompassHeading || e.alpha || 0;
+            });
+        }
+        if(window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', (e) => {
+                if(e.acceleration && lastSpeed > 0) {
+                    const now = Date.now();
+                    const dt = (now - lastSensorTimestamp) / 1000;
+                    if(dt > 0 && dt < 1 && lastPosition) {
+                        const distance = lastSpeed * dt;
+                        const deltaLng = distance * Math.sin(lastSensorHeading * Math.PI/180) / (111320 * Math.cos(lastPosition.lat * Math.PI/180));
+                        const deltaLat = distance * Math.cos(lastSensorHeading * Math.PI/180) / 110574;
+                        if(estimatedPos) {
+                            estimatedPos.lat += deltaLat;
+                            estimatedPos.lng += deltaLng;
+                        } else if(lastPosition) {
+                            estimatedPos = { lat: lastPosition.lat + deltaLat, lng: lastPosition.lng + deltaLng, isEstimated: true };
+                        }
+                        deadReckoningActive = true;
+                    }
+                    lastSensorTimestamp = now;
+                }
+            });
+        }
+    }
     
     async function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
         const smoothed=smoothPoint(lat,lng);
-        const point={lat:smoothed.lat,lng:smoothed.lng,alt:altitude||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now()};
+        const pointHash = generatePointHash(smoothed.lat, smoothed.lng, timestamp);
+        const point={lat:smoothed.lat,lng:smoothed.lng,alt:altitude||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now(), pointHash: pointHash};
         
         const prevPoint = getLastPoint();
         if(prevPoint && haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng) < 1.5) return;
@@ -700,13 +827,9 @@
         
         addMovementVector(point, prevPoint);
         pushPoint(point);
-        await addToWAL(point);
+        queueToWAL(point);
         updateTrail();
-        
-        if(isTracking && map && currentTab==='2D'){
-            const now=Date.now();
-            if(now-lastCenterTime>=CONFIG.CAMERA_THROTTLE_MS){ map.setView([lat,lng],map.getZoom()); lastCenterTime=now; }
-        }
+        smartCenterMap(lat, lng);
         if(currentTab==='3D') draw3D();
     }
     
@@ -718,7 +841,7 @@
         const currentSpeed=speed||0;
         document.getElementById('speedText').innerHTML=currentSpeed.toFixed(1);
         lastSpeed=currentSpeed;
-        updateGPSProfile(currentSpeed,accuracy);
+        updateGPSProfile(currentSpeed);
         if(!isPointValid(latitude,longitude,accuracy,ts,currentSpeed)){
             document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m (reject)`;
             return;
@@ -765,7 +888,7 @@
         if(navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],16),null,{timeout:4000});
     }
     
-    function centerMap(){ if(lastPosition && map && currentTab==='2D'){ map.setView([lastPosition.lat,lastPosition.lng],18); lastCenterTime=Date.now(); } }
+    function centerMap(){ if(lastPosition && map && currentTab==='2D'){ smartCenterMap(lastPosition.lat, lastPosition.lng); } }
     
     function startTracking(){
         if(isTracking) return;
@@ -796,6 +919,7 @@
         isTracking=false;
         releaseWakeLock();
         if(window.recalInterval) clearInterval(window.recalInterval);
+        if(walBatchTimer) { clearTimeout(walBatchTimer); flushWalQueue(); }
         document.getElementById('startBtn').style.display='inline-block';
         document.getElementById('stopBtn').style.display='none';
         updateGPSStatus('STOP','red',null);
@@ -835,7 +959,13 @@
             const track=req.result;
             if(track && confirm(`Muat track "${track.name}"?`)){
                 clearBuffer();
-                for(const p of track.points) pushPoint(p);
+                resetMovementEngine();
+                for(let i=0;i<track.points.length;i++){
+                    const point = track.points[i];
+                    const prev = i>0 ? track.points[i-1] : null;
+                    pushPoint(point);
+                    addMovementVector(point, prev);
+                }
                 updateTrail();
                 if(map && lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16);
                 if(currentTab==='3D') draw3D();
@@ -988,12 +1118,13 @@
     document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ if(syncWorker){ syncWorker.terminate(); syncWorker=null; } initWorker(); if(isTracking && !wakeLock) acquireWakeLock(); } });
     
     async function bootstrap(){
-        console.log("VMS v4.3 - Production Tactical Tracker");
-        console.log("Patches: Vector bearing fix | PointHash compression | Semantic recovery | Net progress lost | Sync mutex | Replay indices");
+        console.log("VMS v4.4 - Production Tactical Movement Intelligence");
+        console.log("Patches: Track load rebuild semantic | Persistent pointHash | Accuracy circle reuse | PanTo throttle | IndexedDB retention | WAL batch | GPS hysteresis | Dead reckoning");
         await openDB();
         await recoverFromWAL();
         initMap();
         init3D();
+        initSensors();
         await loadSavedTracks();
         initWorker();
         
@@ -1028,7 +1159,7 @@
         updateGPSStatus('READY','yellow',null);
         updateSyncStatus('STANDBY','yellow');
         updateUI();
-        console.log("[BOOT] Production Tactical Tracker v4.3 Active - All P0 patches applied");
+        console.log("[BOOT] Production Tactical Movement Intelligence v4.4 Active - All P0+P1 patches applied");
     }
     
     bootstrap();
