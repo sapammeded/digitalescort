@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | v5.18 · Production Tactical · 12h Stable</title>
+    <title>VMS | v5.18 · Tactical Backtrack Engine + Auto Checkpoint</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -12,8 +12,12 @@
         *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;}
         body{font-family:'Segoe UI',Roboto,system-ui;background:#0a0f1a;overflow:hidden;position:fixed;width:100%;height:100%;}
         #map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:#101624;}
-        /* FIX BUG #1: Canvas starts hidden, only shown when 3D tab active */
         #canvas3D{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;background:#0c1122;display:none;}
+        
+        .leaflet-map-pane{
+            transition: transform 0.18s linear;
+            will-change: transform;
+        }
         
         .status-bar{position:fixed;top:12px;left:12px;right:12px;z-index:1100;background:rgba(10,15,26,0.95);backdrop-filter:blur(12px);border-radius:28px;padding:8px 12px;font-family:'SF Mono',monospace;font-size:10px;box-shadow:0 4px 14px rgba(0,0,0,0.5);border:1px solid rgba(72,187,255,0.4);pointer-events:none;}
         .status-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;}
@@ -60,6 +64,56 @@
         .nav-progress-fill{height:100%;background:#2c6e2f;width:0%;transition:width 0.3s;}
         .nav-close{position:absolute;top:8px;right:12px;background:none;border:none;color:#ffffff;font-size:14px;cursor:pointer;padding:0;}
         
+        .return-arrow{
+            position:fixed;
+            bottom:160px;
+            right:20px;
+            width:60px;
+            height:60px;
+            background:rgba(0,0,0,0.8);
+            border-radius:50%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            z-index:1070;
+            backdrop-filter:blur(8px);
+            border:2px solid #fd7e2c;
+            transition:transform 0.1s ease;
+            pointer-events:none;
+        }
+        .return-arrow span{
+            font-size:32px;
+            filter:drop-shadow(0 0 4px #fd7e2c);
+        }
+        .offroute-badge{
+            position:fixed;
+            bottom:95px;
+            left:50%;
+            transform:translateX(-50%);
+            background:#ff5a5f;
+            color:white;
+            padding:4px 12px;
+            border-radius:20px;
+            font-size:9px;
+            font-weight:bold;
+            z-index:1065;
+            display:none;
+            white-space:nowrap;
+        }
+        .backtrack-progress{
+            position:fixed;
+            bottom:95px;
+            right:12px;
+            background:#000000cc;
+            padding:4px 10px;
+            border-radius:20px;
+            font-size:8px;
+            font-family:monospace;
+            color:#00f2a0;
+            z-index:1060;
+            display:none;
+        }
+        
         .semantic-panel{position:fixed;top:170px;left:12px;width:200px;max-height:250px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;overflow-y:auto;display:none;font-size:9px;border-left:3px solid #1e88e5;}
         .semantic-panel.show{display:block;}
         .semantic-title{color:#00f2a0;font-weight:bold;margin-bottom:8px;}
@@ -80,7 +134,23 @@
         .playback-bar.show{display:flex;}
         .playback-bar span{color:#ffffff;}
         
-        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge,.battery-badge{font-size:7px;padding:2px 8px;}.nav-instruction{font-size:14px;}}
+        /* Checkpoint indicator */
+        .checkpoint-badge{
+            position:fixed;
+            top:75px;
+            right:12px;
+            background:#2c6e2fcc;
+            backdrop-filter:blur(8px);
+            padding:4px 10px;
+            border-radius:20px;
+            font-size:8px;
+            font-family:monospace;
+            color:#00f2a0;
+            z-index:1055;
+            display:none;
+        }
+        
+        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge,.battery-badge{font-size:7px;padding:2px 8px;}.nav-instruction{font-size:14px;}.return-arrow{width:50px;height:50px;bottom:140px;}.return-arrow span{font-size:26px;}}
     </style>
 </head>
 <body>
@@ -99,6 +169,7 @@
 <div class="battery-badge" id="batteryBadge">🔋 100%</div>
 <div class="state-badge" id="movementBadge">🚶 BERJALAN LURUS</div>
 <div class="confidence-badge" id="confidenceBadge">🎯 RETURN: HIGH</div>
+<div class="checkpoint-badge" id="checkpointBadge">📍 CHECKPOINT: --</div>
 <div class="tab-bar"><button id="btn2D" class="tab-btn active">🗺️ 2D MAP</button><button id="btn3D" class="tab-btn">📐 3D TRAIL</button><button id="btnSemantic" class="tab-btn">📜 BREADCRUMB</button></div>
 <div class="control-panel"><button id="startBtn" class="btn-start">▶ START</button><button id="stopBtn" class="btn-stop" style="display:none">⏹ STOP</button>
 <button id="syncBtn" class="btn-sync">🔄 SYNC</button><button id="clearBtn" class="btn-clear">🗑 CLEAR</button><button id="centerBtn" class="btn-center">🎯 CENTER</button>
@@ -124,10 +195,14 @@
     <div class="nav-progress"><div class="nav-progress-fill" id="navProgress"></div></div>
 </div>
 
+<div class="return-arrow" id="returnArrow" style="display:none;"><span>⬆️</span></div>
+<div class="offroute-badge" id="offrouteBadge">⚠️ ANDA KELUAR DARI JALUR</div>
+<div class="backtrack-progress" id="backtrackProgress">Progress: 0%</div>
+
 <script>
 (function(){
-    // ======================= VMS v5.18 - PRODUCTION TACTICAL FULL ENGINE =======================
-    console.log("[VMS] Starting v5.18 - Production Tactical with 3D Canvas Fix");
+    // ======================= VMS v5.18 - TACTICAL BACKTRACK ENGINE + AUTO CHECKPOINT =======================
+    console.log("[VMS] Starting v5.18 - Tactical Backtrack Engine + Auto Checkpoint");
     
     // ======================= MOVEMENT STATES =======================
     const MOVEMENT_STATES = {
@@ -173,6 +248,43 @@
         let result = Math.atan2(y, x) * 180 / Math.PI;
         if(result < 0) result += 360;
         return result;
+    }
+    
+    function normalizeAngle(angle){
+        angle = angle % 360;
+        if(angle < 0) angle += 360;
+        return angle;
+    }
+
+    function shortestAngleDiff(a, b){
+        return (b - a + 540) % 360 - 180;
+    }
+
+    function smoothRotateMap(targetHeading){
+        if(!map || !rotationEnabled) return;
+
+        const now = performance.now();
+        if(now - lastRotationFrame < 60) return;
+        lastRotationFrame = now;
+
+        targetHeading = normalizeAngle(targetHeading);
+
+        let diff = shortestAngleDiff(smoothRotation, targetHeading);
+        if(Math.abs(diff) < 3) return;
+
+        smoothRotation += diff * 0.15;
+        smoothRotation = normalizeAngle(smoothRotation);
+
+        const mapPane = map.getPane('mapPane');
+        if(!mapPane) return;
+
+        mapPane.style.transformOrigin = '50% 50%';
+        mapPane.style.transform = `rotateZ(${-smoothRotation}deg) scale(1.15)`;
+
+        if(currentMarker && currentMarker._path){
+            currentMarker._path.style.transformOrigin = 'center';
+            currentMarker._path.style.transform = `rotateZ(${smoothRotation}deg)`;
+        }
     }
     
     function detectMovementState(speed, headingChange, slope) {
@@ -431,7 +543,15 @@
     }
     
     // ======================= DEVICE ORIENTATION =======================
-    let fusedHeading = 0, lastCompassHeading = 0, lastPosition = null;
+    let fusedHeading = 0,
+        lastCompassHeading = 0,
+        lastPosition = null;
+
+    let mapRotation = 0;
+    let rotationEnabled = true;
+    let lastRotationFrame = 0;
+    let smoothRotation = 0;
+    
     async function initCompass() {
         if(typeof DeviceOrientationEvent !== 'undefined') {
             if(typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -470,7 +590,12 @@
         WAL_BATCH_SIZE: 25, MAX_STALE_GPS_MS: 10000, MAX_UNSYNCED_POINTS: 8000, MAX_WAL_QUEUE_SIZE: 3000,
         SYNC_RETRY_BASE_MS: 2000, SYNC_MAX_RETRY_MS: 60000, SYNC_RETRY_BUDGET: 5,
         ADAPTIVE_INTERVAL_STATIONARY: 15000, ADAPTIVE_INTERVAL_WALKING: 3000, ADAPTIVE_INTERVAL_VEHICLE: 1000,
-        TX_TIMEOUT_MS: 10000
+        TX_TIMEOUT_MS: 10000,
+        OFFROUTE_THRESHOLD: 30,
+        OFFROUTE_COOLDOWN_MS: 5000,
+        CHECKPOINT_INTERVAL_M: 100,
+        CHECKPOINT_INTERVAL_MS: 300000,
+        MAX_CHECKPOINTS: 50
     };
     
     let map, currentMarker, accuracyCircle = null, isTracking = false;
@@ -487,6 +612,22 @@
     
     let replayToken = 0;
     let playbackActive = false, playbackTimer = null, playbackIndex = 0, isPlaying = false;
+    
+    // ======================= AUTO CHECKPOINT VARIABLES =======================
+    let lastCheckpointDistance = 0;
+    let lastCheckpointTime = 0;
+    let checkpoints = [];
+    
+    // ======================= TACTICAL BACKTRACK ENGINE VARIABLES =======================
+    let backtrackActive = false;
+    let backtrackRoute = [];
+    let backtrackCumulativeDistances = [];
+    let backtrackNearestIdx = 0;
+    let backtrackOffroute = false;
+    let lastOffrouteWarning = 0;
+    let backtrackUpdateThrottle = 0;
+    let backtrackInterval = null;
+    let backtrackArrowLastUpdate = 0;
     
     let txQueue = Promise.resolve();
     let activeTxCount = 0;
@@ -584,6 +725,76 @@
         return true;
     }
     
+    // ======================= AUTO CHECKPOINT FUNCTION =======================
+    function saveAutoCheckpoint() {
+        if(!lastPosition || bufferLen === 0 || !isTracking) return;
+        
+        const now = Date.now();
+        const currentDistance = computeTotalDistance();
+        const timeSinceLastCheckpoint = now - lastCheckpointTime;
+        const distSinceLastCheckpoint = currentDistance - lastCheckpointDistance;
+        
+        if((distSinceLastCheckpoint >= CONFIG.CHECKPOINT_INTERVAL_M || timeSinceLastCheckpoint >= CONFIG.CHECKPOINT_INTERVAL_MS) && 
+           (distSinceLastCheckpoint > 5 || timeSinceLastCheckpoint > 60000)) {
+            
+            const checkpoint = {
+                lat: lastPosition.lat,
+                lng: lastPosition.lng,
+                alt: lastPosition.alt || 0,
+                timestamp: now,
+                distance: currentDistance,
+                battery: batteryPercent,
+                confidence: gpsConfidenceScore,
+                pointIndex: bufferLen - 1,
+                timeStr: new Date().toLocaleTimeString()
+            };
+            
+            checkpoints.push(checkpoint);
+            if(checkpoints.length > CONFIG.MAX_CHECKPOINTS) checkpoints.shift();
+            
+            lastCheckpointDistance = currentDistance;
+            lastCheckpointTime = now;
+            
+            try {
+                localStorage.setItem('vms_emergency_checkpoints', JSON.stringify(checkpoints.slice(-10)));
+                localStorage.setItem('vms_last_checkpoint', JSON.stringify(checkpoint));
+            } catch(e) {}
+            
+            const cpBadge = document.getElementById('checkpointBadge');
+            if(cpBadge) {
+                cpBadge.style.display = 'block';
+                cpBadge.innerHTML = `📍 ${Math.round(currentDistance)}m | ⚡${batteryPercent}%`;
+                setTimeout(() => {
+                    if(cpBadge && cpBadge.style.display === 'block') {
+                        setTimeout(() => { if(cpBadge) cpBadge.style.display = 'none'; }, 3000);
+                    }
+                }, 3000);
+            }
+            
+            console.log('[CHECKPOINT] Saved at', Math.round(currentDistance), 'm, battery:', batteryPercent, '%');
+        }
+    }
+    
+    function recoverFromLastCheckpoint() {
+        try {
+            const lastCheckpoint = localStorage.getItem('vms_last_checkpoint');
+            if(lastCheckpoint) {
+                const cp = JSON.parse(lastCheckpoint);
+                if(cp && confirm(`Recover from checkpoint at ${cp.timeStr || new Date(cp.timestamp).toLocaleTimeString()}?\nDistance: ${Math.round(cp.distance)}m\nBattery: ${cp.battery}%`)) {
+                    if(map) map.setView([cp.lat, cp.lng], 16);
+                    const cpBadge = document.getElementById('checkpointBadge');
+                    if(cpBadge) {
+                        cpBadge.style.display = 'block';
+                        cpBadge.innerHTML = `♻️ RECOVERED ${Math.round(cp.distance)}m`;
+                        setTimeout(() => { if(cpBadge) cpBadge.style.display = 'none'; }, 5000);
+                    }
+                    return cp;
+                }
+            }
+        } catch(e) { console.warn('[CHECKPOINT] Recovery failed:', e); }
+        return null;
+    }
+    
     function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
         let finalAlt = altitude;
         if(finalAlt != null) { if(smoothedAltitude == null) smoothedAltitude = finalAlt; smoothedAltitude = smoothedAltitude * 0.85 + finalAlt * 0.15; finalAlt = smoothedAltitude; }
@@ -600,6 +811,8 @@
         queueToWAL(point);
         updateTrail();
         if(followMode && !isReplaying && systemPressure !== 'CRITICAL') updateNavigation();
+        if(backtrackActive && !isReplaying && !followMode && systemPressure !== 'CRITICAL') updateBacktrackNavigation();
+        saveAutoCheckpoint();
         if(bufferLen >= CONFIG.CIRCULAR_BUFFER_SIZE-5) console.warn('[BUFFER] Near limit');
     }
     
@@ -608,6 +821,248 @@
     function getLastPoint() { if(bufferLen === 0) return null; return getPoint(bufferLen-1); }
     function getAllPoints() { const r = []; for(let i=0;i<bufferLen;i++) r.push(getPoint(i)); return r; }
     function computeTotalDistance() { return cachedTotalDistance; }
+    
+    // ======================= BACKTRACK ENGINE FUNCTIONS =======================
+    function initBacktrackRoute() {
+        if(bufferLen < 2) return false;
+        backtrackRoute = [];
+        for(let i = bufferLen - 1; i >= 0; i--) {
+            const p = getPoint(i);
+            if(p) backtrackRoute.push({lat: p.lat, lng: p.lng, alt: p.alt, heading: p.heading, timestamp: p.timestamp});
+        }
+        backtrackCumulativeDistances = [0];
+        for(let i = 1; i < backtrackRoute.length; i++) {
+            backtrackCumulativeDistances.push(backtrackCumulativeDistances[i-1] + haversineFast(backtrackRoute[i-1].lat, backtrackRoute[i-1].lng, backtrackRoute[i].lat, backtrackRoute[i].lng));
+        }
+        console.log('[BACKTRACK] Route initialized:', backtrackRoute.length, 'points, total:', Math.round(backtrackCumulativeDistances[backtrackCumulativeDistances.length-1]), 'm');
+        return true;
+    }
+    
+    function findNearestBacktrackIndex() {
+        if(!lastPosition || backtrackRoute.length === 0) return 0;
+        const now = Date.now();
+        if(now - backtrackUpdateThrottle < (systemPressure === 'CRITICAL' ? 2000 : 800)) return backtrackNearestIdx;
+        backtrackUpdateThrottle = now;
+        
+        let minDist = Infinity, nearestIdx = 0;
+        const radius = systemPressure === 'CRITICAL' ? 0.003 : 0.0015;
+        const nearby = findNearbyIndices(lastPosition.lat, lastPosition.lng, radius);
+        for(const idx of nearby) {
+            if(idx >= 0 && idx < backtrackRoute.length) {
+                const dist = haversineFast(lastPosition.lat, lastPosition.lng, backtrackRoute[idx].lat, backtrackRoute[idx].lng);
+                if(dist < minDist) { minDist = dist; nearestIdx = idx; }
+            }
+        }
+        if(minDist > 50) {
+            const range = systemPressure === 'CRITICAL' ? 100 : 200;
+            const start = Math.max(0, backtrackNearestIdx - range);
+            const end = Math.min(backtrackRoute.length, backtrackNearestIdx + range);
+            for(let i = start; i < end; i++) {
+                const dist = haversineFast(lastPosition.lat, lastPosition.lng, backtrackRoute[i].lat, backtrackRoute[i].lng);
+                if(dist < minDist) { minDist = dist; nearestIdx = i; }
+            }
+        }
+        backtrackNearestIdx = nearestIdx;
+        
+        const isOffroute = minDist > CONFIG.OFFROUTE_THRESHOLD;
+        if(isOffroute !== backtrackOffroute && (now - lastOffrouteWarning) > CONFIG.OFFROUTE_COOLDOWN_MS) {
+            backtrackOffroute = isOffroute;
+            lastOffrouteWarning = now;
+            const offBadge = document.getElementById('offrouteBadge');
+            const navPanel = document.getElementById('navPanel');
+            if(backtrackOffroute) {
+                if(offBadge) offBadge.style.display = 'block';
+                if(navPanel) navPanel.style.borderLeftColor = '#ff5a5f';
+                setTimeout(() => { if(offBadge && !backtrackOffroute) offBadge.style.display = 'none'; }, 3000);
+            } else {
+                if(offBadge) offBadge.style.display = 'none';
+                if(navPanel) navPanel.style.borderLeftColor = '#2c6e2f';
+            }
+        }
+        return nearestIdx;
+    }
+    
+    function updateBacktrackNavigation() {
+        if(!backtrackActive || isReplaying || followMode || backtrackRoute.length === 0 || !lastPosition) return;
+        
+        const now = Date.now();
+        const throttleMs = systemPressure === 'CRITICAL' ? 2000 : (systemPressure === 'HIGH' ? 1200 : 800);
+        if(now - (backtrackArrowLastUpdate || 0) < throttleMs) return;
+        backtrackArrowLastUpdate = now;
+        
+        const nearestIdx = findNearestBacktrackIndex();
+        const totalDist = backtrackCumulativeDistances[backtrackCumulativeDistances.length-1] || 1;
+        const remainingDist = totalDist - backtrackCumulativeDistances[nearestIdx];
+        const completedDist = totalDist - remainingDist;
+        const progressPercent = (completedDist / totalDist) * 100;
+        
+        const progressEl = document.getElementById('backtrackProgress');
+        if(progressEl) {
+            progressEl.style.display = 'block';
+            progressEl.innerHTML = `🏠 ${Math.round(remainingDist)}m | ${Math.round(progressPercent)}%`;
+        }
+        
+        const navDist = document.getElementById('navDistance');
+        if(navDist) navDist.innerHTML = `Sisa: ${Math.round(remainingDist)}m`;
+        
+        const navProgressFill = document.getElementById('navProgress');
+        if(navProgressFill) navProgressFill.style.width = `${Math.min(100, Math.max(0, progressPercent))}%`;
+        
+        const navInst = document.getElementById('navInstruction');
+        const offBadge = document.getElementById('offrouteBadge');
+        
+        if(backtrackOffroute) {
+            if(navInst) { navInst.innerHTML = '⚠️ ANDA KELUAR DARI JALUR'; navInst.style.color = '#ff5a5f'; }
+            if(offBadge) offBadge.style.display = 'block';
+            return;
+        } else {
+            if(navInst) navInst.style.color = '#00f2a0';
+            if(offBadge) offBadge.style.display = 'none';
+        }
+        
+        let nextIdx = nearestIdx + 1;
+        if(nextIdx >= backtrackRoute.length) {
+            if(remainingDist < 15) {
+                if(navInst) navInst.innerHTML = '🏁 ANDA TELAH KEMBALI KE TITIK AWAL!';
+                const returnBtn = document.getElementById('returnBtn');
+                if(returnBtn) { returnBtn.innerHTML = '🏠 RETURN'; returnBtn.style.background = '#fd7e2c'; }
+                if(progressEl) progressEl.style.display = 'none';
+                stopBacktrackMode();
+            } else {
+                if(navInst) navInst.innerHTML = `⬆️ JALAN LURUS ${Math.round(remainingDist)} METER LAGI`;
+            }
+            return;
+        }
+        
+        const currentPos = lastPosition;
+        const targetPos = backtrackRoute[nextIdx];
+        if(!targetPos) return;
+        
+        const bearingToTarget = calculateBearing(currentPos.lat, currentPos.lng, targetPos.lat, targetPos.lng);
+        let diff = shortestAngleDiff(fusedHeading || currentPos.heading || 0, bearingToTarget);
+        
+        let instruction = '';
+        let arrowRotation = 0;
+        if(Math.abs(diff) < 15) {
+            instruction = '⬆️ LURUS';
+            arrowRotation = 0;
+        } else if(diff > 0 && diff < 75) {
+            instruction = '↗️ BELOK KANAN SEDIKIT';
+            arrowRotation = 45;
+        } else if(diff > 0) {
+            instruction = '➡️ BELOK KANAN';
+            arrowRotation = 90;
+        } else if(diff < 0 && diff > -75) {
+            instruction = '↖️ BELOK KIRI SEDIKIT';
+            arrowRotation = -45;
+        } else {
+            instruction = '⬅️ BELOK KIRI';
+            arrowRotation = -90;
+        }
+        
+        const semanticVec = getSemanticVectors().slice(-5);
+        let slopeInstruction = '';
+        for(let i = semanticVec.length-1; i >= 0; i--) {
+            if(semanticVec[i] && semanticVec[i].slope > 5) { slopeInstruction = ' ⛰️ NAIK'; break; }
+            if(semanticVec[i] && semanticVec[i].slope < -5) { slopeInstruction = ' ⛰️ TURUN'; break; }
+        }
+        
+        if(navInst) navInst.innerHTML = `${instruction} ${Math.round(Math.abs(remainingDist))}m${slopeInstruction}`;
+        
+        const arrowEl = document.getElementById('returnArrow');
+        if(arrowEl) {
+            arrowEl.style.display = 'flex';
+            arrowEl.style.transform = `rotate(${arrowRotation}deg)`;
+            const arrowSpan = arrowEl.querySelector('span');
+            if(arrowSpan) arrowSpan.innerHTML = instruction.includes('KANAN') ? '➡️' : (instruction.includes('KIRI') ? '⬅️' : '⬆️');
+        }
+        
+        const navNext = document.getElementById('navNextTurn');
+        if(navNext) {
+            const distToNext = haversineFast(currentPos.lat, currentPos.lng, targetPos.lat, targetPos.lng);
+            navNext.innerHTML = `${instruction.replace('⬆️', '').replace('➡️', '').replace('⬅️', '')} ${Math.round(distToNext)}m`;
+        }
+    }
+    
+    function startBacktrackMode() {
+        if(bufferLen < 2) { alert("Tidak ada jalur untuk kembali"); return; }
+        if(isReplaying) { alert("Matikan replay terlebih dahulu"); return; }
+        if(followMode) { stopFollowMode(); }
+        
+        stopBacktrackMode();
+        
+        if(!initBacktrackRoute()) { alert("Gagal memuat jalur backtrack"); return; }
+        
+        backtrackActive = true;
+        backtrackOffroute = false;
+        backtrackNearestIdx = 0;
+        backtrackUpdateThrottle = 0;
+        backtrackArrowLastUpdate = 0;
+        
+        const navPanel = document.getElementById('navPanel');
+        if(navPanel) {
+            navPanel.classList.add('show');
+            navPanel.style.borderLeftColor = '#fd7e2c';
+        }
+        
+        const navInst = document.getElementById('navInstruction');
+        if(navInst) navInst.innerHTML = '🔄 MENGINISIALISASI BACKTRACK...';
+        
+        const returnBtn = document.getElementById('returnBtn');
+        if(returnBtn) { returnBtn.innerHTML = '📍 BACKTRACK ON'; returnBtn.style.background = '#2c6e2f'; }
+        
+        const arrowEl = document.getElementById('returnArrow');
+        if(arrowEl) arrowEl.style.display = 'flex';
+        
+        const breadInfo = document.getElementById('breadcrumbInfo');
+        if(breadInfo) breadInfo.classList.add('show');
+        
+        if(backtrackInterval) clearInterval(backtrackInterval);
+        const updateInterval = systemPressure === 'CRITICAL' ? 2000 : 1000;
+        backtrackInterval = setInterval(() => {
+            if(!backtrackActive || isReplaying) return;
+            updateBacktrackNavigation();
+        }, updateInterval);
+        
+        updateBacktrackNavigation();
+        
+        if(returnLine && map) safeRemoveLayerHard(returnLine);
+        if(backtrackRoute.length > 0) {
+            const routeLatLngs = backtrackRoute.map(p => [p.lat, p.lng]);
+            returnLine = L.polyline(routeLatLngs, { color: '#fd7e2c', weight: 3, dashArray: '8,8', interactive: false }).addTo(map);
+        }
+        
+        alert(`🔄 BACKTRACK AKTIF\n📏 Total jalur pulang: ${Math.round(backtrackCumulativeDistances[backtrackCumulativeDistances.length-1])} meter\n📍 Ikuti panah untuk kembali ke titik awal`);
+    }
+    
+    function stopBacktrackMode() {
+        if(backtrackInterval) { clearInterval(backtrackInterval); backtrackInterval = null; }
+        backtrackActive = false;
+        backtrackRoute = [];
+        backtrackCumulativeDistances = [];
+        backtrackOffroute = false;
+        
+        const navPanel = document.getElementById('navPanel');
+        if(navPanel) navPanel.classList.remove('show');
+        
+        const returnBtn = document.getElementById('returnBtn');
+        if(returnBtn) { returnBtn.innerHTML = '🏠 RETURN'; returnBtn.style.background = '#fd7e2c'; }
+        
+        const arrowEl = document.getElementById('returnArrow');
+        if(arrowEl) arrowEl.style.display = 'none';
+        
+        const progressEl = document.getElementById('backtrackProgress');
+        if(progressEl) progressEl.style.display = 'none';
+        
+        const offBadge = document.getElementById('offrouteBadge');
+        if(offBadge) offBadge.style.display = 'none';
+        
+        const breadInfo = document.getElementById('breadcrumbInfo');
+        if(breadInfo && !returnMode) breadInfo.classList.remove('show');
+        
+        if(returnLine && map) safeRemoveLayerHard(returnLine);
+        returnLine = null;
+    }
     
     function updateTrail() { 
         if(!map || bufferLen === 0) return;
@@ -636,6 +1091,15 @@
         if(currentMarker) currentMarker.setLatLng(latlng);
         else currentMarker = L.circleMarker(latlng, { radius: 6, fillColor: '#ff5a5f', color: '#fff', weight: 1, fillOpacity: 0.95, interactive: false }).addTo(map);
         
+        if(rotationEnabled && lastPosition && lastPosition.speed > 1.2 && fusedHeading){
+            smoothRotateMap(fusedHeading);
+            const offsetLat = lastPosition.lat - (0.00015 * Math.cos((fusedHeading - 90) * Math.PI / 180));
+            const offsetLng = lastPosition.lng - (0.00015 * Math.sin((fusedHeading - 90) * Math.PI / 180));
+            if(currentTab === '2D'){
+                map.panTo([offsetLat, offsetLng], { animate: false });
+            }
+        }
+        
         const now = Date.now();
         if(now - lastCircleUpdate > 1000) {
             if(!accuracyCircle) { accuracyCircle = L.circle(latlng, { radius: currentAccuracy, color: '#ffb347', weight: 1, fillColor: '#ffb347', fillOpacity: 0.15, interactive: false }).addTo(map); lastCircleUpdate = now; accuracyHidden = false; }
@@ -648,9 +1112,7 @@
     function init3D(){ canvas3D=document.getElementById('canvas3D'); ctx3D=canvas3D.getContext('2d'); if(ctx3D) ctx3D.imageSmoothingEnabled = false; window.addEventListener('resize',()=>{ resize3D(); if(currentTab==='3D') draw3D(); }); resize3D(); }
     function resize3D(){ if(canvas3D){ canvas3D.width=window.innerWidth; canvas3D.height=window.innerHeight; } }
     
-    // ======================= FIXED 3D DRAW FUNCTION WITH CONTEXT RECOVERY (BUG #3) =======================
     function draw3D(){ 
-        // FIX BUG #3: Recover canvas context if lost after freeze/resume
         if(!ctx3D && canvas3D){
             ctx3D = canvas3D.getContext('2d');
             if(!ctx3D) return;
@@ -682,7 +1144,6 @@
         ctx3D.fillStyle = '#0f172a';
         ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height);
         
-        // Get all points and calculate distances & altitudes
         let points = [];
         let hasRealAlt = false;
         for(let i=0;i<bufferLen;i++) {
@@ -694,17 +1155,14 @@
         }
         if(points.length < 2) return;
         
-        // Calculate cumulative distances
         let distances = [0];
         for(let i=1;i<points.length;i++) {
             distances.push(distances[i-1] + haversineFast(points[i-1].lat, points[i-1].lng, points[i].lat, points[i].lng));
         }
         const maxDist = distances[distances.length-1] || 1;
         
-        // Get altitudes (simulate if no real data)
         let altitudes = points.map(p => p.alt || 0);
         if(!hasRealAlt && points.length > 0) {
-            // Simulate elevation based on distance (sinusoidal pattern)
             for(let i=0;i<altitudes.length;i++) {
                 altitudes[i] = 25 + Math.sin(distances[i] / 50) * 12 + Math.cos(distances[i] / 120) * 8;
             }
@@ -720,7 +1178,6 @@
         
         if(w <= 0 || h <= 0) return;
         
-        // Draw grid
         ctx3D.strokeStyle = '#2a3f6e';
         ctx3D.lineWidth = 0.5;
         for(let i=0;i<=5;i++){
@@ -742,7 +1199,6 @@
             ctx3D.fillText(Math.round(maxAlt - (altRange * i / 5)) + 'm', 5, y+3);
         }
         
-        // Axes labels
         ctx3D.fillStyle = '#00f2a0';
         ctx3D.font = 'bold 10px monospace';
         ctx3D.fillText('Jarak (meter)', margin.left + w/2 - 40, margin.top + h + 35);
@@ -752,7 +1208,6 @@
         ctx3D.fillText('Ketinggian (meter)', -30, 0);
         ctx3D.restore();
         
-        // Draw elevation line
         ctx3D.beginPath();
         ctx3D.strokeStyle = '#3bc0fc';
         ctx3D.lineWidth = 2.5;
@@ -765,7 +1220,6 @@
         }
         ctx3D.stroke();
         
-        // Fill area under line
         ctx3D.beginPath();
         for(let i=0;i<points.length;i+=step){
             const x = margin.left + (distances[i] / maxDist) * w;
@@ -779,7 +1233,6 @@
         ctx3D.fillStyle = '#1e88e540';
         ctx3D.fill();
         
-        // Plot points
         const pointStep = Math.max(1, Math.floor(points.length / 200));
         for(let i=0;i<points.length;i+=pointStep){
             const x = margin.left + (distances[i] / maxDist) * w;
@@ -790,7 +1243,6 @@
             ctx3D.fill();
         }
         
-        // Title and info
         ctx3D.fillStyle = '#00f2a0';
         ctx3D.font = 'bold 12px monospace';
         ctx3D.fillText('📊 ELEVATION PROFILE', margin.left, 25);
@@ -804,7 +1256,6 @@
             ctx3D.fillText('⚠️ Simulasi ketinggian (GPS tidak menyediakan data altitude)', margin.left, canvas3D.height - 10);
         }
         
-        // Start/End markers
         if(points.length > 0) {
             const startX = margin.left;
             const startY = margin.top + h - ((altitudes[0] - minAlt) / altRange) * h;
@@ -896,7 +1347,6 @@
     
     function startGPSWatchdog() { if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); gpsWatchdogInterval = setInterval(() => { if(!isTracking || !window.watchId) return; const stale = Date.now() - lastGPSFixTime; if(stale > 45000) restartGPS(GPS_PROFILES[currentProfile]); if(stale > 120000) { if(window.watchId) navigator.geolocation.clearWatch(window.watchId); window.watchId = null; setTimeout(() => restartGPS(GPS_PROFILES[currentProfile]), 1000); } }, 10000); }
     
-    // ======================= WAKE LOCK IMPLEMENTATION (BUG #7) =======================
     let wakeLock = null;
     
     async function requestWakeLock() {
@@ -959,10 +1409,13 @@
         if(stopBtn) stopBtn.style.display='inline-block'; 
         updateGPSStatus('ACTIVE','green',null); 
         initBattery();
-        // FIX BUG #7: Request wake lock when tracking starts
         if(document.visibilityState === 'visible') {
             requestWakeLock();
         }
+        // Reset checkpoint tracking
+        lastCheckpointDistance = 0;
+        lastCheckpointTime = Date.now();
+        checkpoints = [];
     }
     
     function stopTracking(){ 
@@ -975,8 +1428,9 @@
         if(startBtn) startBtn.style.display='inline-block'; 
         if(stopBtn) stopBtn.style.display='none'; 
         updateGPSStatus('STOP','red',null);
-        // FIX BUG #7: Release wake lock when tracking stops
         releaseWakeLock();
+        // Save final checkpoint
+        if(lastPosition && bufferLen > 0) saveAutoCheckpoint();
     }
     
     function clearBuffer() {
@@ -990,7 +1444,6 @@
         if(currentMarker) safeRemoveLayerHard(currentMarker);
         currentMarker = null;
         if(accuracyCircle) { try { accuracyCircle.off?.(); safeRemoveLayerHard(accuracyCircle); } catch(e){} accuracyCircle = null; }
-        // FIX BUG #4: Use hard cleanup
         if(returnLine) safeRemoveLayerHard(returnLine);
         returnLine = null;
         if(playbackMarker) safeRemoveLayerHard(playbackMarker);
@@ -1001,6 +1454,10 @@
         playbackIndices = [];
         navigationCache = { lastIdx: 0, lastDist: Infinity };
         accuracyHidden = false;
+        stopBacktrackMode();
+        checkpoints = [];
+        lastCheckpointDistance = 0;
+        lastCheckpointTime = 0;
         updateUI(); resetMovementEngine(); stopFollowMode();
         if(window.gc) try{ gc(); }catch(e){}
     }
@@ -1014,7 +1471,6 @@
         const distance = computeTotalDistance(); 
         const trackId = Date.now() + '_' + Math.random().toString(36); 
         const points = getAllPoints().map(p => ({ lat: p.lat, lng: p.lng, alt: p.alt, accuracy: p.accuracy, heading: p.heading, speed: p.speed, timestamp: p.timestamp })); 
-        // FIX BUG #6: Save semantic vectors with track
         const trackData = { 
             trackId, 
             name, 
@@ -1024,7 +1480,8 @@
             distance, 
             points,
             semanticVectors: getSemanticVectors(),
-            movementState: currentMovementState
+            movementState: currentMovementState,
+            checkpoints: checkpoints
         }; 
         if(!db) await openDB(); 
         await safeTx([CONFIG.TRACKS_STORE], 'readwrite', (tx) => { tx.objectStore(CONFIG.TRACKS_STORE).put(trackData); }); 
@@ -1058,12 +1515,15 @@
                     if(prev && cachedTotalDistance !== undefined) cachedTotalDistance += haversineFast(prev.lat, prev.lng, point.lat, point.lng); 
                     if(point.lat && point.lng) addToSpatialIndex(point, i); 
                 } 
-                // FIX BUG #6: Restore semantic vectors if available
                 if(track.semanticVectors && track.semanticVectors.length) {
                     movementVectors = track.semanticVectors.slice();
                     if(track.movementState) currentMovementState = track.movementState;
                     updateSemanticBreadcrumb();
                     updateMovementStats();
+                }
+                if(track.checkpoints && track.checkpoints.length) {
+                    checkpoints = track.checkpoints;
+                    console.log('[CHECKPOINT] Restored', checkpoints.length, 'checkpoints');
                 }
                 updateTrail(); 
                 if(map && lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16); 
@@ -1080,6 +1540,7 @@
         req.onsuccess=()=>{ 
             const track=req.result; 
             if(track && confirm(`Mulai navigasi mengikuti track "${track.name}"?`)){ 
+                if(backtrackActive) stopBacktrackMode();
                 startFollowMode(track); 
                 const hp = document.getElementById('historyPanel');
                 if(hp) hp.classList.remove('show'); 
@@ -1118,36 +1579,27 @@
     let returnMode=false, returnInterval=null, returnLine=null;
     function toggleReturnMode(){ 
         if(bufferLen===0){ alert("Tidak ada jalur untuk kembali"); return; } 
-        returnMode=!returnMode; 
-        const btn=document.getElementById('returnBtn'); 
-        const info=document.getElementById('breadcrumbInfo'); 
-        if(returnMode){ 
-            if(btn) btn.innerHTML='📍 BACKTRACK ON'; 
-            if(btn) btn.style.background='#2c6e2f'; 
-            if(info) info.classList.add('show'); 
-            if(returnInterval) clearInterval(returnInterval); 
-            returnInterval=setInterval(updateReturnDistance,1500); 
-            updateReturnDistance(); 
-            if(returnLine && map) safeRemoveLayerHard(returnLine); 
-            const start=getPoint(0), now=getLastPoint(); 
-            if(start && now) returnLine=L.polyline([[now.lat,now.lng],[start.lat,start.lng]],{color:'#fd7e2c',weight:3,dashArray:'8,8', interactive: false}).addTo(map); 
-        } else { 
-            if(btn) btn.innerHTML='🏠 RETURN'; 
-            if(btn) btn.style.background='#fd7e2c'; 
-            if(info) info.classList.remove('show'); 
-            if(returnInterval) clearInterval(returnInterval); 
-            safeRemoveLayerHard(returnLine); 
-            returnLine=null; 
-        } 
+        if(isReplaying){ alert("Matikan replay terlebih dahulu"); return; }
+        
+        if(backtrackActive) {
+            stopBacktrackMode();
+        } else {
+            startBacktrackMode();
+        }
     }
     
     function updateReturnDistance(){ 
-        if(!returnMode || bufferLen<1) return; 
+        if(!returnMode && !backtrackActive) return; 
         const rd = document.getElementById('returnDistance');
-        if(rd) rd.innerHTML=`${Math.round(computeTotalDistance())} meter (true path)`; 
+        if(rd && backtrackActive && backtrackCumulativeDistances.length > 0) {
+            const total = backtrackCumulativeDistances[backtrackCumulativeDistances.length-1] || 0;
+            const remaining = total - (backtrackCumulativeDistances[backtrackNearestIdx] || 0);
+            rd.innerHTML = `${Math.round(remaining)} meter (breadcrumb path)`;
+        } else if(rd && bufferLen>0) {
+            rd.innerHTML = `${Math.round(computeTotalDistance())} meter (true path)`;
+        }
     }
     
-    // ======================= NAVIGATION =======================
     let followMode=false, followRoute=[], followTurns=[], followLine=null, followTurnMarkers=[], followInterval=null;
     
     function detectTurns(points){ 
@@ -1170,6 +1622,7 @@
     
     function startFollowMode(track){ 
         if(!track||track.points.length<2){ alert("Track tidak valid untuk navigasi"); return; } 
+        if(backtrackActive) stopBacktrackMode();
         stopFollowMode(); 
         followRoute=track.points.map(p=>({...p})); 
         followTurns=detectTurns(followRoute); 
@@ -1284,7 +1737,6 @@
         } 
     }
     
-    // ======================= REPLAY =======================
     function stopPlaybackNew() { 
         if(playbackTimer){ cancelAnimationFrame(playbackTimer); playbackTimer=null; } 
         replayToken++; 
@@ -1300,6 +1752,8 @@
     function startPlayback(){ 
         if(playbackTimer) cancelAnimationFrame(playbackTimer);
         if(bufferLen<2){ alert("Tidak ada titik untuk replay"); return; } 
+        if(backtrackActive) stopBacktrackMode();
+        if(followMode) stopFollowMode();
         stopPlaybackNew(); 
         const myReplay=++replayToken; 
         isReplaying=true; 
@@ -1362,7 +1816,6 @@
     function pausePlayback(){ isPlaying=false; if(playbackTimer) cancelAnimationFrame(playbackTimer); }
     function resumePlayback(){ if(playbackActive && !isPlaying && playbackIndex<replaySnapshotIndices.length){ isPlaying=true; const myReplay=replayToken; let lastFrame=0, lastPanFrame=0; const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS; function animate(now){ if(myReplay!==replayToken) return; if(!playbackActive||!isPlaying) return; if(now-lastFrame>=frameMs){ lastFrame=now; if(playbackIndex<replaySnapshotIndices.length){ const p=getPoint(replaySnapshotIndices[playbackIndex]); if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); if(map && currentTab==='2D' && (now-lastPanFrame)>=500){ const bounds=map.getBounds(); const point=L.latLng(p.lat,p.lng); if(!bounds.contains(point)) map.setView([p.lat,p.lng],map.getZoom(),{animate:false}); lastPanFrame=now; } const slider=document.getElementById('playbackSlider'); const pbPercent=document.getElementById('playbackPercent'); if(slider) slider.value=playbackIndex; if(pbPercent) pbPercent.innerText=Math.round((playbackIndex/replaySnapshotIndices.length)*100)+"%"; playbackIndex++; playbackTimer=requestAnimationFrame(animate); } else { isReplaying=false; stopPlaybackNew(); } } else { playbackTimer=requestAnimationFrame(animate); } } playbackTimer=requestAnimationFrame(animate); } }
     
-    // ======================= SAFE TX =======================
     async function safeTx(storeNames, mode, fn, timeoutMs = CONFIG.TX_TIMEOUT_MS) {
         if(!db) await openDB();
         return enqueueTx(() => {
@@ -1514,7 +1967,6 @@
         return activeSyncPromise;
     }
     
-    // ======================= WORKER =======================
     let workerLastHeartbeat = Date.now(), workerHeartbeatInterval = null, workerRespawnCount = 0, lastWorkerRespawn = 0;
     const MAX_WORKER_RESPAWN_PER_MINUTE = 3;
     
@@ -1598,6 +2050,9 @@
             if(canvasDiv) canvasDiv.style.display='none'; 
             if(btn2D) btn2D.classList.add('active'); 
             if(btn3D) btn3D.classList.remove('active'); 
+            if(map && map.getPane('mapPane')) {
+                map.getPane('mapPane').style.transform = '';
+            }
             requestAnimationFrame(()=>{ if(map) map.invalidateSize(); }); 
         } else { 
             if(mapDiv) mapDiv.style.display='none'; 
@@ -1615,16 +2070,24 @@
             if(currentTab==='3D') draw3D(); 
             updateGPSStatus('CLEARED','red',null); 
             stopFollowMode(); 
+            stopBacktrackMode();
         } 
     }
     
     function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit','_blank'); }
     function toggleHistory(){ const hp = document.getElementById('historyPanel'); if(hp) hp.classList.toggle('show'); }
     function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g,(m)=>m==='&'?'&amp;':(m==='<'?'&lt;':'&gt;')); }
-    function centerMap(){ if(lastPosition && map && currentTab==='2D') map.setView([lastPosition.lat, lastPosition.lng], 18); }
+    function centerMap(){ 
+        if(lastPosition && map && currentTab==='2D') {
+            map.setView([lastPosition.lat, lastPosition.lng], 18);
+            if(map.getPane('mapPane')) {
+                map.getPane('mapPane').style.transform = '';
+            }
+            smoothRotation = 0;
+        } 
+    }
     function safeRemoveLayer(layer) { if(layer && map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer); }
     
-    // Lifecycle events
     document.addEventListener('visibilitychange', () => {
         isPageVisible=document.visibilityState==='visible'; 
         redrawSuspended=!isPageVisible; 
@@ -1641,6 +2104,7 @@
             if(window.watchId) navigator.geolocation.clearWatch(window.watchId); 
             if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); 
             if(followInterval) clearInterval(followInterval); 
+            if(backtrackInterval) clearInterval(backtrackInterval);
             if(playbackTimer) cancelAnimationFrame(playbackTimer); 
             if(syncWorker) syncWorker.terminate();
             if(walQueue && walQueue.length > 0) flushWalQueue();
@@ -1687,8 +2151,7 @@
         } 
     }
     
-    // Register event listeners
-    document.getElementById('navCloseBtn')?.addEventListener('click', () => stopFollowMode());
+    document.getElementById('navCloseBtn')?.addEventListener('click', () => { stopFollowMode(); stopBacktrackMode(); });
     document.getElementById('centerBtn')?.addEventListener('click', centerMap);
     document.getElementById('startBtn')?.addEventListener('click', startTracking);
     document.getElementById('stopBtn')?.addEventListener('click', stopTracking);
@@ -1704,7 +2167,6 @@
     document.getElementById('playbackToggleBtn')?.addEventListener('click', () => { if(playbackActive) stopPlaybackNew(); else startPlayback(); });
     document.getElementById('playPauseBtn')?.addEventListener('click', () => { if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); });
     document.getElementById('stopPlaybackBtn')?.addEventListener('click', () => stopPlaybackNew());
-    // FIX BUG #5: Replay slider with mode check
     document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{ 
         if(!playbackActive || !replaySnapshotIndices) return; 
         const idx=parseInt(e.target.value); 
@@ -1712,7 +2174,6 @@
             playbackIndex=idx; 
             const p=getPoint(replaySnapshotIndices[playbackIndex]); 
             if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); 
-            // FIX BUG #5: Only update map view when in 2D mode
             if(currentTab === '2D' && map) {
                 map.setView([p.lat, p.lng], map.getZoom(), {animate:false}); 
             }
@@ -1757,7 +2218,7 @@
     }
     
     async function bootstrap(){ 
-        console.log("VMS v5.18 - FULLY FUNCTIONAL + 3D CANVAS FIX - 12h Stable"); 
+        console.log("VMS v5.18 - TACTICAL BACKTRACK ENGINE + AUTO CHECKPOINT - 12h Stable"); 
         await openDB(); 
         initMap(); 
         init3D(); 
@@ -1770,9 +2231,9 @@
         updateGPSStatus('READY','yellow',null); 
         updateSyncStatus('STANDBY','yellow'); 
         updateUI(); 
-        // FIX BUG #2: Force 2D mode at startup
         switchTab('2D');
-        console.log("[BOOT] VMS v5.18 Siap - Semua fitur berfungsi + 3D Canvas Working"); 
+        recoverFromLastCheckpoint();
+        console.log("[BOOT] VMS v5.18 Siap - Tactical Backtrack Engine + Auto Checkpoint Active"); 
     }
     
     bootstrap();
