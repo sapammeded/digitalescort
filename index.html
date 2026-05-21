@@ -1486,7 +1486,67 @@
     function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit','_blank'); }
     function toggleHistory(){ const hp = document.getElementById('historyPanel'); if(hp) hp.classList.toggle('show'); }
     function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g,(m)=>m==='&'?'&amp;':(m==='<'?'&lt;':'&gt;')); }
-    function centerMap(){ if(lastPosition && map && currentTab==='2D') { map.setView([lastPosition.lat, lastPosition.lng], 18); if(map.getPane('mapPane')) map.getPane('mapPane').style.transform = ''; smoothRotation = 0; } }
+    function centerMap(){ 
+    if(!map || currentTab !== '2D') return;
+    
+    // Reset rotation first
+    if(map.getPane('mapPane')) {
+        map.getPane('mapPane').style.transform = '';
+    }
+    smoothRotation = 0;
+    
+    // Priority 1: Jika tracking aktif dan punya posisi
+    if(isTracking && lastPosition) {
+        map.setView([lastPosition.lat, lastPosition.lng], 18);
+        // Tampilkan marker konfirmasi
+        const tempMarker = L.circleMarker([lastPosition.lat, lastPosition.lng], {
+            radius: 12,
+            color: '#00f2a0',
+            fillColor: '#00f2a0',
+            fillOpacity: 0.9,
+            weight: 2
+        }).addTo(map);
+        setTimeout(() => { if(map && map.hasLayer(tempMarker)) map.removeLayer(tempMarker); }, 2000);
+        return;
+    }
+    
+    // Priority 2: Ambil lokasi real dari browser GPS (tanpa tracking)
+    if(navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const {latitude, longitude} = pos.coords;
+                map.setView([latitude, longitude], 18);
+                // Tampilkan marker hijau sebagai konfirmasi
+                const tempMarker = L.circleMarker([latitude, longitude], {
+                    radius: 12,
+                    color: '#00f2a0',
+                    fillColor: '#00f2a0',
+                    fillOpacity: 0.9,
+                    weight: 2
+                }).addTo(map);
+                setTimeout(() => { 
+                    if(map && map.hasLayer(tempMarker)) map.removeLayer(tempMarker); 
+                }, 3000);
+            },
+            (err) => {
+                console.warn('[CENTER] GPS error:', err.message);
+                // Fallback: ke lastPosition jika ada
+                if(lastPosition) {
+                    map.setView([lastPosition.lat, lastPosition.lng], 18);
+                } else {
+                    // Fallback terakhir: tetap di posisi map saat ini
+                    const center = map.getCenter();
+                    map.setView([center.lat, center.lng], map.getZoom());
+                }
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+        );
+    } else if(lastPosition) {
+        map.setView([lastPosition.lat, lastPosition.lng], 18);
+    } else {
+        map.invalidateSize();
+    }
+}
     function safeRemoveLayer(layer) { if(layer && map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer); }
     
     document.addEventListener('visibilitychange', () => { isPageVisible=document.visibilityState==='visible'; redrawSuspended=!isPageVisible; if(syncWorker) syncWorker.postMessage({ type: 'VISIBILITY', visible: isPageVisible }); if(isPageVisible){ if(currentTab==='3D') draw3D(); updateTrail(); } if(!isPageVisible && walQueue && walQueue.length > 0) flushWalQueue(); });
