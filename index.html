@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | v5.16 · Ultra Hardened · 12h Stable</title>
+    <title>VMS | v5.18 · Production Tactical · 12h Stable</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -12,6 +12,7 @@
         *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;}
         body{font-family:'Segoe UI',Roboto,system-ui;background:#0a0f1a;overflow:hidden;position:fixed;width:100%;height:100%;}
         #map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:#101624;}
+        /* FIX BUG #1: Canvas starts hidden, only shown when 3D tab active */
         #canvas3D{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;background:#0c1122;display:none;}
         
         .status-bar{position:fixed;top:12px;left:12px;right:12px;z-index:1100;background:rgba(10,15,26,0.95);backdrop-filter:blur(12px);border-radius:28px;padding:8px 12px;font-family:'SF Mono',monospace;font-size:10px;box-shadow:0 4px 14px rgba(0,0,0,0.5);border:1px solid rgba(72,187,255,0.4);pointer-events:none;}
@@ -125,45 +126,25 @@
 
 <script>
 (function(){
-    // ======================= VMS v5.16 ULTRA HARDENED =======================
-    // ALL FEATURES PRESERVED + 10 CRITICAL PATCHES:
-    // 1. Leaflet Hard Destroy Utility
-    // 2. Replay Anti-Zombie Token
-    // 3. IndexedDB Transaction Queue Singleton
-    // 4. Compact Shared Point Structure (Array)
-    // 5. Chunked RBush Rebuild (No Freeze)
-    // 6. GPU Canvas Periodic Reset
-    // 7. Sync Race Burst Guard
-    // 8. GPS Exponential Backoff
-    // 9. Map Invalidate Throttle
-    // 10. Page Lifecycle API + Low Memory Auto Degrade
+    // ======================= VMS v5.18 - PRODUCTION TACTICAL FULL ENGINE =======================
+    console.log("[VMS] Starting v5.18 - Production Tactical with 3D Canvas Fix");
     
-    // ======================= MOVEMENT INTELLIGENCE (PRESERVED) =======================
+    // ======================= MOVEMENT STATES =======================
     const MOVEMENT_STATES = {
         WALKING_STRAIGHT: 'BERJALAN LURUS', TURNING_LEFT: 'BELOK KIRI', TURNING_RIGHT: 'BELOK KANAN',
         CLIMBING: 'MENAIKI', DESCENDING: 'MENURUNI', SEARCHING: 'MENCARI JALUR', STOPPED: 'BERHENTI', LOST_PATTERN: 'TERSESAT - BERPUTAR'
     };
     
-    let movementVectors = new Array(500);
+    let movementVectors = [];
     let semanticStart = 0, semanticLen = 0;
     
     function pushSemanticVector(vector) {
-        const pos = (semanticStart + semanticLen) % 500;
-        movementVectors[pos] = vector;
-        if(semanticLen < 500) semanticLen++;
-        else semanticStart = (semanticStart + 1) % 500;
+        if(movementVectors.length > 2000) movementVectors = movementVectors.slice(-1500);
+        movementVectors.push(vector);
     }
     
-    function getSemanticVectors() {
-        const result = [];
-        for(let i = 0; i < semanticLen; i++) {
-            const vec = movementVectors[(semanticStart + i) % 500];
-            if(vec) result.push(vec);
-        }
-        return result;
-    }
-    
-    function clearSemanticVectors() { movementVectors = new Array(500); semanticStart = 0; semanticLen = 0; }
+    function getSemanticVectors() { return movementVectors.slice(); }
+    function clearSemanticVectors() { movementVectors = []; semanticStart = 0; semanticLen = 0; }
     
     let currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT;
     let lostPatternDetected = false, lostConfirmedCount = 0, lostCooldownUntil = 0, patrolMode = false;
@@ -186,8 +167,7 @@
     }
     
     function circularMean(a, b, weightA = 0.7, weightB = 0.3) {
-        const aRad = a * Math.PI / 180;
-        const bRad = b * Math.PI / 180;
+        const aRad = a * Math.PI / 180, bRad = b * Math.PI / 180;
         const x = Math.cos(aRad) * weightA + Math.cos(bRad) * weightB;
         const y = Math.sin(aRad) * weightA + Math.sin(bRad) * weightB;
         let result = Math.atan2(y, x) * 180 / Math.PI;
@@ -227,14 +207,16 @@
         const isPotentiallyLost = (radius < MOVEMENT_CONFIG.LOST_RADIUS) || (travelEfficiency > 3 && netProgress < 20) || (headingChaos > recent.length * 0.6);
         if(isPotentiallyLost) { lostConfirmedCount++; if(lostConfirmedCount >= LOST_CONFIRMATION_NEEDED && !lostPatternDetected) { lostPatternDetected = true; lostCooldownUntil = now + LOST_COOLDOWN_MS; } }
         else { if(lostConfirmedCount > 0) lostConfirmedCount--; if(lostConfirmedCount <= 0 && lostPatternDetected) { lostPatternDetected = false; lostCooldownUntil = now + LOST_COOLDOWN_MS / 2; } }
-        document.getElementById('lostPattern').innerHTML = lostPatternDetected ? '⚠️ YA' : 'TIDAK';
+        const el = document.getElementById('lostPattern');
+        if(el) el.innerHTML = lostPatternDetected ? '⚠️ YA' : 'TIDAK';
     }
     
     function addMovementVector(point, prevPoint) {
         if(!prevPoint) {
             pushSemanticVector({...point, state: MOVEMENT_STATES.WALKING_STRAIGHT, headingChange: 0, slope: 0, speed: 0, distance: 0, isSignificant: true, timestamp: point.timestamp || Date.now(), bearing: null});
             currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT;
-            document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`;
+            const mb = document.getElementById('movementBadge');
+            if(mb) mb.innerHTML = `🚶 ${currentMovementState}`;
             return;
         }
         const distance = haversineFast(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
@@ -249,7 +231,8 @@
         const isSignificant = (Math.abs(headingChange) > MOVEMENT_CONFIG.TURN_ANGLE || Math.abs(slope) > MOVEMENT_CONFIG.CLIMB_RATE || state === MOVEMENT_STATES.STOPPED);
         pushSemanticVector({...point, state, headingChange, slope, speed, distance, isSignificant, timestamp: point.timestamp || Date.now(), bearing: currentBearing});
         currentMovementState = state;
-        document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`;
+        const mb = document.getElementById('movementBadge');
+        if(mb) mb.innerHTML = `🚶 ${currentMovementState}`;
         updateLostPattern();
         updateMovementStats();
     }
@@ -285,20 +268,26 @@
             if(slope < 0) totalDescent += vectors[i].distance * (Math.abs(slope) / 100);
             if(Math.abs(vectors[i].headingChange) > MOVEMENT_CONFIG.TURN_ANGLE) turnCount++;
         }
-        document.getElementById('totalClimb').innerHTML = `${Math.round(totalClimb)} m`;
-        document.getElementById('totalDescent').innerHTML = `${Math.round(totalDescent)} m`;
-        document.getElementById('turnCount').innerHTML = turnCount;
+        const tc = document.getElementById('totalClimb');
+        const td = document.getElementById('totalDescent');
+        const tcnt = document.getElementById('turnCount');
+        if(tc) tc.innerHTML = `${Math.round(totalClimb)} m`;
+        if(td) td.innerHTML = `${Math.round(totalDescent)} m`;
+        if(tcnt) tcnt.innerHTML = turnCount;
         let confidence = 100 - (lostPatternDetected ? 40 : 0) - (turnCount > 20 ? 15 : 0);
         let level = confidence > 70 ? 'HIGH' : (confidence > 40 ? 'MEDIUM' : 'LOW');
         let color = confidence > 70 ? '#00c48a' : (confidence > 40 ? '#ffb347' : '#ff5a5f');
-        document.getElementById('confidenceBadge').innerHTML = `🎯 RETURN: ${level}`;
-        document.getElementById('confidenceBadge').style.borderLeft = `3px solid ${color}`;
+        const cb = document.getElementById('confidenceBadge');
+        if(cb) {
+            cb.innerHTML = `🎯 RETURN: ${level}`;
+            cb.style.borderLeft = `3px solid ${color}`;
+        }
     }
     
-    function resetMovementEngine() { clearSemanticVectors(); lostPatternDetected = false; lostConfirmedCount = 0; lostCooldownUntil = 0; currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT; document.getElementById('movementBadge').innerHTML = `🚶 ${currentMovementState}`; updateSemanticBreadcrumb(); updateMovementStats(); }
-    function toggleSemanticPanel() { document.getElementById('semanticPanel').classList.toggle('show'); updateSemanticBreadcrumb(); }
+    function resetMovementEngine() { clearSemanticVectors(); lostPatternDetected = false; lostConfirmedCount = 0; lostCooldownUntil = 0; currentMovementState = MOVEMENT_STATES.WALKING_STRAIGHT; const mb = document.getElementById('movementBadge'); if(mb) mb.innerHTML = `🚶 ${currentMovementState}`; updateSemanticBreadcrumb(); updateMovementStats(); }
+    function toggleSemanticPanel() { const sp = document.getElementById('semanticPanel'); if(sp) sp.classList.toggle('show'); updateSemanticBreadcrumb(); }
     
-    // ======================= PATCH 1: HARD DESTROY UTILITY =======================
+    // ======================= HARD DESTROY UTILITY =======================
     function hardDestroyLeafletObject(obj) {
         if(!obj) return;
         try {
@@ -332,7 +321,7 @@
     
     function safeRemoveLayerHard(layer) {
         if(!layer) return;
-        if(layer && map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer);
+        if(layer && window.map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer);
         hardDestroyLeafletObject(layer);
     }
     
@@ -352,11 +341,12 @@
         return generateCRC32(raw);
     }
     
-    // ======================= PATCH 4: COMPACT POINT STRUCTURE =======================
+    // ======================= COMPACT POINT =======================
     const P_LAT = 0, P_LNG = 1, P_TS = 2, P_ACC = 3, P_SPD = 4, P_HDG = 5, P_ALT = 6;
     function pointToCompact(point) { return [point.lat, point.lng, point.timestamp || Date.now(), point.accuracy || 0, point.speed || 0, point.heading || 0, point.alt || 0]; }
     function compactToPoint(compact, hash) { return { lat: compact[P_LAT], lng: compact[P_LNG], timestamp: compact[P_TS], accuracy: compact[P_ACC], speed: compact[P_SPD], heading: compact[P_HDG], alt: compact[P_ALT], hash: hash, _checksum: hash }; }
     
+    // ======================= KALMAN FILTER =======================
     let kalmanLat = null, kalmanLng = null, kalmanVariance = 1;
     function kalmanUpdate(measurementLat, measurementLng, accuracy, speed) {
         const noise = Math.max(accuracy, 1);
@@ -374,74 +364,64 @@
     const DRIFT_CONFIG = { STATIONARY_SPEED: 0.5, DRIFT_RADIUS: 8, REQUIRED_STABLE_COUNT: 3 };
     let stationaryCounter = 0;
     let gpsGeneration = 0, restartingGPS = false, lastRestartTime = 0, restartQueued = false, lastHardRestart = 0;
-    
-    // PATCH 8: GPS EXPONENTIAL BACKOFF
-    let gpsRestartAttempts = 0;
     let gpsBackoffMs = 1000;
     const GPS_MAX_BACKOFF_MS = 60000;
-    
     let lastGPSFixTime = 0, gpsWatchdogInterval = null;
+    let gpsRestartPending = false;
+    let gpsRestartDebounceTimer = null;
     
     async function restartGPS(profile) {
-        if(restartQueued) return;
+        if(restartQueued || gpsRestartPending) return;
+        gpsRestartPending = true;
+        if(gpsRestartDebounceTimer) clearTimeout(gpsRestartDebounceTimer);
+        gpsRestartDebounceTimer = setTimeout(() => { gpsRestartPending = false; }, 2000);
+        
         const now = Date.now();
         if(now - lastHardRestart < gpsBackoffMs) {
             gpsBackoffMs = Math.min(gpsBackoffMs * 1.5, GPS_MAX_BACKOFF_MS);
+            gpsRestartPending = false;
             return;
         }
         gpsBackoffMs = 1000;
         lastHardRestart = now;
-        if(Date.now() - lastRestartTime < 5000) { restartQueued = false; return; }
+        if(Date.now() - lastRestartTime < 5000) { restartQueued = false; gpsRestartPending = false; return; }
         lastRestartTime = Date.now();
-        if(restartingGPS) { restartQueued = false; return; }
+        if(restartingGPS) { restartQueued = false; gpsRestartPending = false; return; }
         restartingGPS = true;
         try {
             const gen = ++gpsGeneration;
-            if(watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+            if(window.watchId) {
+                navigator.geolocation.clearWatch(window.watchId);
+                window.watchId = null;
+            }
             await new Promise(r => setTimeout(r, 200));
-            const id = navigator.geolocation.watchPosition(pos => { if(gen === gpsGeneration) onGPSPosition(pos); }, err => { if(gen === gpsGeneration) onGPSError(err); }, profile);
+            const id = navigator.geolocation.watchPosition(
+                pos => { if(gen === gpsGeneration) onGPSPosition(pos); },
+                err => { if(gen === gpsGeneration) onGPSError(err); },
+                profile
+            );
             if(typeof id !== 'number') throw new Error('WATCH_START_FAILED');
-            watchId = id;
+            window.watchId = id;
         } catch(err) { console.error('[GPS RESTART]', err); }
-        finally { restartingGPS = false; restartQueued = false; }
+        finally { restartingGPS = false; restartQueued = false; gpsRestartPending = false; }
     }
     
-    // ======================= RBUSH SPATIAL INDEX WITH CHUNKED REBUILD =======================
+    // ======================= RBUSH SPATIAL =======================
     let spatialIndex = new RBush();
     let spatialHistory = [];
     const MAX_SPATIAL_POINTS = 20000;
-    let spatialRebuildCounter = 0;
-    const SPATIAL_REBUILD_INTERVAL = 50;
-    let pendingRebuildItems = [];
-    let rebuildChunkTimer = null;
-    
-    function chunkedRebuildSpatialIndex(items, chunkSize = 500) {
-        if(rebuildChunkTimer) cancelAnimationFrame(rebuildChunkTimer);
-        pendingRebuildItems = [...items];
-        spatialIndex = new RBush();
-        function processChunk() {
-            if(!pendingRebuildItems.length) return;
-            const chunk = pendingRebuildItems.splice(0, chunkSize);
-            for(const item of chunk) spatialIndex.insert(item);
-            if(pendingRebuildItems.length) rebuildChunkTimer = requestAnimationFrame(processChunk);
-        }
-        processChunk();
-    }
     
     function addToSpatialIndex(point, idx) {
         const item = { minX: point.lng - 0.0001, minY: point.lat - 0.0001, maxX: point.lng + 0.0001, maxY: point.lat + 0.0001, idx: idx, lat: point.lat, lng: point.lng };
         spatialIndex.insert(item);
         spatialHistory.push(item);
         if(spatialHistory.length > MAX_SPATIAL_POINTS) {
-            spatialRebuildCounter++;
-            if(spatialRebuildCounter >= SPATIAL_REBUILD_INTERVAL) {
-                spatialRebuildCounter = 0;
-                const keepCount = Math.floor(MAX_SPATIAL_POINTS * 0.7);
-                const toKeep = spatialHistory.slice(-keepCount);
-                if(window.requestIdleCallback) requestIdleCallback(() => chunkedRebuildSpatialIndex(toKeep), { timeout: 100 });
-                else chunkedRebuildSpatialIndex(toKeep);
-                spatialHistory = toKeep;
-            }
+            const keepCount = Math.floor(MAX_SPATIAL_POINTS * 0.7);
+            const toKeep = spatialHistory.slice(-keepCount);
+            const newIndex = new RBush();
+            for(const it of toKeep) newIndex.insert(it);
+            spatialIndex = newIndex;
+            spatialHistory = toKeep;
         }
     }
     
@@ -451,7 +431,7 @@
     }
     
     // ======================= DEVICE ORIENTATION =======================
-    let fusedHeading = 0, lastCompassHeading = 0;
+    let fusedHeading = 0, lastCompassHeading = 0, lastPosition = null;
     async function initCompass() {
         if(typeof DeviceOrientationEvent !== 'undefined') {
             if(typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -474,19 +454,17 @@
     let routeCumulativeDistances = [];
     let batteryManager = null, accuracyHidden = false, dbOpeningPromise = null, isReplaying = false;
     
-    // PATCH 7: SYNC RACE GUARD
     let syncScheduled = false;
     let syncScheduleTimer = null;
     function scheduleSync() { if(syncScheduled) return; syncScheduled = true; if(syncScheduleTimer) clearTimeout(syncScheduleTimer); syncScheduleTimer = setTimeout(() => { syncScheduled = false; if(syncLock || activeSyncPromise) return; syncToServer(); }, 1000); }
     
-    // PATCH 10: PRESSURE GOVERNOR
     let systemPressure = 'NORMAL';
     let pressureLastCheck = 0;
     
     const CONFIG = {
         SYNC_URL: 'https://trackingrecord.sapammeded.workers.dev/api/v1/sync', BATCH_SYNC: 20, AUTO_SYNC_INTERVAL_MS: 30000,
         MAX_SPEED_MS: 45, MAX_JUMP_METERS: 150, MIN_ACCURACY_METERS: 50,
-        DB_NAME: 'vms_tactical_v26', PENDING_STORE: 'wal_pending', SYNCED_STORE: 'wal_synced', TRACKS_STORE: 'saved_tracks',
+        DB_NAME: 'vms_tactical_v28', PENDING_STORE: 'wal_pending', SYNCED_STORE: 'wal_synced', TRACKS_STORE: 'saved_tracks',
         PLAYBACK_FRAME_MS: 80, CIRCULAR_BUFFER_SIZE: 6000,
         FRESHNESS_THRESHOLD_MS: 5000, SYNCED_RETENTION_DAYS: 7, MAX_SYNCED_RECORDS: 50000,
         WAL_BATCH_SIZE: 25, MAX_STALE_GPS_MS: 10000, MAX_UNSYNCED_POINTS: 8000, MAX_WAL_QUEUE_SIZE: 3000,
@@ -495,8 +473,8 @@
         TX_TIMEOUT_MS: 10000
     };
     
-    let map, currentMarker, accuracyCircle = null, watchId = null, isTracking = false;
-    let trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE), bufferStart = 0, bufferLen = 0, totalPoints = 0, lastPosition = null, currentAccuracy = 0;
+    let map, currentMarker, accuracyCircle = null, isTracking = false;
+    let trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE), bufferStart = 0, bufferLen = 0, totalPoints = 0, currentAccuracy = 0;
     let walQueue = [], walBatchTimer = null, walFlushLock = false;
     let db = null, syncLock = false, syncMutexToken = 0, activeSyncPromise = null;
     let workerGenToken = 0, syncRetryCount = 0, syncBackoffMs = CONFIG.SYNC_RETRY_BASE_MS;
@@ -507,11 +485,9 @@
     let trailSegments = [], activeSegment = null, segmentPointCount = 0, drawDecimationStep = 1;
     const SEGMENT_LIMIT = 800;
     
-    // PATCH 2: REPLAY ANTI-ZOMBIE TOKEN
     let replayToken = 0;
     let playbackActive = false, playbackTimer = null, playbackIndex = 0, isPlaying = false;
     
-    // PATCH 3: TRANSACTION QUEUE SINGLETON
     let txQueue = Promise.resolve();
     let activeTxCount = 0;
     const MAX_CONCURRENT_TX = 1;
@@ -527,87 +503,18 @@
         });
     }
     
-    // PATCH 6: GPU CANVAS PERIODIC RESET
     let lastCanvasReset = Date.now();
-    const CANVAS_RESET_INTERVAL = 10 * 60 * 1000;
-    function resetCanvasGPU() { if(!canvas3D) return; const w = canvas3D.width, h = canvas3D.height; canvas3D.width = w; canvas3D.height = h; if(ctx3D) { ctx3D.clearRect(0,0,w,h); ctx3D.fillStyle='#0c1122'; ctx3D.fillRect(0,0,w,h); } console.log('[GPU] Canvas reset'); }
+    const CANVAS_RESET_INTERVAL = 30 * 60 * 1000;
     
-    // PATCH 9: MAP INVALIDATE THROTTLE
-    let invalidateScheduled = false;
-    function throttledInvalidateSize() { if(invalidateScheduled) return; invalidateScheduled = true; requestAnimationFrame(() => { if(map) map.invalidateSize({ animate: false }); invalidateScheduled = false; }); }
-    
-    function safeRemoveLayer(layer) { if(layer && map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer); }
-    
-    function compactActiveSegment() {
-        if(!activeSegment) return;
-        const latlngs = activeSegment.getLatLngs();
-        if(latlngs && latlngs.length > 200) activeSegment.setLatLngs(latlngs.slice(-Math.floor(latlngs.length * 0.7)));
-    }
-    
-    function updateTrail() { 
-        if(!isPageVisible && redrawSuspended) return;
-        if(bufferLen === 0 || !map) return;
-        updateSystemPressure();
-        const last = getLastPoint();
-        const latlng = [last.lat, last.lng];
-        if(!activeSegment || segmentPointCount >= SEGMENT_LIMIT) {
-            if(activeSegment && systemPressure === 'CRITICAL') compactActiveSegment();
-            const newSegment = L.polyline([], { color: '#1e88e5', weight: 4, smoothFactor: 2, interactive: false }).addTo(map);
-            trailSegments.push(newSegment);
-            if(trailSegments.length > 12) { const old = trailSegments.shift(); if(old) { old.setLatLngs([]); safeRemoveLayerHard(old); } }
-            activeSegment = newSegment;
-            segmentPointCount = 0;
-        }
-        let step = 1;
-        if(bufferLen > 3000) step = 2;
-        if(bufferLen > 6000) step = 4;
-        if(bufferLen > 10000) step = 8;
-        if(bufferLen > 15000) step = 12;
-        if(systemPressure === 'HIGH') step = Math.max(step, 4);
-        if(systemPressure === 'CRITICAL') step = Math.max(step, 8);
-        if(segmentPointCount % step === 0) activeSegment.addLatLng(latlng);
-        segmentPointCount++;
-        if(segmentPointCount % 500 === 0 && systemPressure === 'HIGH') compactActiveSegment();
-        if(currentMarker) currentMarker.setLatLng(latlng);
-        else currentMarker = L.circleMarker(latlng, { radius: 6, fillColor: '#ff5a5f', color: '#fff', weight: 1, fillOpacity: 0.95, interactive: false }).addTo(map);
-        const now = Date.now();
-        if(now - lastCircleUpdate > 1000) {
-            if(!accuracyCircle) { accuracyCircle = L.circle(latlng, { radius: currentAccuracy, color: '#ffb347', weight: 1, fillColor: '#ffb347', fillOpacity: 0.15, interactive: false }).addTo(map); lastCircleUpdate = now; accuracyHidden = false; }
-            else if(accuracyCircle && map && map.hasLayer(accuracyCircle)) { accuracyCircle.setLatLng(latlng); if(currentAccuracy > 0 && currentAccuracy < 100) accuracyCircle.setRadius(currentAccuracy); lastCircleUpdate = now; }
-        }
-        if(currentAccuracy > 80) { if(!accuracyHidden && accuracyCircle && map && map.hasLayer(accuracyCircle)) { accuracyCircle.setStyle({ opacity: 0, fillOpacity: 0 }); accuracyHidden = true; } }
-        else { if(accuracyHidden && accuracyCircle && map && map.hasLayer(accuracyCircle)) { accuracyCircle.setStyle({ opacity: 1, fillOpacity: 0.15 }); accuracyHidden = false; } }
-        if(currentTab === '3D' && systemPressure !== 'CRITICAL') draw3D();
-    }
-    
-    function init3D(){ canvas3D=document.getElementById('canvas3D'); ctx3D=canvas3D.getContext('2d'); if(ctx3D) ctx3D.imageSmoothingEnabled = false; canvas3D.addEventListener('webglcontextlost', (e) => { e.preventDefault(); }); window.addEventListener('resize',()=>{ resize3D(); if(currentTab==='3D') draw3D(); }); resize3D(); }
-    function resize3D(){ if(canvas3D){ canvas3D.width=window.innerWidth; canvas3D.height=window.innerHeight; } }
-    
-    function draw3D(){ 
-        if(!isPageVisible && redrawSuspended) return;
-        if(systemPressure === 'CRITICAL') return;
-        const now = performance.now();
-        const renderGap = lowPowerGPU ? 180 : 120;
-        if(now - last3DRender < renderGap) return;
-        last3DRender = now;
-        if(!ctx3D || bufferLen<2){ if(ctx3D){ ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height); ctx3D.fillStyle='#aaa'; ctx3D.fillText("Menunggu data GPS...",30,80); } return; }
-        const hash=bufferLen+'_'+(getLastPoint()?.lat||0); if(hash===last3DHash) return; last3DHash=hash;
-        ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height);
-        let minAlt=Infinity,maxAlt=-Infinity; for(let i=0;i<bufferLen;i++){ const p=getPoint(i); minAlt=Math.min(minAlt,p.alt||0); maxAlt=Math.max(maxAlt,p.alt||0); }
-        const altRange=Math.max(maxAlt-minAlt,1), margin=50, w=canvas3D.width-margin*2, h=canvas3D.height-margin*2;
-        ctx3D.fillStyle='#0f172a'; ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height);
-        ctx3D.strokeStyle='#2a3f6e'; ctx3D.lineWidth=0.5;
-        for(let i=0;i<=5;i++){ let x=margin+(w*i/5); ctx3D.beginPath(); ctx3D.moveTo(x,margin); ctx3D.lineTo(x,margin+h); ctx3D.stroke(); let y=margin+(h*i/5); ctx3D.beginPath(); ctx3D.moveTo(margin,y); ctx3D.lineTo(margin+w,y); ctx3D.stroke(); }
-        const first=getPoint(0), last=getPoint(bufferLen-1); const latSpan=Math.abs(last.lat-first.lat)+0.00001, lngSpan=Math.abs(last.lng-first.lng)+0.00001;
-        ctx3D.beginPath(); ctx3D.strokeStyle='#3bc0fc'; ctx3D.lineWidth=2.5; 
-        let step = 1;
-        if(bufferLen > 3000) step = 2;
-        if(bufferLen > 6000) step = 4;
-        if(bufferLen > 9000) step = 8;
-        if(lowPowerGPU && bufferLen > 3000) step *= 2;
-        if(systemPressure === 'HIGH') step *= 2;
-        for(let i=0;i<bufferLen;i+=step){ const p=getPoint(i); let x=margin+((p.lng-first.lng)/lngSpan)*w; let y=margin+((first.lat-p.lat)/latSpan)*h; let altOff=((p.alt-minAlt)/altRange)*35; y-=altOff; if(i===0) ctx3D.moveTo(x,y); else ctx3D.lineTo(x,y); } ctx3D.stroke();
-        for(let i=0;i<bufferLen;i+=step){ const p=getPoint(i); let x=margin+((p.lng-first.lng)/lngSpan)*w; let y=margin+((first.lat-p.lat)/latSpan)*h; let altOff=((p.alt-minAlt)/altRange)*35; y-=altOff; ctx3D.fillStyle=i===bufferLen-1?'#ff7760':'#22ddbb'; ctx3D.beginPath(); ctx3D.arc(x,y,i===bufferLen-1?5:3,0,Math.PI*2); ctx3D.fill(); }
+    function hardResetCanvasGPU() {
+        if(!canvas3D) return;
+        const w = canvas3D.width, h = canvas3D.height;
+        ctx3D = null;
+        canvas3D.width = 1; canvas3D.height = 1;
+        canvas3D.width = w; canvas3D.height = h;
+        ctx3D = canvas3D.getContext('2d');
+        if(ctx3D) { ctx3D.imageSmoothingEnabled = false; ctx3D.fillStyle = '#0c1122'; ctx3D.fillRect(0, 0, w, h); }
+        console.log('[GPU] Hard canvas reset');
     }
     
     function updateSystemPressure() {
@@ -616,12 +523,50 @@
         pressureLastCheck = now;
         let memPercent = 0;
         if(performance && performance.memory) memPercent = performance.memory.usedJSHeapSize / performance.memory.jsHeapSizeLimit;
+        
         if(memPercent > 0.85 || bufferLen > 5000) {
-            if(systemPressure !== 'CRITICAL') { systemPressure = 'CRITICAL'; drawDecimationStep = Math.max(12, drawDecimationStep); if(currentTab === '3D') document.getElementById('canvas3D').style.display = 'none'; const vectors = getSemanticVectors(); if(vectors.length > 200) { const compacted = vectors.slice(-200); clearSemanticVectors(); for(const v of compacted) pushSemanticVector(v); } if(playbackActive && isPlaying) pausePlayback(); }
-        } else if(memPercent > 0.7 || bufferLen > 3000) { if(systemPressure !== 'HIGH') { systemPressure = 'HIGH'; drawDecimationStep = Math.max(8, drawDecimationStep); } }
-        else { if(systemPressure !== 'NORMAL') { systemPressure = 'NORMAL'; if(currentTab === '3D') document.getElementById('canvas3D').style.display = 'block'; } }
-        document.getElementById('powerMode').innerHTML = systemPressure === 'CRITICAL' ? '⚠️ CRITICAL' : (systemPressure === 'HIGH' ? '📉 DEGRADED' : powerMode);
+            if(systemPressure !== 'CRITICAL') {
+                systemPressure = 'CRITICAL';
+                drawDecimationStep = Math.max(12, drawDecimationStep);
+                if(currentTab === '3D') document.getElementById('canvas3D').style.display = 'none';
+                while(trailSegments.length > 3) { const old = trailSegments.shift(); if(old) safeRemoveLayerHard(old); }
+            }
+        } else if(memPercent > 0.7 || bufferLen > 3000) {
+            if(systemPressure !== 'HIGH') {
+                systemPressure = 'HIGH';
+                drawDecimationStep = Math.max(8, drawDecimationStep);
+                while(trailSegments.length > 6) { const old = trailSegments.shift(); if(old) safeRemoveLayerHard(old); }
+            }
+        } else {
+            if(systemPressure !== 'NORMAL') {
+                systemPressure = 'NORMAL';
+                if(currentTab === '3D') document.getElementById('canvas3D').style.display = 'block';
+                while(trailSegments.length > 10) { const old = trailSegments.shift(); if(old) safeRemoveLayerHard(old); }
+            }
+        }
+        const pm = document.getElementById('powerMode');
+        if(pm) pm.innerHTML = systemPressure === 'CRITICAL' ? '⚠️ CRITICAL' : (systemPressure === 'HIGH' ? '📉 DEGRADED' : 'NORMAL');
     }
+    
+    async function checkStorageQuota() {
+        if(!navigator.storage?.estimate) return;
+        try {
+            const estimate = await navigator.storage.estimate();
+            const percentUsed = (estimate.usage / estimate.quota) * 100;
+            if(percentUsed > 80) {
+                console.warn('[STORAGE] High usage:', percentUsed.toFixed(1), '%');
+                await pruneSyncedRecords();
+                await capUnsyncedWAL();
+            }
+        } catch(e) { console.warn('[STORAGE] Check failed:', e); }
+    }
+    
+    let lastValidCoord = null, gpsConfidenceScore = 100, consecutiveInvalidCount = 0;
+    let currentProfile = 'WALKING', profileSpeedThresholdHigh = 18, profileSpeedThresholdLow = 2;
+    let batteryPercent = 100, powerMode = 'NORMAL';
+    const GPS_PROFILES = { STATIONARY: { enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 }, WALKING: { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }, VEHICLE: { enableHighAccuracy: true, timeout: 2000, maximumAge: 0 } };
+    
+    function haversine(lat1, lon1, lat2, lon2) { const R=6371000, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180; return R * 2 * Math.asin(Math.sqrt(Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2)); }
     
     function isPointValidWithConfidence(lat,lng,accuracy,timestamp,speed){
         const now = Date.now();
@@ -638,11 +583,6 @@
         consecutiveInvalidCount = 0;
         return true;
     }
-    
-    let lastValidCoord = null, gpsConfidenceScore = 100, consecutiveInvalidCount = 0;
-    let currentProfile = 'WALKING', profileSpeedThresholdHigh = 18, profileSpeedThresholdLow = 2, wakeLock = null;
-    let batteryPercent = 100, powerMode = 'NORMAL';
-    const GPS_PROFILES = { STATIONARY: { enableHighAccuracy: false, timeout: 20000, maximumAge: 15000 }, WALKING: { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }, VEHICLE: { enableHighAccuracy: true, timeout: 2000, maximumAge: 0 } };
     
     function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
         let finalAlt = altitude;
@@ -667,8 +607,225 @@
     function getPoint(idx) { if(idx < 0 || idx >= bufferLen) return null; const compact = trackBuffer[(bufferStart + idx) % CONFIG.CIRCULAR_BUFFER_SIZE]; if(!compact) return null; return compactToPoint(compact, generatePersistentHash(compact[P_LAT], compact[P_LNG], compact[P_TS])); }
     function getLastPoint() { if(bufferLen === 0) return null; return getPoint(bufferLen-1); }
     function getAllPoints() { const r = []; for(let i=0;i<bufferLen;i++) r.push(getPoint(i)); return r; }
-    function haversine(lat1, lon1, lat2, lon2) { const R=6371000, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180; return R * 2 * Math.asin(Math.sqrt(Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2)); }
     function computeTotalDistance() { return cachedTotalDistance; }
+    
+    function updateTrail() { 
+        if(!map || bufferLen === 0) return;
+        const last = getLastPoint();
+        if(!last) return;
+        const latlng = [last.lat, last.lng];
+        
+        if(!activeSegment || segmentPointCount >= SEGMENT_LIMIT) {
+            const newSegment = L.polyline([], { color: '#1e88e5', weight: 4, smoothFactor: 2, interactive: false }).addTo(map);
+            trailSegments.push(newSegment);
+            if(trailSegments.length > 12) { const old = trailSegments.shift(); if(old) { old.setLatLngs([]); safeRemoveLayerHard(old); } }
+            activeSegment = newSegment;
+            segmentPointCount = 0;
+        }
+        
+        let step = 1;
+        if(bufferLen > 3000) step = 2;
+        if(bufferLen > 6000) step = 4;
+        if(bufferLen > 10000) step = 8;
+        if(systemPressure === 'HIGH') step = Math.max(step, 4);
+        if(systemPressure === 'CRITICAL') step = Math.max(step, 8);
+        
+        if(segmentPointCount % step === 0) activeSegment.addLatLng(latlng);
+        segmentPointCount++;
+        
+        if(currentMarker) currentMarker.setLatLng(latlng);
+        else currentMarker = L.circleMarker(latlng, { radius: 6, fillColor: '#ff5a5f', color: '#fff', weight: 1, fillOpacity: 0.95, interactive: false }).addTo(map);
+        
+        const now = Date.now();
+        if(now - lastCircleUpdate > 1000) {
+            if(!accuracyCircle) { accuracyCircle = L.circle(latlng, { radius: currentAccuracy, color: '#ffb347', weight: 1, fillColor: '#ffb347', fillOpacity: 0.15, interactive: false }).addTo(map); lastCircleUpdate = now; accuracyHidden = false; }
+            else if(accuracyCircle && map.hasLayer(accuracyCircle)) { accuracyCircle.setLatLng(latlng); if(currentAccuracy > 0 && currentAccuracy < 100) accuracyCircle.setRadius(currentAccuracy); lastCircleUpdate = now; }
+        }
+        
+        if(currentTab === '3D') draw3D();
+    }
+    
+    function init3D(){ canvas3D=document.getElementById('canvas3D'); ctx3D=canvas3D.getContext('2d'); if(ctx3D) ctx3D.imageSmoothingEnabled = false; window.addEventListener('resize',()=>{ resize3D(); if(currentTab==='3D') draw3D(); }); resize3D(); }
+    function resize3D(){ if(canvas3D){ canvas3D.width=window.innerWidth; canvas3D.height=window.innerHeight; } }
+    
+    // ======================= FIXED 3D DRAW FUNCTION WITH CONTEXT RECOVERY (BUG #3) =======================
+    function draw3D(){ 
+        // FIX BUG #3: Recover canvas context if lost after freeze/resume
+        if(!ctx3D && canvas3D){
+            ctx3D = canvas3D.getContext('2d');
+            if(!ctx3D) return;
+            if(ctx3D) ctx3D.imageSmoothingEnabled = false;
+        }
+        
+        if(currentTab !== '3D') return;
+        if(!ctx3D || bufferLen<2){ 
+            if(ctx3D){ 
+                ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height); 
+                ctx3D.fillStyle='#0f172a'; 
+                ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height);
+                ctx3D.fillStyle='#aaa'; 
+                ctx3D.font='14px monospace';
+                ctx3D.fillText("📡 3D ELEVATION PROFILE", 50, 100);
+                ctx3D.font='12px monospace';
+                ctx3D.fillText("Klik START dan berjalan untuk melihat grafik", 50, 140);
+                ctx3D.fillText("Minimal 2 titik GPS diperlukan", 50, 170);
+            } 
+            return; 
+        }
+        
+        const now = performance.now();
+        const renderGap = lowPowerGPU ? 180 : 120;
+        if(now - last3DRender < renderGap) return;
+        last3DRender = now;
+        
+        ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height);
+        ctx3D.fillStyle = '#0f172a';
+        ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height);
+        
+        // Get all points and calculate distances & altitudes
+        let points = [];
+        let hasRealAlt = false;
+        for(let i=0;i<bufferLen;i++) {
+            const p = getPoint(i);
+            if(p) {
+                points.push(p);
+                if(p.alt && p.alt !== 0) hasRealAlt = true;
+            }
+        }
+        if(points.length < 2) return;
+        
+        // Calculate cumulative distances
+        let distances = [0];
+        for(let i=1;i<points.length;i++) {
+            distances.push(distances[i-1] + haversineFast(points[i-1].lat, points[i-1].lng, points[i].lat, points[i].lng));
+        }
+        const maxDist = distances[distances.length-1] || 1;
+        
+        // Get altitudes (simulate if no real data)
+        let altitudes = points.map(p => p.alt || 0);
+        if(!hasRealAlt && points.length > 0) {
+            // Simulate elevation based on distance (sinusoidal pattern)
+            for(let i=0;i<altitudes.length;i++) {
+                altitudes[i] = 25 + Math.sin(distances[i] / 50) * 12 + Math.cos(distances[i] / 120) * 8;
+            }
+        }
+        
+        const minAlt = Math.min(...altitudes) - 5;
+        const maxAlt = Math.max(...altitudes) + 5;
+        const altRange = Math.max(maxAlt - minAlt, 20);
+        
+        const margin = { top: 60, right: 40, bottom: 60, left: 60 };
+        const w = canvas3D.width - margin.left - margin.right;
+        const h = canvas3D.height - margin.top - margin.bottom;
+        
+        if(w <= 0 || h <= 0) return;
+        
+        // Draw grid
+        ctx3D.strokeStyle = '#2a3f6e';
+        ctx3D.lineWidth = 0.5;
+        for(let i=0;i<=5;i++){
+            let x = margin.left + (w * i / 5);
+            ctx3D.beginPath();
+            ctx3D.moveTo(x, margin.top);
+            ctx3D.lineTo(x, margin.top + h);
+            ctx3D.stroke();
+            ctx3D.fillStyle = '#9aaec5';
+            ctx3D.font = '9px monospace';
+            ctx3D.fillText(Math.round(maxDist * i / 5) + 'm', x-15, margin.top + h + 15);
+            
+            let y = margin.top + (h * i / 5);
+            ctx3D.beginPath();
+            ctx3D.moveTo(margin.left, y);
+            ctx3D.lineTo(margin.left + w, y);
+            ctx3D.stroke();
+            ctx3D.fillStyle = '#9aaec5';
+            ctx3D.fillText(Math.round(maxAlt - (altRange * i / 5)) + 'm', 5, y+3);
+        }
+        
+        // Axes labels
+        ctx3D.fillStyle = '#00f2a0';
+        ctx3D.font = 'bold 10px monospace';
+        ctx3D.fillText('Jarak (meter)', margin.left + w/2 - 40, margin.top + h + 35);
+        ctx3D.save();
+        ctx3D.translate(20, margin.top + h/2);
+        ctx3D.rotate(-Math.PI/2);
+        ctx3D.fillText('Ketinggian (meter)', -30, 0);
+        ctx3D.restore();
+        
+        // Draw elevation line
+        ctx3D.beginPath();
+        ctx3D.strokeStyle = '#3bc0fc';
+        ctx3D.lineWidth = 2.5;
+        const step = Math.max(1, Math.floor(points.length / 800));
+        for(let i=0;i<points.length;i+=step){
+            const x = margin.left + (distances[i] / maxDist) * w;
+            const y = margin.top + h - ((altitudes[i] - minAlt) / altRange) * h;
+            if(i===0) ctx3D.moveTo(x,y);
+            else ctx3D.lineTo(x,y);
+        }
+        ctx3D.stroke();
+        
+        // Fill area under line
+        ctx3D.beginPath();
+        for(let i=0;i<points.length;i+=step){
+            const x = margin.left + (distances[i] / maxDist) * w;
+            const y = margin.top + h - ((altitudes[i] - minAlt) / altRange) * h;
+            if(i===0) ctx3D.moveTo(x,y);
+            else ctx3D.lineTo(x,y);
+        }
+        ctx3D.lineTo(margin.left + w, margin.top + h);
+        ctx3D.lineTo(margin.left, margin.top + h);
+        ctx3D.closePath();
+        ctx3D.fillStyle = '#1e88e540';
+        ctx3D.fill();
+        
+        // Plot points
+        const pointStep = Math.max(1, Math.floor(points.length / 200));
+        for(let i=0;i<points.length;i+=pointStep){
+            const x = margin.left + (distances[i] / maxDist) * w;
+            const y = margin.top + h - ((altitudes[i] - minAlt) / altRange) * h;
+            ctx3D.fillStyle = i===points.length-1 ? '#ff7760' : '#22ddbb';
+            ctx3D.beginPath();
+            ctx3D.arc(x, y, i===points.length-1 ? 5 : 2, 0, Math.PI*2);
+            ctx3D.fill();
+        }
+        
+        // Title and info
+        ctx3D.fillStyle = '#00f2a0';
+        ctx3D.font = 'bold 12px monospace';
+        ctx3D.fillText('📊 ELEVATION PROFILE', margin.left, 25);
+        ctx3D.fillStyle = '#ffb347';
+        ctx3D.font = '10px monospace';
+        ctx3D.fillText(`Titik: ${points.length} | Jarak: ${Math.round(maxDist)}m | Elevasi: ${Math.round(altitudes[points.length-1])}m`, margin.left, 45);
+        
+        if(!hasRealAlt && points.length > 5) {
+            ctx3D.fillStyle = '#ffaa44';
+            ctx3D.font = '9px monospace';
+            ctx3D.fillText('⚠️ Simulasi ketinggian (GPS tidak menyediakan data altitude)', margin.left, canvas3D.height - 10);
+        }
+        
+        // Start/End markers
+        if(points.length > 0) {
+            const startX = margin.left;
+            const startY = margin.top + h - ((altitudes[0] - minAlt) / altRange) * h;
+            ctx3D.fillStyle = '#4caf50';
+            ctx3D.beginPath();
+            ctx3D.arc(startX, startY, 6, 0, Math.PI*2);
+            ctx3D.fill();
+            ctx3D.fillStyle = 'white';
+            ctx3D.font = 'bold 8px monospace';
+            ctx3D.fillText('START', startX-12, startY-5);
+            
+            const endX = margin.left + w;
+            const endY = margin.top + h - ((altitudes[points.length-1] - minAlt) / altRange) * h;
+            ctx3D.fillStyle = '#ff4444';
+            ctx3D.beginPath();
+            ctx3D.arc(endX, endY, 6, 0, Math.PI*2);
+            ctx3D.fill();
+            ctx3D.fillStyle = 'white';
+            ctx3D.fillText('END', endX-8, endY-5);
+        }
+    }
     
     function onGPSPosition(pos){ 
         if(!isTracking || isReplaying) return;
@@ -678,82 +835,149 @@
         currentAccuracy=accuracy; 
         const ts=timestamp||Date.now(); 
         const currentSpeed=speed||0; 
-        document.getElementById('speedText').innerHTML=(currentSpeed*3.6).toFixed(1); 
+        const speedEl = document.getElementById('speedText');
+        if(speedEl) speedEl.innerHTML=(currentSpeed*3.6).toFixed(1); 
         updateGPSProfile(currentSpeed); 
         if(accuracy > 100) return;
         const filtered = kalmanUpdate(latitude, longitude, accuracy, currentSpeed);
-        if(!isPointValidWithConfidence(filtered.lat, filtered.lng, accuracy, ts, currentSpeed)){ document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m (confidence:${gpsConfidenceScore}%)`; if(consecutiveInvalidCount > 5) gpsConfidenceScore = Math.max(0, gpsConfidenceScore - 5); return; } 
+        if(!isPointValidWithConfidence(filtered.lat, filtered.lng, accuracy, ts, currentSpeed)){ 
+            const accEl = document.getElementById('accuracyText');
+            if(accEl) accEl.innerHTML=`${Math.round(accuracy)}m (conf:${gpsConfidenceScore}%)`; 
+            if(consecutiveInvalidCount > 5) gpsConfidenceScore = Math.max(0, gpsConfidenceScore - 5); 
+            return; 
+        } 
         lastValidCoord={lat:filtered.lat,lng:filtered.lng,t:ts}; 
         updateGPSStatus('ACTIVE','green',accuracy); 
-        document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m`; 
+        const accEl = document.getElementById('accuracyText');
+        if(accEl) accEl.innerHTML=`${Math.round(accuracy)}m`; 
         addPoint(filtered.lat, filtered.lng, accuracy, heading, currentSpeed, altitude, ts); 
     }
     
-    function onGPSError(err){ updateGPSStatus(err.code===1?'DENIED':(err.code===2?'WEAK':'TIMEOUT'),'red',null); document.getElementById('accuracyText').innerHTML=`--m`; }
-    function updateGPSStatus(status,ledColor,accuracy){ const led=document.getElementById('gpsLed'); led.className='led'; led.classList.add(ledColor==='green'?'led-green':(ledColor==='red'?'led-red':'led-yellow')); document.getElementById('gpsText').innerHTML=`GPS: ${status}`; if(accuracy) document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m`; }
-    function updateSyncStatus(status,ledColor){ const led=document.getElementById('syncLed'); led.className='led'; led.classList.add(ledColor==='green'?'led-green':(ledColor==='red'?'led-red':'led-yellow')); document.getElementById('syncText').innerHTML=`Sync: ${status}`; }
-    function updateUI(){ if(uiFramePending) return; uiFramePending = true; requestAnimationFrame(()=>{ document.getElementById('pointCounter').innerText=totalPoints; document.getElementById('statsBox').innerHTML=`Points:${totalPoints} | Saved:${savedTracks.length}`; if(lastPosition && lastPosition.alt!==undefined) document.getElementById('altText').innerHTML=`${Math.round(lastPosition.alt)}m`; document.getElementById('totalDistance').innerHTML = `${Math.round(computeTotalDistance())} m`; uiFramePending = false; }); }
-    function initMap(){ map=L.map('map',{preferCanvas:true,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false,renderer:L.canvas({padding:0.5})}).setView([-6.2088,106.8456],15); L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'© OSM',subdomains:'abcd'}).addTo(map); if(navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],16),null,{timeout:4000}); }
+    function onGPSError(err){ updateGPSStatus(err.code===1?'DENIED':(err.code===2?'WEAK':'TIMEOUT'),'red',null); const accEl = document.getElementById('accuracyText'); if(accEl) accEl.innerHTML=`--m`; }
     
-    function startGPSWatchdog() { if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); gpsWatchdogInterval = setInterval(() => { if(!isTracking || !watchId) return; const stale = Date.now() - lastGPSFixTime; if(stale > 45000) restartGPS(GPS_PROFILES[currentProfile]); if(stale > 120000) { navigator.geolocation.clearWatch(watchId); watchId = null; setTimeout(() => restartGPS(GPS_PROFILES[currentProfile]), 1000); } }, 10000); }
-    window.addEventListener('focus', () => { if(isTracking) restartGPS(GPS_PROFILES[currentProfile]); });
+    function updateGPSStatus(status,ledColor,accuracy){ 
+        const led=document.getElementById('gpsLed'); 
+        if(led){ led.className='led'; led.classList.add(ledColor==='green'?'led-green':(ledColor==='red'?'led-red':'led-yellow')); }
+        const gpsText=document.getElementById('gpsText');
+        if(gpsText) gpsText.innerHTML=`GPS: ${status}`; 
+        if(accuracy && document.getElementById('accuracyText')) document.getElementById('accuracyText').innerHTML=`${Math.round(accuracy)}m`; 
+    }
     
-    function startTracking(){ if(isTracking) return; if(watchId) navigator.geolocation.clearWatch(watchId); if(!navigator.geolocation){ alert("GPS tidak didukung"); return; } restartGPS(GPS_PROFILES[currentProfile]); isTracking=true; lastGPSFixTime=Date.now(); startGPSWatchdog(); document.getElementById('startBtn').style.display='none'; document.getElementById('stopBtn').style.display='inline-block'; updateGPSStatus('ACTIVE','green',null); initBattery(); }
-    function stopTracking(){ if(watchId){ navigator.geolocation.clearWatch(watchId); watchId=null; } isTracking=false; if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); if(walBatchTimer){ clearTimeout(walBatchTimer); flushWalQueue(); } document.getElementById('startBtn').style.display='inline-block'; document.getElementById('stopBtn').style.display='none'; updateGPSStatus('STOP','red',null); }
+    function updateSyncStatus(status,ledColor){ 
+        const led=document.getElementById('syncLed'); 
+        if(led){ led.className='led'; led.classList.add(ledColor==='green'?'led-green':(ledColor==='red'?'led-red':'led-yellow')); }
+        const syncText=document.getElementById('syncText');
+        if(syncText) syncText.innerHTML=`Sync: ${status}`; 
+    }
     
-    async function saveCurrentTrack() { if(bufferLen === 0) { alert("Tidak ada titik untuk disimpan"); return; } const name = prompt("Nama track:", `Track ${new Date().toLocaleString()}`); if(!name) return; const distance = computeTotalDistance(); const trackId = Date.now() + '_' + Math.random().toString(36); const points = getAllPoints().map(p => ({ lat: p.lat, lng: p.lng, alt: p.alt, accuracy: p.accuracy, heading: p.heading, speed: p.speed, timestamp: p.timestamp })); const trackData = { trackId, name, date: Date.now(), dateStr: new Date().toLocaleString(), totalPoints: bufferLen, distance, points }; if(!db) await openDB(); await safeTx([CONFIG.TRACKS_STORE], 'readwrite', (tx) => { tx.objectStore(CONFIG.TRACKS_STORE).put(trackData); }); savedTracks.unshift({ trackId, name, dateStr: trackData.dateStr, totalPoints: bufferLen, distance }); if(savedTracks.length > 25) savedTracks.pop(); updateHistoryList(); updateUI(); alert(`✅ Track "${name}" tersimpan (${distance.toFixed(0)} meter)`); }
-    
-    function updateHistoryList(){ const container=document.getElementById('historyList'); if(savedTracks.length===0){ container.innerHTML='<div>Belum ada track tersimpan</div>'; return; } container.innerHTML=savedTracks.map(t=>`<div class="history-item"><div>📌 ${escapeHtml(t.name)}</div><div>📅 ${t.dateStr} | ${t.totalPoints} titik | 🧭 ${t.distance.toFixed(0)} m</div><div class="history-buttons"><button onclick="window.loadTrack('${t.trackId}')">📂 MUAT</button><button onclick="window.followTrack('${t.trackId}')" style="background:#2c6e2f;">🚶 NAVIGASI</button><button onclick="window.deleteTrack('${t.trackId}')" style="background:#ff5a5f;">🗑 HAPUS</button></div></div>`).join(''); }
-    window.loadTrack=async(trackId)=>{ if(!db) await openDB(); const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId); req.onsuccess=()=>{ const track=req.result; if(track && confirm(`Muat track "${track.name}"?`)){ clearBuffer(); resetMovementEngine(); for(let i=0;i<track.points.length;i++){ const point=track.points[i]; const prev=i>0?track.points[i-1]:null; pushPoint(point); addMovementVector(point,prev); if(prev && cachedTotalDistance !== undefined) cachedTotalDistance += haversineFast(prev.lat, prev.lng, point.lat, point.lng); if(point.lat && point.lng) addToSpatialIndex(point, i); } updateTrail(); if(map && lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16); if(currentTab==='3D') draw3D(); document.getElementById('historyPanel').classList.remove('show'); } }; };
-    window.followTrack=async(trackId)=>{ if(!db) await openDB(); const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId); req.onsuccess=()=>{ const track=req.result; if(track && confirm(`Mulai navigasi mengikuti track "${track.name}"?`)){ startFollowMode(track); document.getElementById('historyPanel').classList.remove('show'); } }; };
-    window.deleteTrack=async(trackId)=>{ if(confirm("Hapus track ini?")){ savedTracks=savedTracks.filter(t=>t.trackId!==trackId); if(!db) await openDB(); await safeTx([CONFIG.TRACKS_STORE], 'readwrite', (tx) => { tx.objectStore(CONFIG.TRACKS_STORE).delete(trackId); }); updateHistoryList(); } };
-    async function loadSavedTracks(){ if(!db) await openDB(); const tracks=[]; await new Promise(r=>{ db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).openCursor().onsuccess=(e)=>{ const cur=e.target.result; if(cur){ const {points,...meta}=cur.value; tracks.push(meta); cur.continue(); } else r(); }; }); if(tracks.length){ savedTracks=tracks.sort((a,b)=>b.date-a.date); updateHistoryList(); } }
-    
-    let returnMode=false, returnInterval=null, returnLine=null;
-    function toggleReturnMode(){ if(bufferLen===0){ alert("Tidak ada jalur untuk kembali"); return; } returnMode=!returnMode; const btn=document.getElementById('returnBtn'); const info=document.getElementById('breadcrumbInfo'); if(returnMode){ btn.innerHTML='📍 BACKTRACK ON'; btn.style.background='#2c6e2f'; info.classList.add('show'); if(returnInterval) clearInterval(returnInterval); returnInterval=setInterval(updateReturnDistance,1500); updateReturnDistance(); if(returnLine && map) safeRemoveLayer(returnLine); const start=getPoint(0), now=getLastPoint(); returnLine=L.polyline([[now.lat,now.lng],[start.lat,start.lng]],{color:'#fd7e2c',weight:3,dashArray:'8,8', interactive: false}).addTo(map); } else { btn.innerHTML='🏠 RETURN'; btn.style.background='#fd7e2c'; info.classList.remove('show'); if(returnInterval) clearInterval(returnInterval); safeRemoveLayer(returnLine); returnLine=null; } }
-    function updateReturnDistance(){ if(!returnMode || bufferLen<1) return; document.getElementById('returnDistance').innerHTML=`${Math.round(computeTotalDistance())} meter (true path)`; }
-    
-    // ======================= NAVIGATION =======================
-    let followMode=false, followRoute=[], followTurns=[], followLine=null, followTurnMarkers=[], followInterval=null;
-    function detectTurns(points){ if(points.length<4) return []; const turns=[]; for(let i=3;i<points.length;i++){ const b1=calculateBearing(points[i-3].lat,points[i-3].lng,points[i-1].lat,points[i-1].lng); const b2=calculateBearing(points[i-2].lat,points[i-2].lng,points[i].lat,points[i].lng); let diff=b2-b1; if(diff>180) diff-=360; if(diff<-180) diff+=360; if(Math.abs(diff)>MOVEMENT_CONFIG.TURN_ANGLE){ let distFromStart=0; for(let j=1;j<=i;j++) distFromStart+=haversineFast(points[j-1].lat,points[j-1].lng,points[j].lat,points[j].lng); turns.push({index:i,lat:points[i].lat,lng:points[i].lng,angle:diff,direction:diff>0?'KANAN':'KIRI',distanceFromStart:distFromStart}); } } return turns; }
-    function startFollowMode(track){ if(!track||track.points.length<2){ alert("Track tidak valid untuk navigasi"); return; } stopFollowMode(); followRoute=track.points.map(p=>({...p})); followTurns=detectTurns(followRoute); followMode=true; navigationCache={lastIdx:0,lastDist:Infinity}; spatialIndex.clear(); spatialHistory=[]; routeCumulativeDistances=[0]; for(let i=1;i<followRoute.length;i++) routeCumulativeDistances.push(routeCumulativeDistances[i-1] + haversineFast(followRoute[i-1].lat,followRoute[i-1].lng,followRoute[i].lat,followRoute[i].lng)); for(let i=0;i<followRoute.length;i++) addToSpatialIndex(followRoute[i], i); document.getElementById('navPanel').classList.add('show'); document.getElementById('navInstruction').innerHTML=`🚶 MENGIKUTI: ${track.name}`; if(followLine && map) safeRemoveLayerHard(followLine); const routeLatLngs=followRoute.map(p=>[p.lat,p.lng]); followLine=L.polyline(routeLatLngs,{color:'#2c6e2f',weight:5,opacity:0.8, interactive: false}).addTo(map); if(followTurnMarkers.length){ followTurnMarkers.forEach(m=>{ try{ m.off(); if(m.dragging) m.dragging.disable(); m.unbindTooltip(); m.unbindPopup(); safeRemoveLayerHard(m); }catch(e){} }); followTurnMarkers=[]; } followTurns.forEach(turn=>{ const marker=L.circleMarker([turn.lat,turn.lng],{radius:4,color:'#ffb347',fillColor:'#ffb347',fillOpacity:0.8, interactive: false}).addTo(map).bindTooltip(`Belok ${turn.direction} ${Math.round(Math.abs(turn.angle))}°`); followTurnMarkers.push(marker); }); if(followInterval) clearInterval(followInterval); followInterval=setInterval(()=>updateNavigation(),1500); updateNavigation(); alert(`🚶 Navigasi dimulai: "${track.name}"\n📏 Total: ${Math.round(track.distance)}m\n🔄 ${followTurns.length} belokan`); }
-    function stopFollowMode(){ followMode=false; if(followInterval) clearInterval(followInterval); document.getElementById('navPanel').classList.remove('show'); if(followLine && map) safeRemoveLayerHard(followLine); if(followTurnMarkers.length){ followTurnMarkers.forEach(m=>safeRemoveLayerHard(m)); followTurnMarkers=[]; } followRoute=[]; spatialIndex.clear(); spatialHistory=[]; routeCumulativeDistances=[]; }
-    let lastNavigationUpdate=0; const NAV_UPDATE_INTERVAL=2000;
-    function updateNavigation(){ if(!followMode || !lastPosition || followRoute.length===0) return; const now=Date.now(); if(now-lastNavigationUpdate<NAV_UPDATE_INTERVAL && systemPressure!=='NORMAL') return; lastNavigationUpdate=now; let minDist=Infinity, nearestIdx=navigationCache.lastIdx; const RADIUS=systemPressure==='CRITICAL'?0.001:0.002; const nearby=findNearbyIndices(lastPosition.lat,lastPosition.lng,RADIUS); for(const idx of nearby){ if(idx<0||idx>=followRoute.length) continue; const dist=haversineFast(lastPosition.lat,lastPosition.lng,followRoute[idx].lat,followRoute[idx].lng); if(dist<minDist){ minDist=dist; nearestIdx=idx; } } if(minDist>50){ const RANGE=systemPressure==='CRITICAL'?80:150; const start=Math.max(0,navigationCache.lastIdx-RANGE); const end=Math.min(followRoute.length,navigationCache.lastIdx+RANGE); for(let i=start;i<end;i++){ const p=followRoute[i]; if(!p) continue; const dist=haversineFast(lastPosition.lat,lastPosition.lng,p.lat,p.lng); if(dist<minDist){ minDist=dist; nearestIdx=i; } } } navigationCache={lastIdx:nearestIdx,lastDist:minDist}; let remainingDist=routeCumulativeDistances[routeCumulativeDistances.length-1]-routeCumulativeDistances[nearestIdx]; const totalDist=routeCumulativeDistances[routeCumulativeDistances.length-1]; const progressPercent=((totalDist-remainingDist)/totalDist)*100; document.getElementById('navProgress').style.width=`${Math.min(100,Math.max(0,progressPercent))}%`; document.getElementById('navDistance').innerHTML=`Sisa: ${Math.round(remainingDist)}m`; if(minDist>30){ document.getElementById('navInstruction').innerHTML='⚠️ PERINGATAN: ANDA KELUAR JALUR'; document.getElementById('navInstruction').style.color='#ff5a5f'; return; } document.getElementById('navInstruction').style.color='#00f2a0'; let nextTurn=null; for(const turn of followTurns) if(turn.distanceFromStart>(totalDist-remainingDist)){ nextTurn=turn; break; } if(nextTurn){ const distToTurn=nextTurn.distanceFromStart-(totalDist-remainingDist); if(distToTurn<50){ document.getElementById('navInstruction').innerHTML=`🔄 BELOK ${nextTurn.direction} ${Math.round(distToTurn)} METER LAGI!`; document.getElementById('navNextTurn').innerHTML=`Segera belok ${nextTurn.direction}`; } else if(distToTurn<150){ document.getElementById('navInstruction').innerHTML=`⚠️ PERSIAPAN BELOK ${nextTurn.direction} ${Math.round(distToTurn)}m`; document.getElementById('navNextTurn').innerHTML=`Belok ${nextTurn.direction}: ${Math.round(distToTurn)}m`; } else { document.getElementById('navInstruction').innerHTML=`⬆️ JALAN LURUS ${Math.round(distToTurn)} METER`; document.getElementById('navNextTurn').innerHTML=`Belok ${nextTurn.direction}: ${Math.round(distToTurn)}m`; } } else { if(remainingDist<50){ document.getElementById('navInstruction').innerHTML='🏁 TUJUAN HAMPIR SAMPAI!'; document.getElementById('navNextTurn').innerHTML=`${Math.round(remainingDist)}m lagi`; } else { document.getElementById('navInstruction').innerHTML=`⬆️ JALAN LURUS ${Math.round(remainingDist)} METER`; document.getElementById('navNextTurn').innerHTML=`Tujuan: ${Math.round(remainingDist)}m`; } } }
-    
-    // PATCH 2: REPLAY ANTI-ZOMBIE
-    function stopPlaybackNew() { if(playbackTimer){ cancelAnimationFrame(playbackTimer); playbackTimer=null; } replayToken++; playbackActive=false; isPlaying=false; isReplaying=false; document.getElementById('playbackBar').classList.remove('show'); replaySnapshotIndices=null; if(playbackMarker){ safeRemoveLayerHard(playbackMarker); playbackMarker=null; } }
-    function startPlayback(){ if(playbackTimer) cancelAnimationFrame(playbackTimer); if(bufferLen<2){ alert("Tidak ada titik untuk replay"); return; } stopPlaybackNew(); const myReplay=++replayToken; isReplaying=true; const maxPoints=systemPressure==='CRITICAL'?800:2000; let step=Math.max(1,Math.ceil(bufferLen/maxPoints)); if(bufferLen>5000) step=2; if(bufferLen>10000) step=5; if(bufferLen>20000) step=10; if(systemPressure==='HIGH') step=Math.max(step,4); if(systemPressure==='CRITICAL') step=Math.max(step,8); playbackIndices=[]; for(let i=0;i<bufferLen;i+=step) playbackIndices.push(i); if(playbackIndices[playbackIndices.length-1]!==bufferLen-1) playbackIndices.push(bufferLen-1); replaySnapshotIndices=[...playbackIndices]; playbackIndex=0; playbackActive=true; isPlaying=true; const firstPoint=getPoint(replaySnapshotIndices[0]); document.getElementById('playbackBar').classList.add('show'); const slider=document.getElementById('playbackSlider'); slider.max=replaySnapshotIndices.length-1; slider.value=0; document.getElementById('playbackPercent').innerText="0%"; if(!playbackMarker) playbackMarker=L.circleMarker([firstPoint.lat,firstPoint.lng],{radius:5,color:'#f1c40f',fillColor:'#f39c12',weight:2,interactive:false}).addTo(map); else playbackMarker.setLatLng([firstPoint.lat,firstPoint.lng]); let lastFrame=0, lastPanFrame=0; const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS; function animate(now){ if(myReplay!==replayToken){ console.log('[REPLAY] Zombie terminated'); return; } if(!playbackActive||!isPlaying) return; if(now-lastFrame>=frameMs){ lastFrame=now; if(playbackIndex<replaySnapshotIndices.length){ const p=getPoint(replaySnapshotIndices[playbackIndex]); if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); if(map && currentTab==='2D' && (now-lastPanFrame)>=500){ const bounds=map.getBounds(); const point=L.latLng(p.lat,p.lng); if(!bounds.contains(point)) map.setView([p.lat,p.lng],map.getZoom(),{animate:false}); lastPanFrame=now; } document.getElementById('playbackSlider').value=playbackIndex; document.getElementById('playbackPercent').innerText=Math.round((playbackIndex/replaySnapshotIndices.length)*100)+"%"; playbackIndex++; playbackTimer=requestAnimationFrame(animate); } else { isReplaying=false; stopPlaybackNew(); alert("Replay selesai"); } } else { playbackTimer=requestAnimationFrame(animate); } } playbackTimer=requestAnimationFrame(animate); } playbackTimer=requestAnimationFrame(animate); }
-    function pausePlayback(){ isPlaying=false; if(playbackTimer) cancelAnimationFrame(playbackTimer); }
-    function resumePlayback(){ if(playbackActive && !isPlaying && playbackIndex<replaySnapshotIndices.length){ isPlaying=true; const myReplay=replayToken; let lastFrame=0, lastPanFrame=0; const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS; function animate(now){ if(myReplay!==replayToken) return; if(!playbackActive||!isPlaying) return; if(now-lastFrame>=frameMs){ lastFrame=now; if(playbackIndex<replaySnapshotIndices.length){ const p=getPoint(replaySnapshotIndices[playbackIndex]); if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); if(map && currentTab==='2D' && (now-lastPanFrame)>=500){ const bounds=map.getBounds(); const point=L.latLng(p.lat,p.lng); if(!bounds.contains(point)) map.setView([p.lat,p.lng],map.getZoom(),{animate:false}); lastPanFrame=now; } document.getElementById('playbackSlider').value=playbackIndex; document.getElementById('playbackPercent').innerText=Math.round((playbackIndex/replaySnapshotIndices.length)*100)+"%"; playbackIndex++; playbackTimer=requestAnimationFrame(animate); } else { isReplaying=false; stopPlaybackNew(); } } else { playbackTimer=requestAnimationFrame(animate); } } playbackTimer=requestAnimationFrame(animate); } }
-    
-    // PATCH 3: Enhanced safeTx with queue
-    async function safeTx(storeNames, mode, fn, timeoutMs = CONFIG.TX_TIMEOUT_MS) {
-        if(!db) await openDB();
-        return enqueueTx(() => {
-            return new Promise((resolve, reject) => {
-                let isResolved = false;
-                const timeoutId = setTimeout(() => { if(!isResolved) { isResolved = true; reject(new Error(`TX_TIMEOUT after ${timeoutMs}ms`)); } }, timeoutMs);
-                try {
-                    const tx = db.transaction(storeNames, mode);
-                    fn(tx);
-                    tx.oncomplete = () => { if(!isResolved) { clearTimeout(timeoutId); isResolved = true; resolve(); } };
-                    tx.onerror = (event) => { if(!isResolved) { clearTimeout(timeoutId); isResolved = true; reject(tx.error || event.target.error); } };
-                    tx.onabort = () => { if(!isResolved) { clearTimeout(timeoutId); isResolved = true; reject(new Error('TX_ABORTED')); } };
-                } catch(err) { clearTimeout(timeoutId); if(!isResolved) reject(err); }
-            });
+    function updateUI(){
+        if(uiFramePending) return;
+        uiFramePending = true;
+        requestAnimationFrame(()=>{
+            const pc = document.getElementById('pointCounter');
+            if(pc) pc.innerText=totalPoints;
+            const sb = document.getElementById('statsBox');
+            if(sb) sb.innerHTML=`Points:${totalPoints} | Saved:${savedTracks ? savedTracks.length : 0}`;
+            if(lastPosition && lastPosition.alt!==undefined){
+                const altEl = document.getElementById('altText');
+                if(altEl) altEl.innerHTML=`${Math.round(lastPosition.alt)}m`;
+            }
+            const tdEl = document.getElementById('totalDistance');
+            if(tdEl) tdEl.innerHTML = `${Math.round(computeTotalDistance())} m`;
+            uiFramePending = false;
         });
     }
     
-    // WAL Queue with quota handling
-    async function flushWalQueue() { if(!Array.isArray(walQueue)) walQueue = []; if(walFlushLock || walQueue.length === 0) return; walFlushLock = true; let batch = []; try { if(!db) await openDB(); batch = walQueue.splice(0, CONFIG.WAL_BATCH_SIZE); await safeTx([CONFIG.PENDING_STORE], 'readwrite', (tx) => { const store = tx.objectStore(CONFIG.PENDING_STORE); for(const record of batch) store.put(record); }); } catch(err) { console.error('[WAL] Flush failed:', err); if(err && err.name === 'QuotaExceededError') { emergencyMemoryCleanup(); await capUnsyncedWAL(); } if(batch.length) walQueue.unshift(...batch); } finally { walFlushLock = false; if(walQueue.length > 0) { if(window.requestIdleCallback) requestIdleCallback(() => flushWalQueue(), { timeout: 2000 }); else setTimeout(() => flushWalQueue(), 1200); } } }
-    function queueToWAL(point) { if(!Array.isArray(walQueue)) walQueue = []; const record = {...point, synced: false, timestampMs: Date.now(), _checksum: point.hash}; walQueue.push(record); while(walQueue.length > CONFIG.MAX_WAL_QUEUE_SIZE) walQueue.shift(); if(walQueue.length >= CONFIG.WAL_BATCH_SIZE) { if(walBatchTimer) clearTimeout(walBatchTimer); flushWalQueue(); } else if(!walBatchTimer) { walBatchTimer = setTimeout(() => { flushWalQueue(); walBatchTimer = null; }, 1500); } }
-    async function pruneSyncedRecords() { if(!db) return; const cutoff = Date.now() - (CONFIG.SYNCED_RETENTION_DAYS * 24 * 3600000); await safeTx([CONFIG.SYNCED_STORE], 'readwrite', async (tx) => { const store = tx.objectStore(CONFIG.SYNCED_STORE); const index = store.index('syncedAt'); const range = IDBKeyRange.upperBound(cutoff); const toDelete = []; await new Promise(r => { index.openCursor(range).onsuccess = (e) => { const cur = e.target.result; if(cur) { toDelete.push(cur.primaryKey); cur.continue(); } else r(); }; }); for(const key of toDelete) store.delete(key); const countReq = store.count(); countReq.onsuccess = () => { if(countReq.result > CONFIG.MAX_SYNCED_RECORDS) { const toTrim = countReq.result - CONFIG.MAX_SYNCED_RECORDS; store.openCursor().onsuccess = (e) => { let trimmed = 0; const cur = e.target.result; if(cur && trimmed < toTrim) { store.delete(cur.primaryKey); trimmed++; cur.continue(); } }; } }; }); }
-    async function capUnsyncedWAL() { if(!db) return; let count = 0; await new Promise(r => { db.transaction([CONFIG.PENDING_STORE], 'readonly').objectStore(CONFIG.PENDING_STORE).count().onsuccess = (e) => { count = e.target.result; r(); }; }); if(count <= CONFIG.MAX_UNSYNCED_POINTS) return; const toDelete = []; await safeTx([CONFIG.PENDING_STORE], 'readwrite', async (tx) => { const store = tx.objectStore(CONFIG.PENDING_STORE); await new Promise(r => { store.openCursor().onsuccess = (e) => { const cur = e.target.result; if(cur && toDelete.length < (count - CONFIG.MAX_UNSYNCED_POINTS)) { toDelete.push(cur.primaryKey); cur.continue(); } else r(); }; }); for(const key of toDelete) store.delete(key); }); }
+    function initMap(){ 
+        map=L.map('map',{preferCanvas:true,zoomAnimation:false,fadeAnimation:false,markerZoomAnimation:false,renderer:L.canvas({padding:0.5})}).setView([-6.2088,106.8456],15); 
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{attribution:'© OSM',subdomains:'abcd'}).addTo(map); 
+        if(navigator.geolocation) navigator.geolocation.getCurrentPosition(pos=>map.setView([pos.coords.latitude,pos.coords.longitude],16),null,{timeout:4000}); 
+    }
     
-    function updateAdaptiveSampling() { if(!isTracking) return; const now = Date.now(); let targetInterval = CONFIG.ADAPTIVE_INTERVAL_WALKING; if(currentProfile === 'STATIONARY') targetInterval = CONFIG.ADAPTIVE_INTERVAL_STATIONARY; else if(currentProfile === 'VEHICLE') targetInterval = CONFIG.ADAPTIVE_INTERVAL_VEHICLE; if(systemPressure === 'HIGH') targetInterval = Math.min(targetInterval * 1.5, 5000); if(systemPressure === 'CRITICAL') targetInterval = Math.min(targetInterval * 3, 10000); adaptiveInterval = targetInterval; if(now - lastAdaptiveUpdate > adaptiveInterval) { lastAdaptiveUpdate = now; restartGPS(GPS_PROFILES[currentProfile]); } }
-    function detectGPSProfile(speed) { if(speed > profileSpeedThresholdHigh) return 'VEHICLE'; if(speed < profileSpeedThresholdLow) return 'STATIONARY'; return 'WALKING'; }
-    function updateGPSProfile(speed) { const now = Date.now(); if(now - lastProfileSwitch < lastProfileSwitchCooldown) return; const newProfile = detectGPSProfile(speed); if(newProfile !== currentProfile) { lastProfileSwitch = now; currentProfile = newProfile; document.getElementById('profileBadge').innerHTML = `📡 PROFILE: ${currentProfile}`; updateAdaptiveSampling(); if(watchId && isTracking) restartGPS(GPS_PROFILES[currentProfile]); } }
+    function startGPSWatchdog() { if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); gpsWatchdogInterval = setInterval(() => { if(!isTracking || !window.watchId) return; const stale = Date.now() - lastGPSFixTime; if(stale > 45000) restartGPS(GPS_PROFILES[currentProfile]); if(stale > 120000) { if(window.watchId) navigator.geolocation.clearWatch(window.watchId); window.watchId = null; setTimeout(() => restartGPS(GPS_PROFILES[currentProfile]), 1000); } }, 10000); }
+    
+    // ======================= WAKE LOCK IMPLEMENTATION (BUG #7) =======================
+    let wakeLock = null;
+    
+    async function requestWakeLock() {
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => {
+                    console.log('[WAKE LOCK] Released');
+                    const wb = document.getElementById('wakeBadge');
+                    if(wb) wb.innerHTML = '🔋 WAKE LOCK OFF';
+                });
+                const wb = document.getElementById('wakeBadge');
+                if(wb) wb.innerHTML = '🔋 WAKE LOCK ON';
+                console.log('[WAKE LOCK] Acquired');
+            } catch(err) {
+                console.error('[WAKE LOCK] Failed:', err);
+                const wb = document.getElementById('wakeBadge');
+                if(wb) wb.innerHTML = '🔋 WAKE LOCK FAILED';
+            }
+        }
+    }
+    
+    async function releaseWakeLock() {
+        if (wakeLock !== null) {
+            try {
+                await wakeLock.release();
+                wakeLock = null;
+                const wb = document.getElementById('wakeBadge');
+                if(wb) wb.innerHTML = '🔋 WAKE LOCK OFF';
+            } catch(err) {
+                console.error('[WAKE LOCK] Release error:', err);
+            }
+        }
+    }
+    
+    function initWakeLock() {
+        if ('wakeLock' in navigator) {
+            const handleVisibilityChange = () => {
+                if (document.visibilityState === 'visible' && isTracking) {
+                    requestWakeLock();
+                } else if (document.visibilityState === 'hidden') {
+                    releaseWakeLock();
+                }
+            };
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
+    }
+    
+    function startTracking(){ 
+        if(isTracking) return; 
+        if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId = null; }
+        if(!navigator.geolocation){ alert("GPS tidak didukung"); return; } 
+        restartGPS(GPS_PROFILES[currentProfile]);
+        isTracking=true; 
+        lastGPSFixTime=Date.now(); 
+        startGPSWatchdog(); 
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        if(startBtn) startBtn.style.display='none'; 
+        if(stopBtn) stopBtn.style.display='inline-block'; 
+        updateGPSStatus('ACTIVE','green',null); 
+        initBattery();
+        // FIX BUG #7: Request wake lock when tracking starts
+        if(document.visibilityState === 'visible') {
+            requestWakeLock();
+        }
+    }
+    
+    function stopTracking(){ 
+        if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId=null; } 
+        isTracking=false; 
+        if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); 
+        if(walBatchTimer){ clearTimeout(walBatchTimer); flushWalQueue(); } 
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        if(startBtn) startBtn.style.display='inline-block'; 
+        if(stopBtn) stopBtn.style.display='none'; 
+        updateGPSStatus('STOP','red',null);
+        // FIX BUG #7: Release wake lock when tracking stops
+        releaseWakeLock();
+    }
     
     function clearBuffer() {
         trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
@@ -766,6 +990,7 @@
         if(currentMarker) safeRemoveLayerHard(currentMarker);
         currentMarker = null;
         if(accuracyCircle) { try { accuracyCircle.off?.(); safeRemoveLayerHard(accuracyCircle); } catch(e){} accuracyCircle = null; }
+        // FIX BUG #4: Use hard cleanup
         if(returnLine) safeRemoveLayerHard(returnLine);
         returnLine = null;
         if(playbackMarker) safeRemoveLayerHard(playbackMarker);
@@ -778,6 +1003,480 @@
         accuracyHidden = false;
         updateUI(); resetMovementEngine(); stopFollowMode();
         if(window.gc) try{ gc(); }catch(e){}
+    }
+    
+    let savedTracks = [];
+    
+    async function saveCurrentTrack() { 
+        if(bufferLen === 0) { alert("Tidak ada titik untuk disimpan"); return; } 
+        const name = prompt("Nama track:", `Track ${new Date().toLocaleString()}`); 
+        if(!name) return; 
+        const distance = computeTotalDistance(); 
+        const trackId = Date.now() + '_' + Math.random().toString(36); 
+        const points = getAllPoints().map(p => ({ lat: p.lat, lng: p.lng, alt: p.alt, accuracy: p.accuracy, heading: p.heading, speed: p.speed, timestamp: p.timestamp })); 
+        // FIX BUG #6: Save semantic vectors with track
+        const trackData = { 
+            trackId, 
+            name, 
+            date: Date.now(), 
+            dateStr: new Date().toLocaleString(), 
+            totalPoints: bufferLen, 
+            distance, 
+            points,
+            semanticVectors: getSemanticVectors(),
+            movementState: currentMovementState
+        }; 
+        if(!db) await openDB(); 
+        await safeTx([CONFIG.TRACKS_STORE], 'readwrite', (tx) => { tx.objectStore(CONFIG.TRACKS_STORE).put(trackData); }); 
+        savedTracks.unshift({ trackId, name, dateStr: trackData.dateStr, totalPoints: bufferLen, distance }); 
+        if(savedTracks.length > 25) savedTracks.pop(); 
+        updateHistoryList(); updateUI(); 
+        alert(`✅ Track "${name}" tersimpan (${distance.toFixed(0)} meter)`); 
+    }
+    
+    function updateHistoryList(){ 
+        const container=document.getElementById('historyList'); 
+        if(!savedTracks || savedTracks.length===0){ 
+            if(container) container.innerHTML='<div>Belum ada track tersimpan</div>'; 
+            return; 
+        } 
+        if(container) container.innerHTML=savedTracks.map(t=>`<div class="history-item"><div>📌 ${escapeHtml(t.name)}</div><div>📅 ${t.dateStr} | ${t.totalPoints} titik | 🧭 ${t.distance.toFixed(0)} m</div><div class="history-buttons"><button onclick="window.loadTrack('${t.trackId}')">📂 MUAT</button><button onclick="window.followTrack('${t.trackId}')" style="background:#2c6e2f;">🚶 NAVIGASI</button><button onclick="window.deleteTrack('${t.trackId}')" style="background:#ff5a5f;">🗑 HAPUS</button></div></div>`).join(''); 
+    }
+    
+    window.loadTrack=async(trackId)=>{ 
+        if(!db) await openDB(); 
+        const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId); 
+        req.onsuccess=()=>{ 
+            const track=req.result; 
+            if(track && confirm(`Muat track "${track.name}"?`)){ 
+                clearBuffer(); resetMovementEngine(); 
+                for(let i=0;i<track.points.length;i++){ 
+                    const point=track.points[i]; 
+                    const prev=i>0?track.points[i-1]:null; 
+                    pushPoint(point); 
+                    addMovementVector(point,prev); 
+                    if(prev && cachedTotalDistance !== undefined) cachedTotalDistance += haversineFast(prev.lat, prev.lng, point.lat, point.lng); 
+                    if(point.lat && point.lng) addToSpatialIndex(point, i); 
+                } 
+                // FIX BUG #6: Restore semantic vectors if available
+                if(track.semanticVectors && track.semanticVectors.length) {
+                    movementVectors = track.semanticVectors.slice();
+                    if(track.movementState) currentMovementState = track.movementState;
+                    updateSemanticBreadcrumb();
+                    updateMovementStats();
+                }
+                updateTrail(); 
+                if(map && lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16); 
+                if(currentTab==='3D') draw3D(); 
+                const hp = document.getElementById('historyPanel');
+                if(hp) hp.classList.remove('show'); 
+            } 
+        }; 
+    };
+    
+    window.followTrack=async(trackId)=>{ 
+        if(!db) await openDB(); 
+        const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId); 
+        req.onsuccess=()=>{ 
+            const track=req.result; 
+            if(track && confirm(`Mulai navigasi mengikuti track "${track.name}"?`)){ 
+                startFollowMode(track); 
+                const hp = document.getElementById('historyPanel');
+                if(hp) hp.classList.remove('show'); 
+            } 
+        }; 
+    };
+    
+    window.deleteTrack=async(trackId)=>{ 
+        if(confirm("Hapus track ini?")){ 
+            savedTracks=savedTracks.filter(t=>t.trackId!==trackId); 
+            if(!db) await openDB(); 
+            await safeTx([CONFIG.TRACKS_STORE], 'readwrite', (tx) => { tx.objectStore(CONFIG.TRACKS_STORE).delete(trackId); }); 
+            updateHistoryList(); 
+        } 
+    };
+    
+    async function loadSavedTracks(){ 
+        if(!db) await openDB(); 
+        const tracks=[]; 
+        await new Promise(r=>{ 
+            db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).openCursor().onsuccess=(e)=>{ 
+                const cur=e.target.result; 
+                if(cur){ 
+                    const {points,...meta}=cur.value; 
+                    tracks.push(meta); 
+                    cur.continue(); 
+                } else r(); 
+            }; 
+        }); 
+        if(tracks.length){ 
+            savedTracks=tracks.sort((a,b)=>b.date-a.date); 
+            updateHistoryList(); 
+        } 
+    }
+    
+    let returnMode=false, returnInterval=null, returnLine=null;
+    function toggleReturnMode(){ 
+        if(bufferLen===0){ alert("Tidak ada jalur untuk kembali"); return; } 
+        returnMode=!returnMode; 
+        const btn=document.getElementById('returnBtn'); 
+        const info=document.getElementById('breadcrumbInfo'); 
+        if(returnMode){ 
+            if(btn) btn.innerHTML='📍 BACKTRACK ON'; 
+            if(btn) btn.style.background='#2c6e2f'; 
+            if(info) info.classList.add('show'); 
+            if(returnInterval) clearInterval(returnInterval); 
+            returnInterval=setInterval(updateReturnDistance,1500); 
+            updateReturnDistance(); 
+            if(returnLine && map) safeRemoveLayerHard(returnLine); 
+            const start=getPoint(0), now=getLastPoint(); 
+            if(start && now) returnLine=L.polyline([[now.lat,now.lng],[start.lat,start.lng]],{color:'#fd7e2c',weight:3,dashArray:'8,8', interactive: false}).addTo(map); 
+        } else { 
+            if(btn) btn.innerHTML='🏠 RETURN'; 
+            if(btn) btn.style.background='#fd7e2c'; 
+            if(info) info.classList.remove('show'); 
+            if(returnInterval) clearInterval(returnInterval); 
+            safeRemoveLayerHard(returnLine); 
+            returnLine=null; 
+        } 
+    }
+    
+    function updateReturnDistance(){ 
+        if(!returnMode || bufferLen<1) return; 
+        const rd = document.getElementById('returnDistance');
+        if(rd) rd.innerHTML=`${Math.round(computeTotalDistance())} meter (true path)`; 
+    }
+    
+    // ======================= NAVIGATION =======================
+    let followMode=false, followRoute=[], followTurns=[], followLine=null, followTurnMarkers=[], followInterval=null;
+    
+    function detectTurns(points){ 
+        if(points.length<4) return []; 
+        const turns=[]; 
+        for(let i=3;i<points.length;i++){ 
+            const b1=calculateBearing(points[i-3].lat,points[i-3].lng,points[i-1].lat,points[i-1].lng); 
+            const b2=calculateBearing(points[i-2].lat,points[i-2].lng,points[i].lat,points[i].lng); 
+            let diff=b2-b1; 
+            if(diff>180) diff-=360; 
+            if(diff<-180) diff+=360; 
+            if(Math.abs(diff)>MOVEMENT_CONFIG.TURN_ANGLE){ 
+                let distFromStart=0; 
+                for(let j=1;j<=i;j++) distFromStart+=haversineFast(points[j-1].lat,points[j-1].lng,points[j].lat,points[j].lng); 
+                turns.push({index:i,lat:points[i].lat,lng:points[i].lng,angle:diff,direction:diff>0?'KANAN':'KIRI',distanceFromStart:distFromStart}); 
+            } 
+        } 
+        return turns; 
+    }
+    
+    function startFollowMode(track){ 
+        if(!track||track.points.length<2){ alert("Track tidak valid untuk navigasi"); return; } 
+        stopFollowMode(); 
+        followRoute=track.points.map(p=>({...p})); 
+        followTurns=detectTurns(followRoute); 
+        followMode=true; 
+        navigationCache={lastIdx:0,lastDist:Infinity}; 
+        spatialIndex.clear(); 
+        spatialHistory=[]; 
+        routeCumulativeDistances=[0]; 
+        for(let i=1;i<followRoute.length;i++) routeCumulativeDistances.push(routeCumulativeDistances[i-1] + haversineFast(followRoute[i-1].lat,followRoute[i-1].lng,followRoute[i].lat,followRoute[i].lng)); 
+        for(let i=0;i<followRoute.length;i++) addToSpatialIndex(followRoute[i], i); 
+        const navPanel = document.getElementById('navPanel');
+        if(navPanel) navPanel.classList.add('show'); 
+        const navInst = document.getElementById('navInstruction');
+        if(navInst) navInst.innerHTML=`🚶 MENGIKUTI: ${track.name}`; 
+        if(followLine && map) safeRemoveLayerHard(followLine); 
+        const routeLatLngs=followRoute.map(p=>[p.lat,p.lng]); 
+        followLine=L.polyline(routeLatLngs,{color:'#2c6e2f',weight:5,opacity:0.8, interactive: false}).addTo(map); 
+        if(followTurnMarkers.length){ 
+            followTurnMarkers.forEach(m=>{ try{ m.off(); if(m.dragging) m.dragging.disable(); m.unbindTooltip(); m.unbindPopup(); safeRemoveLayerHard(m); }catch(e){} }); 
+            followTurnMarkers=[]; 
+        } 
+        followTurns.forEach(turn=>{ 
+            const marker=L.circleMarker([turn.lat,turn.lng],{radius:4,color:'#ffb347',fillColor:'#ffb347',fillOpacity:0.8, interactive: false}).addTo(map).bindTooltip(`Belok ${turn.direction} ${Math.round(Math.abs(turn.angle))}°`); 
+            followTurnMarkers.push(marker); 
+        }); 
+        if(followInterval) clearInterval(followInterval); 
+        followInterval=setInterval(()=>updateNavigation(),1500); 
+        updateNavigation(); 
+        alert(`🚶 Navigasi dimulai: "${track.name}"\n📏 Total: ${Math.round(track.distance)}m\n🔄 ${followTurns.length} belokan`); 
+    }
+    
+    function stopFollowMode(){ 
+        followMode=false; 
+        if(followInterval) clearInterval(followInterval); 
+        const navPanel = document.getElementById('navPanel');
+        if(navPanel) navPanel.classList.remove('show'); 
+        if(followLine && map) safeRemoveLayerHard(followLine); 
+        if(followTurnMarkers.length){ followTurnMarkers.forEach(m=>safeRemoveLayerHard(m)); followTurnMarkers=[]; } 
+        followRoute=[]; 
+        spatialIndex.clear(); 
+        spatialHistory=[]; 
+        routeCumulativeDistances=[]; 
+    }
+    
+    let lastNavigationUpdate=0; const NAV_UPDATE_INTERVAL=2000;
+    function updateNavigation(){ 
+        if(!followMode || !lastPosition || followRoute.length===0) return; 
+        const now=Date.now(); 
+        if(now-lastNavigationUpdate<NAV_UPDATE_INTERVAL && systemPressure!=='NORMAL') return; 
+        lastNavigationUpdate=now; 
+        let minDist=Infinity, nearestIdx=navigationCache.lastIdx; 
+        const RADIUS=systemPressure==='CRITICAL'?0.001:0.002; 
+        const nearby=findNearbyIndices(lastPosition.lat,lastPosition.lng,RADIUS); 
+        for(const idx of nearby){ 
+            if(idx<0||idx>=followRoute.length) continue; 
+            const dist=haversineFast(lastPosition.lat,lastPosition.lng,followRoute[idx].lat,followRoute[idx].lng); 
+            if(dist<minDist){ minDist=dist; nearestIdx=idx; } 
+        } 
+        if(minDist>50){ 
+            const RANGE=systemPressure==='CRITICAL'?80:150; 
+            const start=Math.max(0,navigationCache.lastIdx-RANGE); 
+            const end=Math.min(followRoute.length,navigationCache.lastIdx+RANGE); 
+            for(let i=start;i<end;i++){ 
+                const p=followRoute[i]; 
+                if(!p) continue; 
+                const dist=haversineFast(lastPosition.lat,lastPosition.lng,p.lat,p.lng); 
+                if(dist<minDist){ minDist=dist; nearestIdx=i; } 
+            } 
+        } 
+        navigationCache={lastIdx:nearestIdx,lastDist:minDist}; 
+        let remainingDist=routeCumulativeDistances[routeCumulativeDistances.length-1]-routeCumulativeDistances[nearestIdx]; 
+        const totalDist=routeCumulativeDistances[routeCumulativeDistances.length-1]; 
+        const progressPercent=((totalDist-remainingDist)/totalDist)*100; 
+        const navProgress = document.getElementById('navProgress');
+        if(navProgress) navProgress.style.width=`${Math.min(100,Math.max(0,progressPercent))}%`; 
+        const navDist = document.getElementById('navDistance');
+        if(navDist) navDist.innerHTML=`Sisa: ${Math.round(remainingDist)}m`; 
+        if(minDist>30){ 
+            const navInst = document.getElementById('navInstruction');
+            if(navInst){ navInst.innerHTML='⚠️ PERINGATAN: ANDA KELUAR JALUR'; navInst.style.color='#ff5a5f'; } 
+            return; 
+        } 
+        const navInst = document.getElementById('navInstruction');
+        if(navInst) navInst.style.color='#00f2a0'; 
+        let nextTurn=null; 
+        for(const turn of followTurns) if(turn.distanceFromStart>(totalDist-remainingDist)){ nextTurn=turn; break; } 
+        if(nextTurn){ 
+            const distToTurn=nextTurn.distanceFromStart-(totalDist-remainingDist); 
+            if(distToTurn<50){ 
+                if(navInst) navInst.innerHTML=`🔄 BELOK ${nextTurn.direction} ${Math.round(distToTurn)} METER LAGI!`; 
+                const navNext = document.getElementById('navNextTurn');
+                if(navNext) navNext.innerHTML=`Segera belok ${nextTurn.direction}`; 
+            } else if(distToTurn<150){ 
+                if(navInst) navInst.innerHTML=`⚠️ PERSIAPAN BELOK ${nextTurn.direction} ${Math.round(distToTurn)}m`; 
+                const navNext = document.getElementById('navNextTurn');
+                if(navNext) navNext.innerHTML=`Belok ${nextTurn.direction}: ${Math.round(distToTurn)}m`; 
+            } else { 
+                if(navInst) navInst.innerHTML=`⬆️ JALAN LURUS ${Math.round(distToTurn)} METER`; 
+                const navNext = document.getElementById('navNextTurn');
+                if(navNext) navNext.innerHTML=`Belok ${nextTurn.direction}: ${Math.round(distToTurn)}m`; 
+            } 
+        } else { 
+            if(remainingDist<50){ 
+                if(navInst) navInst.innerHTML='🏁 TUJUAN HAMPIR SAMPAI!'; 
+                const navNext = document.getElementById('navNextTurn');
+                if(navNext) navNext.innerHTML=`${Math.round(remainingDist)}m lagi`; 
+            } else { 
+                if(navInst) navInst.innerHTML=`⬆️ JALAN LURUS ${Math.round(remainingDist)} METER`; 
+                const navNext = document.getElementById('navNextTurn');
+                if(navNext) navNext.innerHTML=`Tujuan: ${Math.round(remainingDist)}m`; 
+            } 
+        } 
+    }
+    
+    // ======================= REPLAY =======================
+    function stopPlaybackNew() { 
+        if(playbackTimer){ cancelAnimationFrame(playbackTimer); playbackTimer=null; } 
+        replayToken++; 
+        playbackActive=false; 
+        isPlaying=false; 
+        isReplaying=false; 
+        const pbBar = document.getElementById('playbackBar');
+        if(pbBar) pbBar.classList.remove('show'); 
+        replaySnapshotIndices=null; 
+        if(playbackMarker){ safeRemoveLayerHard(playbackMarker); playbackMarker=null; } 
+    }
+    
+    function startPlayback(){ 
+        if(playbackTimer) cancelAnimationFrame(playbackTimer);
+        if(bufferLen<2){ alert("Tidak ada titik untuk replay"); return; } 
+        stopPlaybackNew(); 
+        const myReplay=++replayToken; 
+        isReplaying=true; 
+        const maxPoints=systemPressure==='CRITICAL'?800:2000; 
+        let step=Math.max(1,Math.ceil(bufferLen/maxPoints)); 
+        if(bufferLen>5000) step=2;
+        if(bufferLen>10000) step=5;
+        if(bufferLen>20000) step=10; 
+        if(systemPressure==='HIGH') step=Math.max(step,4);
+        if(systemPressure==='CRITICAL') step=Math.max(step,8);
+        playbackIndices=[]; 
+        for(let i=0;i<bufferLen;i+=step) playbackIndices.push(i); 
+        if(playbackIndices[playbackIndices.length-1]!==bufferLen-1) playbackIndices.push(bufferLen-1); 
+        replaySnapshotIndices=[...playbackIndices]; 
+        playbackIndex=0; 
+        playbackActive=true; 
+        isPlaying=true; 
+        const firstPoint=getPoint(replaySnapshotIndices[0]); 
+        const pbBar = document.getElementById('playbackBar');
+        if(pbBar) pbBar.classList.add('show'); 
+        const slider=document.getElementById('playbackSlider'); 
+        if(slider) slider.max=replaySnapshotIndices.length-1; 
+        if(slider) slider.value=0; 
+        const pbPercent = document.getElementById('playbackPercent');
+        if(pbPercent) pbPercent.innerText="0%"; 
+        if(!playbackMarker) playbackMarker=L.circleMarker([firstPoint.lat,firstPoint.lng],{radius:5,color:'#f1c40f',fillColor:'#f39c12',weight:2,interactive:false}).addTo(map); 
+        else playbackMarker.setLatLng([firstPoint.lat,firstPoint.lng]); 
+        let lastFrame=0, lastPanFrame=0; 
+        const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS; 
+        function animate(now){ 
+            if(myReplay!==replayToken){ console.log('[REPLAY] Zombie terminated'); return; }
+            if(!playbackActive||!isPlaying) return; 
+            if(now-lastFrame>=frameMs){ 
+                lastFrame=now; 
+                if(playbackIndex<replaySnapshotIndices.length){ 
+                    const p=getPoint(replaySnapshotIndices[playbackIndex]); 
+                    if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); 
+                    if(map && currentTab==='2D' && (now-lastPanFrame)>=500){ 
+                        const bounds=map.getBounds(); 
+                        const point=L.latLng(p.lat,p.lng); 
+                        if(!bounds.contains(point)) map.setView([p.lat,p.lng],map.getZoom(),{animate:false}); 
+                        lastPanFrame=now; 
+                    } 
+                    if(slider) slider.value=playbackIndex; 
+                    if(pbPercent) pbPercent.innerText=Math.round((playbackIndex/replaySnapshotIndices.length)*100)+"%"; 
+                    playbackIndex++; 
+                    playbackTimer=requestAnimationFrame(animate); 
+                } else { 
+                    isReplaying=false; 
+                    stopPlaybackNew(); 
+                    alert("Replay selesai"); 
+                } 
+            } else { 
+                playbackTimer=requestAnimationFrame(animate); 
+            } 
+        } 
+        playbackTimer=requestAnimationFrame(animate); 
+    }
+    
+    function pausePlayback(){ isPlaying=false; if(playbackTimer) cancelAnimationFrame(playbackTimer); }
+    function resumePlayback(){ if(playbackActive && !isPlaying && playbackIndex<replaySnapshotIndices.length){ isPlaying=true; const myReplay=replayToken; let lastFrame=0, lastPanFrame=0; const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS; function animate(now){ if(myReplay!==replayToken) return; if(!playbackActive||!isPlaying) return; if(now-lastFrame>=frameMs){ lastFrame=now; if(playbackIndex<replaySnapshotIndices.length){ const p=getPoint(replaySnapshotIndices[playbackIndex]); if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); if(map && currentTab==='2D' && (now-lastPanFrame)>=500){ const bounds=map.getBounds(); const point=L.latLng(p.lat,p.lng); if(!bounds.contains(point)) map.setView([p.lat,p.lng],map.getZoom(),{animate:false}); lastPanFrame=now; } const slider=document.getElementById('playbackSlider'); const pbPercent=document.getElementById('playbackPercent'); if(slider) slider.value=playbackIndex; if(pbPercent) pbPercent.innerText=Math.round((playbackIndex/replaySnapshotIndices.length)*100)+"%"; playbackIndex++; playbackTimer=requestAnimationFrame(animate); } else { isReplaying=false; stopPlaybackNew(); } } else { playbackTimer=requestAnimationFrame(animate); } } playbackTimer=requestAnimationFrame(animate); } }
+    
+    // ======================= SAFE TX =======================
+    async function safeTx(storeNames, mode, fn, timeoutMs = CONFIG.TX_TIMEOUT_MS) {
+        if(!db) await openDB();
+        return enqueueTx(() => {
+            return new Promise((resolve, reject) => {
+                let isResolved = false;
+                const timeoutId = setTimeout(() => { if(!isResolved) { isResolved = true; reject(new Error(`TX_TIMEOUT`)); } }, timeoutMs);
+                try {
+                    const tx = db.transaction(storeNames, mode);
+                    fn(tx);
+                    tx.oncomplete = () => { if(!isResolved) { clearTimeout(timeoutId); isResolved = true; resolve(); } };
+                    tx.onerror = (event) => { if(!isResolved) { clearTimeout(timeoutId); isResolved = true; reject(tx.error || event.target.error); } };
+                    tx.onabort = () => { if(!isResolved) { clearTimeout(timeoutId); isResolved = true; reject(new Error('TX_ABORTED')); } };
+                } catch(err) { clearTimeout(timeoutId); if(!isResolved) reject(err); }
+            });
+        });
+    }
+    
+    async function flushWalQueue() { 
+        if(!Array.isArray(walQueue)) walQueue = []; 
+        if(walFlushLock || walQueue.length === 0) return; 
+        walFlushLock = true; 
+        let batch = []; 
+        try { 
+            if(!db) await openDB(); 
+            batch = walQueue.splice(0, CONFIG.WAL_BATCH_SIZE); 
+            await safeTx([CONFIG.PENDING_STORE], 'readwrite', (tx) => { 
+                const store = tx.objectStore(CONFIG.PENDING_STORE); 
+                for(const record of batch) store.put(record); 
+            }); 
+        } catch(err) { 
+            console.error('[WAL] Flush failed:', err); 
+            if(batch.length) walQueue.unshift(...batch); 
+        } finally { 
+            walFlushLock = false; 
+            if(walQueue.length > 0) { setTimeout(() => flushWalQueue(), 1200); } 
+        } 
+    }
+    
+    function queueToWAL(point) { 
+        if(!Array.isArray(walQueue)) walQueue = []; 
+        const record = {...point, synced: false, timestampMs: Date.now(), _checksum: point.hash}; 
+        walQueue.push(record); 
+        while(walQueue.length > CONFIG.MAX_WAL_QUEUE_SIZE) walQueue.shift(); 
+        if(walQueue.length >= CONFIG.WAL_BATCH_SIZE) { 
+            if(walBatchTimer) clearTimeout(walBatchTimer); 
+            flushWalQueue(); 
+        } else if(!walBatchTimer) { 
+            walBatchTimer = setTimeout(() => { flushWalQueue(); walBatchTimer = null; }, 1500); 
+        } 
+    }
+    
+    async function pruneSyncedRecords() { 
+        if(!db) return; 
+        const cutoff = Date.now() - (CONFIG.SYNCED_RETENTION_DAYS * 24 * 3600000); 
+        await safeTx([CONFIG.SYNCED_STORE], 'readwrite', (tx) => { 
+            const store = tx.objectStore(CONFIG.SYNCED_STORE); 
+            const index = store.index('syncedAt'); 
+            const range = IDBKeyRange.upperBound(cutoff); 
+            index.openCursor(range).onsuccess = (e) => { 
+                const cur = e.target.result; 
+                if(cur) { store.delete(cur.primaryKey); cur.continue(); } 
+            }; 
+        }); 
+    }
+    
+    async function capUnsyncedWAL() { 
+        if(!db) return; 
+        let count = 0; 
+        await new Promise(r => { db.transaction([CONFIG.PENDING_STORE], 'readonly').objectStore(CONFIG.PENDING_STORE).count().onsuccess = (e) => { count = e.target.result; r(); }; }); 
+        if(count <= CONFIG.MAX_UNSYNCED_POINTS) return; 
+        const toDelete = []; 
+        await safeTx([CONFIG.PENDING_STORE], 'readwrite', (tx) => { 
+            const store = tx.objectStore(CONFIG.PENDING_STORE); 
+            store.openCursor().onsuccess = (e) => { 
+                const cur = e.target.result; 
+                if(cur && toDelete.length < (count - CONFIG.MAX_UNSYNCED_POINTS)) { 
+                    toDelete.push(cur.primaryKey); 
+                    cur.continue(); 
+                } else { 
+                    for(const key of toDelete) store.delete(key); 
+                } 
+            }; 
+        }); 
+    }
+    
+    function updateAdaptiveSampling() { 
+        if(!isTracking) return; 
+        const now = Date.now(); 
+        let targetInterval = CONFIG.ADAPTIVE_INTERVAL_WALKING; 
+        if(currentProfile === 'STATIONARY') targetInterval = CONFIG.ADAPTIVE_INTERVAL_STATIONARY; 
+        else if(currentProfile === 'VEHICLE') targetInterval = CONFIG.ADAPTIVE_INTERVAL_VEHICLE; 
+        if(systemPressure === 'HIGH') targetInterval = Math.min(targetInterval * 1.5, 5000); 
+        if(systemPressure === 'CRITICAL') targetInterval = Math.min(targetInterval * 3, 10000); 
+        adaptiveInterval = targetInterval; 
+        if(now - lastAdaptiveUpdate > adaptiveInterval) { 
+            lastAdaptiveUpdate = now; 
+            restartGPS(GPS_PROFILES[currentProfile]); 
+        } 
+    }
+    
+    function detectGPSProfile(speed) { if(speed > profileSpeedThresholdHigh) return 'VEHICLE'; if(speed < profileSpeedThresholdLow) return 'STATIONARY'; return 'WALKING'; }
+    
+    function updateGPSProfile(speed) { 
+        const now = Date.now(); 
+        if(now - lastProfileSwitch < lastProfileSwitchCooldown) return; 
+        const newProfile = detectGPSProfile(speed); 
+        if(newProfile !== currentProfile) { 
+            lastProfileSwitch = now; 
+            currentProfile = newProfile; 
+            const pb = document.getElementById('profileBadge');
+            if(pb) pb.innerHTML = `📡 PROFILE: ${currentProfile}`; 
+            updateAdaptiveSampling(); 
+            if(window.watchId && isTracking) restartGPS(GPS_PROFILES[currentProfile]); 
+        } 
     }
     
     async function syncToServer() {
@@ -798,7 +1497,7 @@
                     const batchHash = await (async (text) => { const data = new TextEncoder().encode(text); const hash = await crypto.subtle.digest('SHA-256', data); return [...new Uint8Array(hash)].map(b => b.toString(16).padStart(2,'0')).join(''); })(pending.map(p => p.hash).join('|')); 
                     const controller = new AbortController();
                     const timeoutId = setTimeout(() => { controller.abort(); }, 20000);
-                    const res = await fetch(CONFIG.SYNC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({points:pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,pointHash:p.hash})), deviceId, batchId:batchHash, version:'5.16'}), signal: controller.signal });
+                    const res = await fetch(CONFIG.SYNC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({points:pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,pointHash:p.hash})), deviceId, batchId:batchHash, version:'5.18'}), signal: controller.signal });
                     clearTimeout(timeoutId);
                     let result = null;
                     try { result = await res.json(); } catch(e) { throw new Error('INVALID_JSON'); }
@@ -815,71 +1514,267 @@
         return activeSyncPromise;
     }
     
-    let lastRecoveryTimestamp = 0, lastRecoveryHash = '';
-    const RECOVERY_COOLDOWN_MS = 30000;
-    async function recoverFromWAL() { 
-        const now = Date.now();
-        if(now - lastRecoveryTimestamp < RECOVERY_COOLDOWN_MS && lastRecoveryHash === deviceId) return;
-        lastRecoveryTimestamp = now;
-        lastRecoveryHash = deviceId;
-        if(!db) await openDB(); 
-        const recoveredPoints = []; 
-        const seenHashes = new Set();
-        await new Promise(r => { db.transaction([CONFIG.PENDING_STORE],'readonly').objectStore(CONFIG.PENDING_STORE).openCursor().onsuccess = (e) => { const cur = e.target.result; if(cur) { const point = cur.value; if(point._checksum !== point.hash) { cur.continue(); return; } if(!point.synced && !seenHashes.has(point.hash) && recoveredPoints.length < 3000) { seenHashes.add(point.hash); recoveredPoints.push(point); } cur.continue(); } else r(); }; }); 
-        if(recoveredPoints.length === 0) return;
-        const oldDistance = cachedTotalDistance;
-        trackBuffer = new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
-        bufferStart = 0; bufferLen = 0; totalPoints = 0; lastPosition = null;
-        resetMovementEngine();
-        cachedTotalDistance = 0;
-        let i = 0;
-        function recoverChunk() { const end = Math.min(i + 150, recoveredPoints.length); for(; i < end; i++) { const p = recoveredPoints[i]; const prev = i > 0 ? recoveredPoints[i-1] : null; pushPoint(p); addMovementVector(p, prev); if(prev && cachedTotalDistance !== undefined) cachedTotalDistance += haversineFast(prev.lat, prev.lng, p.lat, p.lng); if(p.lat && p.lng) addToSpatialIndex(p, i); } if(i < recoveredPoints.length) requestAnimationFrame(recoverChunk); else { updateTrail(); updateUI(); if(currentTab === '3D') draw3D(); console.log(`[RECOVERY] Restored ${recoveredPoints.length} points (distance: ${cachedTotalDistance.toFixed(0)}m, was: ${oldDistance.toFixed(0)}m)`); } } recoverChunk(); }
-    
-    function emergencyMemoryCleanup() {
-        replaySnapshotIndices = null; playbackIndices = []; clearSemanticVectors(); spatialIndex.clear(); spatialHistory = []; navigationCache = { lastIdx: 0, lastDist: Infinity };
-        if(playbackActive) stopPlaybackNew();
-        if(trailSegments.length > 15) { while(trailSegments.length > 15) { const old = trailSegments.shift(); if(old) safeRemoveLayerHard(old); } }
-        if(ctx3D && canvas3D) ctx3D.clearRect(0, 0, canvas3D.width, canvas3D.height);
-        console.warn('[MEMORY] Emergency cleanup triggered');
-        if(performance && performance.memory && performance.memory.usedJSHeapSize && performance.memory.usedJSHeapSize > 220000000) { alert("MEMORY LIMIT TERCAPAI.\nAplikasi akan reload untuk mencegah crash."); location.reload(); }
-    }
-    
-    // WORKER
+    // ======================= WORKER =======================
     let workerLastHeartbeat = Date.now(), workerHeartbeatInterval = null, workerRespawnCount = 0, lastWorkerRespawn = 0;
     const MAX_WORKER_RESPAWN_PER_MINUTE = 3;
-    function startWorkerHeartbeat() { if(workerHeartbeatInterval) clearInterval(workerHeartbeatInterval); workerHeartbeatInterval = setInterval(() => { if(!syncWorker) return; if(document.hidden) return; const now = Date.now(); if(workerLastHeartbeat < now - 15000) { console.warn('[WORKER] Heartbeat lost'); const respawnNow = Date.now(); if(respawnNow - lastWorkerRespawn > 60000) workerRespawnCount = 0; if(workerRespawnCount < MAX_WORKER_RESPAWN_PER_MINUTE) { workerRespawnCount++; lastWorkerRespawn = respawnNow; initWorker(); } else console.warn('[WORKER] Respawn limit reached'); } else if(syncWorker && !document.hidden) syncWorker.postMessage({ type: 'HEARTBEAT_PING' }); }, 10000); }
-    function initWorker(){ if(workerInitializing) return; if(document.hidden && workerRespawnCount > 0) return; workerInitializing=true; try { if(syncWorker){ try{ syncWorker.onmessage = null; syncWorker.onerror = null; }catch(e){} try{ syncWorker.terminate(); }catch(e){} syncWorker=null; } if(workerBlobUrl) { URL.revokeObjectURL(workerBlobUrl); workerBlobUrl=null; } const token = ++workerGenToken; const blob=new Blob([`let interval, active=true, myToken, syncing=false, syncTimeout=null; self.onmessage=(e)=>{ if(e.data.type==='START' && e.data.token===myToken){ if(interval) clearInterval(interval); interval=setInterval(()=>{ if(active && !syncing){ syncing=true; syncTimeout=setTimeout(()=>{ syncing=false; syncTimeout=null; },45000); self.postMessage({type:'SYNC'}); } }, ${CONFIG.AUTO_SYNC_INTERVAL_MS}); } else if(e.data.type === 'HEARTBEAT_PING') { self.postMessage({type: 'HEARTBEAT_PONG'}); } else if(e.data.type==='SYNC_DONE'){ if(syncTimeout){ clearTimeout(syncTimeout); syncTimeout=null; } syncing=false; } else if(e.data.type==='VISIBILITY') active=e.data.visible; }; setInterval(() => { if(active) self.postMessage({type: 'HEARTBEAT_PONG'}); }, 5000);`],{type:'application/javascript'}); workerBlobUrl=URL.createObjectURL(blob); syncWorker=new Worker(workerBlobUrl); syncWorker.onmessage = (e) => { if(!e.data) return; if(e.data.type === 'HEARTBEAT_PONG') { workerLastHeartbeat = Date.now(); return; } if(e.data.type !== 'SYNC') return; if(syncLock) return; if(activeSyncPromise) return; syncToServer(); }; syncWorker.onerror = (err) => { console.error('[WORKER] Error:', err); }; syncWorker.postMessage({type:'START', token}); startWorkerHeartbeat(); } finally { workerInitializing=false; } }
+    
+    function startWorkerHeartbeat() { 
+        if(workerHeartbeatInterval) clearInterval(workerHeartbeatInterval); 
+        workerHeartbeatInterval = setInterval(() => { 
+            if(!syncWorker) return; 
+            if(document.hidden) return; 
+            const now = Date.now(); 
+            if(workerLastHeartbeat < now - 15000) { 
+                console.warn('[WORKER] Heartbeat lost'); 
+                const respawnNow = Date.now(); 
+                if(respawnNow - lastWorkerRespawn > 60000) workerRespawnCount = 0; 
+                if(workerRespawnCount < MAX_WORKER_RESPAWN_PER_MINUTE) { 
+                    workerRespawnCount++; 
+                    lastWorkerRespawn = respawnNow; 
+                    initWorker(); 
+                } 
+            } else if(syncWorker && !document.hidden) { 
+                syncWorker.postMessage({ type: 'HEARTBEAT_PING' }); 
+            } 
+        }, 10000); 
+    }
+    
+    function initWorker(){ 
+        if(workerInitializing) return; 
+        if(document.hidden && workerRespawnCount > 0) return;
+        workerInitializing=true; 
+        try { 
+            if(syncWorker){ 
+                try{ syncWorker.onmessage = null; syncWorker.onerror = null; }catch(e){} 
+                try{ syncWorker.terminate(); }catch(e){} 
+                syncWorker=null; 
+            } 
+            if(workerBlobUrl) { URL.revokeObjectURL(workerBlobUrl); workerBlobUrl=null; } 
+            const token = ++workerGenToken; 
+            const blob=new Blob([`
+                let interval, active=true, myToken, syncing=false, syncTimeout=null;
+                self.onmessage=(e)=>{
+                    if(e.data.type==='START' && e.data.token===myToken){
+                        if(interval) clearInterval(interval);
+                        interval=setInterval(()=>{
+                            if(active && !syncing){
+                                syncing=true;
+                                syncTimeout=setTimeout(()=>{ syncing=false; syncTimeout=null; },45000);
+                                self.postMessage({type:'SYNC'});
+                            }
+                        }, ${CONFIG.AUTO_SYNC_INTERVAL_MS});
+                    } else if(e.data.type === 'HEARTBEAT_PING') {
+                        self.postMessage({type: 'HEARTBEAT_PONG'});
+                    } else if(e.data.type==='SYNC_DONE'){
+                        if(syncTimeout){ clearTimeout(syncTimeout); syncTimeout=null; }
+                        syncing=false;
+                    } else if(e.data.type==='VISIBILITY') active=e.data.visible;
+                };
+                setInterval(() => { if(active) self.postMessage({type: 'HEARTBEAT_PONG'}); }, 5000);
+            `],{type:'application/javascript'}); 
+            workerBlobUrl=URL.createObjectURL(blob); 
+            syncWorker=new Worker(workerBlobUrl); 
+            syncWorker.onmessage = (e) => { 
+                if(!e.data) return; 
+                if(e.data.type === 'HEARTBEAT_PONG') { workerLastHeartbeat = Date.now(); return; } 
+                if(e.data.type !== 'SYNC') return; 
+                if(syncLock) return; 
+                if(activeSyncPromise) return; 
+                syncToServer(); 
+            }; 
+            syncWorker.onerror = (err) => { console.error('[WORKER] Error:', err); }; 
+            syncWorker.postMessage({type:'START', token}); 
+            startWorkerHeartbeat(); 
+        } finally { workerInitializing=false; } 
+    }
     
     let currentTab='2D', isPageVisible=true, redrawSuspended=false;
-    function switchTab(tab){ currentTab=tab; const mapDiv=document.getElementById('map'), canvasDiv=document.getElementById('canvas3D'), btn2D=document.getElementById('btn2D'), btn3D=document.getElementById('btn3D'); if(tab==='2D'){ mapDiv.style.display='block'; canvasDiv.style.display='none'; btn2D.classList.add('active'); btn3D.classList.remove('active'); requestAnimationFrame(()=>{ requestAnimationFrame(()=>{ if(map) map.invalidateSize(); }); }); } else { mapDiv.style.display='none'; canvasDiv.style.display='block'; btn2D.classList.remove('active'); btn3D.classList.add('active'); resize3D(); draw3D(); } }
-    function clearAll(){ if(confirm("Hapus semua titik tracking? Data tersimpan tetap ada.")){ clearBuffer(); updateUI(); if(currentTab==='3D') draw3D(); updateGPSStatus('CLEARED','red',null); stopFollowMode(); } }
+    
+    function switchTab(tab){ 
+        currentTab=tab; 
+        const mapDiv=document.getElementById('map'), canvasDiv=document.getElementById('canvas3D'), btn2D=document.getElementById('btn2D'), btn3D=document.getElementById('btn3D'); 
+        if(tab==='2D'){ 
+            if(mapDiv) mapDiv.style.display='block'; 
+            if(canvasDiv) canvasDiv.style.display='none'; 
+            if(btn2D) btn2D.classList.add('active'); 
+            if(btn3D) btn3D.classList.remove('active'); 
+            requestAnimationFrame(()=>{ if(map) map.invalidateSize(); }); 
+        } else { 
+            if(mapDiv) mapDiv.style.display='none'; 
+            if(canvasDiv) canvasDiv.style.display='block'; 
+            if(btn2D) btn2D.classList.remove('active'); 
+            if(btn3D) btn3D.classList.add('active'); 
+            resize3D(); draw3D(); 
+        } 
+    }
+    
+    function clearAll(){ 
+        if(confirm("Hapus semua titik tracking? Data tersimpan tetap ada.")){ 
+            clearBuffer(); 
+            updateUI(); 
+            if(currentTab==='3D') draw3D(); 
+            updateGPSStatus('CLEARED','red',null); 
+            stopFollowMode(); 
+        } 
+    }
+    
     function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit','_blank'); }
-    function toggleHistory(){ document.getElementById('historyPanel').classList.toggle('show'); }
+    function toggleHistory(){ const hp = document.getElementById('historyPanel'); if(hp) hp.classList.toggle('show'); }
     function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g,(m)=>m==='&'?'&amp;':(m==='<'?'&lt;':'&gt;')); }
     function centerMap(){ if(lastPosition && map && currentTab==='2D') map.setView([lastPosition.lat, lastPosition.lng], 18); }
+    function safeRemoveLayer(layer) { if(layer && map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer); }
     
-    document.addEventListener('visibilitychange',()=>{ isPageVisible=document.visibilityState==='visible'; redrawSuspended=!isPageVisible; if(syncWorker) syncWorker.postMessage({ type: 'VISIBILITY', visible: isPageVisible }); if(isPageVisible){ if(currentTab==='3D') draw3D(); updateTrail(); } });
-    document.addEventListener('freeze', () => { console.log('[LIFECYCLE] Page frozen'); if(watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; } });
+    // Lifecycle events
+    document.addEventListener('visibilitychange', () => {
+        isPageVisible=document.visibilityState==='visible'; 
+        redrawSuspended=!isPageVisible; 
+        if(syncWorker) syncWorker.postMessage({ type: 'VISIBILITY', visible: isPageVisible }); 
+        if(isPageVisible){ if(currentTab==='3D') draw3D(); updateTrail(); }
+        if(!isPageVisible && walQueue && walQueue.length > 0) flushWalQueue();
+    });
+    
+    document.addEventListener('freeze', () => { console.log('[LIFECYCLE] Page frozen'); if(window.watchId) { navigator.geolocation.clearWatch(window.watchId); window.watchId = null; } if(walQueue && walQueue.length > 0) flushWalQueue(); });
     document.addEventListener('resume', () => { console.log('[LIFECYCLE] Page resumed'); if(isTracking) restartGPS(GPS_PROFILES[currentProfile]); if(currentTab==='3D') draw3D(); updateTrail(); });
-    window.addEventListener('pagehide', () => { try { if(watchId) navigator.geolocation.clearWatch(watchId); if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); if(followInterval) clearInterval(followInterval); if(playbackTimer) cancelAnimationFrame(playbackTimer); if(syncWorker) syncWorker.terminate(); } catch(e) { console.error(e); } });
+    
+    window.addEventListener('pagehide', () => { 
+        try { 
+            if(window.watchId) navigator.geolocation.clearWatch(window.watchId); 
+            if(gpsWatchdogInterval) clearInterval(gpsWatchdogInterval); 
+            if(followInterval) clearInterval(followInterval); 
+            if(playbackTimer) cancelAnimationFrame(playbackTimer); 
+            if(syncWorker) syncWorker.terminate();
+            if(walQueue && walQueue.length > 0) flushWalQueue();
+        } catch(e) { console.error(e); } 
+    });
+    
+    window.addEventListener('beforeunload', () => { if(walQueue && walQueue.length > 0) flushWalQueue(); });
+    
     document.addEventListener('touchstart', ()=>{}, {passive:true});
     document.addEventListener('touchmove', ()=>{}, {passive:true});
-    setInterval(() => { if(performance && performance.memory && performance.memory.usedJSHeapSize && performance.memory.usedJSHeapSize > 180000000) emergencyMemoryCleanup(); }, 30000);
+    
     setInterval(() => { if(isTracking) capUnsyncedWAL(); }, 60000);
-    setInterval(() => { updateAdaptiveSampling(); updateSystemPressure(); const now = Date.now(); if(now - lastCanvasReset > CANVAS_RESET_INTERVAL) { lastCanvasReset = now; if(currentTab === '3D') { resetCanvasGPU(); draw3D(); } } }, 60000);
+    setInterval(() => { updateAdaptiveSampling(); updateSystemPressure(); if(isTracking) checkStorageQuota(); }, 60000);
+    setInterval(() => { 
+        if(Date.now() - lastCanvasReset > CANVAS_RESET_INTERVAL && currentTab === '3D') { 
+            lastCanvasReset = Date.now(); 
+            hardResetCanvasGPU(); 
+            draw3D(); 
+        } 
+    }, 60000);
     
-    async function initBattery() { if(!('getBattery' in navigator)) return; try { batteryManager = await navigator.getBattery(); } catch(e) { return; } batteryManager.addEventListener('levelchange', handleBatteryUpdate); handleBatteryUpdate(); }
-    function handleBatteryUpdate() { if(!batteryManager) return; batteryPercent = Math.round(batteryManager.level * 100); document.getElementById('batteryBadge').innerHTML = `🔋 ${batteryPercent}%`; if(batteryPercent < 15 && powerMode !== 'SAVER') { powerMode = 'SAVER'; document.getElementById('powerMode').innerHTML = 'SAVER'; if(isTracking) restartGPS({ enableHighAccuracy: false, timeout: 30000, maximumAge: 30000 }); } else if(batteryPercent > 25 && powerMode === 'SAVER') { powerMode = 'NORMAL'; document.getElementById('powerMode').innerHTML = 'NORMAL'; if(isTracking) restartGPS(GPS_PROFILES[currentProfile]); } }
+    async function initBattery() { 
+        if(!('getBattery' in navigator)) return; 
+        try { batteryManager = await navigator.getBattery(); } catch(e) { return; } 
+        batteryManager.addEventListener('levelchange', handleBatteryUpdate); 
+        handleBatteryUpdate(); 
+    }
     
+    function handleBatteryUpdate() { 
+        if(!batteryManager) return; 
+        batteryPercent = Math.round(batteryManager.level * 100); 
+        const bb = document.getElementById('batteryBadge');
+        if(bb) bb.innerHTML = `🔋 ${batteryPercent}%`; 
+        if(batteryPercent < 15 && powerMode !== 'SAVER') { 
+            powerMode = 'SAVER'; 
+            const pm = document.getElementById('powerMode');
+            if(pm) pm.innerHTML = 'SAVER'; 
+            if(isTracking) restartGPS({ enableHighAccuracy: false, timeout: 30000, maximumAge: 30000 }); 
+        } else if(batteryPercent > 25 && powerMode === 'SAVER') { 
+            powerMode = 'NORMAL'; 
+            const pm = document.getElementById('powerMode');
+            if(pm) pm.innerHTML = 'NORMAL'; 
+            if(isTracking) restartGPS(GPS_PROFILES[currentProfile]); 
+        } 
+    }
+    
+    // Register event listeners
     document.getElementById('navCloseBtn')?.addEventListener('click', () => stopFollowMode());
-    document.getElementById('centerBtn').onclick = centerMap;
-    document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{ if(!playbackActive || !replaySnapshotIndices) return; const idx=parseInt(e.target.value); if(idx>=0 && idx<replaySnapshotIndices.length){ playbackIndex=idx; const p=getPoint(replaySnapshotIndices[playbackIndex]); playbackMarker.setLatLng([p.lat,p.lng]); map.setView([p.lat, p.lng], map.getZoom(), {animate:false}); document.getElementById('playbackPercent').innerText=Math.round((idx/replaySnapshotIndices.length)*100)+"%"; if(isPlaying) pausePlayback(); } });
+    document.getElementById('centerBtn')?.addEventListener('click', centerMap);
+    document.getElementById('startBtn')?.addEventListener('click', startTracking);
+    document.getElementById('stopBtn')?.addEventListener('click', stopTracking);
+    document.getElementById('syncBtn')?.addEventListener('click', () => scheduleSync());
+    document.getElementById('clearBtn')?.addEventListener('click', clearAll);
+    document.getElementById('saveBtn')?.addEventListener('click', saveCurrentTrack);
+    document.getElementById('historyBtn')?.addEventListener('click', toggleHistory);
+    document.getElementById('returnBtn')?.addEventListener('click', toggleReturnMode);
+    document.getElementById('sheetBtn')?.addEventListener('click', openSheet);
+    document.getElementById('btn2D')?.addEventListener('click', () => switchTab('2D'));
+    document.getElementById('btn3D')?.addEventListener('click', () => switchTab('3D'));
+    document.getElementById('btnSemantic')?.addEventListener('click', toggleSemanticPanel);
+    document.getElementById('playbackToggleBtn')?.addEventListener('click', () => { if(playbackActive) stopPlaybackNew(); else startPlayback(); });
+    document.getElementById('playPauseBtn')?.addEventListener('click', () => { if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); });
+    document.getElementById('stopPlaybackBtn')?.addEventListener('click', () => stopPlaybackNew());
+    // FIX BUG #5: Replay slider with mode check
+    document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{ 
+        if(!playbackActive || !replaySnapshotIndices) return; 
+        const idx=parseInt(e.target.value); 
+        if(idx>=0 && idx<replaySnapshotIndices.length){ 
+            playbackIndex=idx; 
+            const p=getPoint(replaySnapshotIndices[playbackIndex]); 
+            if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); 
+            // FIX BUG #5: Only update map view when in 2D mode
+            if(currentTab === '2D' && map) {
+                map.setView([p.lat, p.lng], map.getZoom(), {animate:false}); 
+            }
+            const pbPercent = document.getElementById('playbackPercent');
+            if(pbPercent) pbPercent.innerText=Math.round((idx/replaySnapshotIndices.length)*100)+"%"; 
+            if(isPlaying) pausePlayback(); 
+        } 
+    });
+    
     document.body.style.touchAction = 'manipulation';
     
-    function openDB() { if(db) return Promise.resolve(db); if(dbOpeningPromise) return dbOpeningPromise; dbOpeningPromise = new Promise((resolve, reject) => { const req = indexedDB.open(CONFIG.DB_NAME, 26); req.onblocked = () => { console.warn('[DB] BLOCKED'); }; req.onupgradeneeded = (e) => { const dbInst = e.target.result; if(!dbInst.objectStoreNames.contains(CONFIG.PENDING_STORE)) { const store = dbInst.createObjectStore(CONFIG.PENDING_STORE, { keyPath: 'id', autoIncrement: true }); store.createIndex('synced', 'synced'); store.createIndex('hash', 'hash'); } if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)) { const store = dbInst.createObjectStore(CONFIG.SYNCED_STORE, { keyPath: 'id', autoIncrement: true }); store.createIndex('syncedAt', 'syncedAt'); } if(!dbInst.objectStoreNames.contains(CONFIG.TRACKS_STORE)) { dbInst.createObjectStore(CONFIG.TRACKS_STORE, { keyPath: 'trackId' }); } }; req.onsuccess = () => { db = req.result; db.onversionchange = () => { console.warn('[DB] VERSION CHANGE'); try { db.close(); } catch(e){} db = null; }; db.onclose = () => { console.warn('[DB] CLOSED'); db = null; }; resolve(db); }; req.onerror = () => { reject(req.error); }; }).finally(() => { dbOpeningPromise = null; }); return dbOpeningPromise; }
+    function openDB() { 
+        if(db) return Promise.resolve(db); 
+        if(dbOpeningPromise) return dbOpeningPromise; 
+        dbOpeningPromise = new Promise((resolve, reject) => { 
+            const req = indexedDB.open(CONFIG.DB_NAME, 28); 
+            req.onblocked = () => { console.warn('[DB] BLOCKED'); }; 
+            req.onupgradeneeded = (e) => { 
+                const dbInst = e.target.result; 
+                if(!dbInst.objectStoreNames.contains(CONFIG.PENDING_STORE)) { 
+                    const store = dbInst.createObjectStore(CONFIG.PENDING_STORE, { keyPath: 'id', autoIncrement: true }); 
+                    store.createIndex('synced', 'synced'); 
+                    store.createIndex('hash', 'hash'); 
+                } 
+                if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)) { 
+                    const store = dbInst.createObjectStore(CONFIG.SYNCED_STORE, { keyPath: 'id', autoIncrement: true }); 
+                    store.createIndex('syncedAt', 'syncedAt'); 
+                } 
+                if(!dbInst.objectStoreNames.contains(CONFIG.TRACKS_STORE)) { 
+                    dbInst.createObjectStore(CONFIG.TRACKS_STORE, { keyPath: 'trackId' }); 
+                } 
+            }; 
+            req.onsuccess = () => { 
+                db = req.result; 
+                db.onversionchange = () => { console.warn('[DB] VERSION CHANGE'); try { db.close(); } catch(e){} db = null; }; 
+                db.onclose = () => { console.warn('[DB] CLOSED'); db = null; }; 
+                resolve(db); 
+            }; 
+            req.onerror = () => { reject(req.error); }; 
+        }).finally(() => { dbOpeningPromise = null; }); 
+        return dbOpeningPromise; 
+    }
     
-    let savedTracks = [];
-    async function bootstrap(){ console.log("VMS v5.16 - ULTRA HARDENED - 12h Stable"); console.log("PATCHES: Hard Destroy | Anti-Zombie | Tx Queue | Compact Points | Chunked RBush | Canvas Reset | Sync Guard | GPS Backoff | Invalidate Throttle | Lifecycle API"); await openDB(); await recoverFromWAL(); initMap(); init3D(); await loadSavedTracks(); initWorker(); initCompass(); isPageVisible = true; lastAdaptiveUpdate = Date.now(); document.getElementById('startBtn').onclick=startTracking; document.getElementById('stopBtn').onclick=stopTracking; document.getElementById('syncBtn').onclick=()=>scheduleSync(); document.getElementById('clearBtn').onclick=clearAll; document.getElementById('saveBtn').onclick=saveCurrentTrack; document.getElementById('historyBtn').onclick=toggleHistory; document.getElementById('returnBtn').onclick=toggleReturnMode; document.getElementById('sheetBtn').onclick=openSheet; document.getElementById('btn2D').onclick=()=>switchTab('2D'); document.getElementById('btn3D').onclick=()=>switchTab('3D'); document.getElementById('btnSemantic').onclick=toggleSemanticPanel; document.getElementById('playbackToggleBtn').onclick=()=>{ if(playbackActive) stopPlaybackNew(); else startPlayback(); }; document.getElementById('playPauseBtn')?.addEventListener('click',()=>{ if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); }); document.getElementById('stopPlaybackBtn')?.addEventListener('click',()=>stopPlaybackNew()); updateGPSStatus('READY','yellow',null); updateSyncStatus('STANDBY','yellow'); updateUI(); console.log("[BOOT] VMS v5.16 Siap - Ultra Hardened - 12h Stable"); }
+    async function bootstrap(){ 
+        console.log("VMS v5.18 - FULLY FUNCTIONAL + 3D CANVAS FIX - 12h Stable"); 
+        await openDB(); 
+        initMap(); 
+        init3D(); 
+        await loadSavedTracks(); 
+        initWorker(); 
+        initCompass(); 
+        initWakeLock();
+        isPageVisible = true; 
+        lastAdaptiveUpdate = Date.now(); 
+        updateGPSStatus('READY','yellow',null); 
+        updateSyncStatus('STANDBY','yellow'); 
+        updateUI(); 
+        // FIX BUG #2: Force 2D mode at startup
+        switchTab('2D');
+        console.log("[BOOT] VMS v5.18 Siap - Semua fitur berfungsi + 3D Canvas Working"); 
+    }
+    
     bootstrap();
 })();
 </script>
