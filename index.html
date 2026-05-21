@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | v5.18 · Tactical Backtrack + GPS FSM + Smart Rotation</title>
+    <title>VMS | v5.18 · Multi-Vehicle Tactical Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -32,6 +32,12 @@
         .tab-btn{flex:1;background:#1e2a3e;border:none;border-radius:40px;padding:8px 0;font-weight:700;font-size:12px;cursor:pointer;color:#ffffff;}
         .tab-btn.active{background:#1e88e5;color:white;box-shadow:0 0 12px #1e88e5;}
         
+        /* Vehicle selector buttons */
+        .vehicle-selector{position:fixed;top:130px;left:12px;z-index:1055;display:flex;gap:6px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);padding:4px 8px;border-radius:40px;}
+        .btn-vehicle{background:#1e2a3e;border:none;border-radius:40px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;color:#ffffff;transition:all 0.1s ease;}
+        .btn-vehicle.active{background:#2c6e2f;box-shadow:0 0 8px #2c6e2f;}
+        .btn-vehicle:active{transform:scale(0.95);}
+        
         .control-panel{position:fixed;bottom:20px;left:12px;right:12px;z-index:1050;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;pointer-events:none;}
         button{pointer-events:auto;background:#1e2a3e;border:none;padding:8px 12px;border-radius:40px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;color:#ffffff;transition:transform 0.05s ease;}
         button:active{transform:scale(0.96);}
@@ -52,7 +58,7 @@
         
         .state-badge{position:fixed;bottom:95px;left:12px;background:#000000cc;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;color:#ffb347;font-weight:bold;}
         .confidence-badge{position:fixed;bottom:95px;right:12px;background:#000000cc;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;font-weight:bold;}
-        .profile-badge{position:fixed;top:130px;left:12px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;font-weight:bold;z-index:1050;pointer-events:none;}
+        .profile-badge{position:fixed;top:160px;left:12px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;font-weight:bold;z-index:1050;pointer-events:none;}
         .wake-badge{position:fixed;top:130px;right:12px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#ffb347;font-weight:bold;z-index:1050;pointer-events:none;}
         .battery-badge{position:fixed;top:130px;right:95px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 8px;border-radius:20px;font-size:8px;font-family:monospace;color:#ffb347;z-index:1050;}
         .gps-state-badge{position:fixed;top:130px;right:180px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 8px;border-radius:20px;font-size:8px;font-family:monospace;color:#00f2a0;z-index:1050;display:none;}
@@ -115,7 +121,7 @@
             display:none;
         }
         
-        .semantic-panel{position:fixed;top:170px;left:12px;width:200px;max-height:250px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;overflow-y:auto;display:none;font-size:9px;border-left:3px solid #1e88e5;}
+        .semantic-panel{position:fixed;top:200px;left:12px;width:200px;max-height:250px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;overflow-y:auto;display:none;font-size:9px;border-left:3px solid #1e88e5;}
         .semantic-panel.show{display:block;}
         .semantic-title{color:#00f2a0;font-weight:bold;margin-bottom:8px;}
         .semantic-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #2a3a55;color:#ffffff;}
@@ -150,7 +156,7 @@
             display:none;
         }
         
-        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge,.battery-badge,.gps-state-badge{font-size:7px;padding:2px 8px;}.nav-instruction{font-size:14px;}.return-arrow{width:50px;height:50px;bottom:140px;}.return-arrow span{font-size:26px;}}
+        @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge,.battery-badge,.gps-state-badge{font-size:7px;padding:2px 8px;}.nav-instruction{font-size:14px;}.return-arrow{width:50px;height:50px;bottom:140px;}.return-arrow span{font-size:26px;}.vehicle-selector{top:110px;left:8px;gap:3px;}.btn-vehicle{padding:3px 8px;font-size:9px;}}
     </style>
 </head>
 <body>
@@ -164,7 +170,12 @@
 <div class="status-item">⬆️<span id="altText">0m</span></div>
 <div class="status-item">⚡<span id="speedText">0</span></div>
 </div></div>
-<div class="profile-badge" id="profileBadge">📡 PROFILE: WALKING</div>
+<div class="vehicle-selector">
+    <button id="vehicleWalking" class="btn-vehicle active">🚶 PEJALAN KAKI</button>
+    <button id="vehicleMotor" class="btn-vehicle">🏍️ MOTOR</button>
+    <button id="vehicleCar" class="btn-vehicle">🚗 MOBIL</button>
+</div>
+<div class="profile-badge" id="profileBadge">📡 🚶 PEJALAN KAKI</div>
 <div class="wake-badge" id="wakeBadge">🔋 WAKE LOCK OFF</div>
 <div class="battery-badge" id="batteryBadge">🔋 100%</div>
 <div class="gps-state-badge" id="gpsStateBadge">⚙️ INIT</div>
@@ -202,8 +213,60 @@
 
 <script>
 (function(){
-    // ======================= VMS v5.18 - TACTICAL BACKTRACK ENGINE + GPS FSM + SMART ROTATION =======================
-    console.log("[VMS] Starting v5.18 - Tactical Backtrack Engine + GPS FSM + Smart Rotation");
+    // ======================= VMS v5.18 - MULTI-VEHICLE TACTICAL TRACKER =======================
+    console.log("[VMS] Starting v5.18 - Multi-Vehicle Tactical Tracker");
+    
+    // ======================= VEHICLE PROFILES =======================
+    const VEHICLE_PROFILES = {
+        WALKING: {
+            name: '🚶 PEJALAN KAKI',
+            minSpeed: 0.3,
+            maxSpeed: 3.0,
+            turnAngle: 30,
+            minDistance: 0.8,
+            headingSmooth: 0.7,
+            adaptiveInterval: 3000
+        },
+        MOTOR: {
+            name: '🏍️ MOTOR',
+            minSpeed: 2.0,
+            maxSpeed: 17.0,
+            turnAngle: 20,
+            minDistance: 2.5,
+            headingSmooth: 0.85,
+            adaptiveInterval: 1500
+        },
+        CAR: {
+            name: '🚗 MOBIL',
+            minSpeed: 5.0,
+            maxSpeed: 35.0,
+            turnAngle: 15,
+            minDistance: 5.0,
+            headingSmooth: 0.92,
+            adaptiveInterval: 800
+        }
+    };
+    let currentVehicle = 'WALKING';
+    
+    function setVehicle(vehicle) {
+        currentVehicle = vehicle;
+        const profile = VEHICLE_PROFILES[vehicle];
+        const pb = document.getElementById('profileBadge');
+        if(pb) pb.innerHTML = `📡 ${profile.name}`;
+        
+        // Update movement config turn angle
+        MOVEMENT_CONFIG.TURN_ANGLE = profile.turnAngle;
+        
+        // Update adaptive interval
+        adaptiveInterval = profile.adaptiveInterval;
+        
+        // Update UI buttons
+        document.getElementById('vehicleWalking')?.classList.toggle('active', vehicle === 'WALKING');
+        document.getElementById('vehicleMotor')?.classList.toggle('active', vehicle === 'MOTOR');
+        document.getElementById('vehicleCar')?.classList.toggle('active', vehicle === 'CAR');
+        
+        console.log('[VEHICLE] Changed to:', vehicle, profile);
+    }
     
     // ======================= MOVEMENT STATES =======================
     const MOVEMENT_STATES = {
@@ -260,14 +323,20 @@
     function shortestAngleDiff(a, b){
         return (b - a + 540) % 360 - 180;
     }
-
+    
     function detectMovementState(speed, headingChange, slope) {
+        const profile = VEHICLE_PROFILES[currentVehicle];
+        
         if(lostPatternDetected && Date.now() < lostCooldownUntil) return MOVEMENT_STATES.LOST_PATTERN;
-        if(speed < 0.3) return MOVEMENT_STATES.STOPPED;
-        if(speed > 0.5) {
-            if(headingChange > MOVEMENT_CONFIG.TURN_ANGLE) return MOVEMENT_STATES.TURNING_RIGHT;
-            if(headingChange < -MOVEMENT_CONFIG.TURN_ANGLE) return MOVEMENT_STATES.TURNING_LEFT;
+        
+        const stopThreshold = currentVehicle === 'WALKING' ? 0.3 : (currentVehicle === 'MOTOR' ? 1.0 : 1.5);
+        if(speed < stopThreshold) return MOVEMENT_STATES.STOPPED;
+        
+        if(speed > profile.minSpeed) {
+            if(headingChange > profile.turnAngle) return MOVEMENT_STATES.TURNING_RIGHT;
+            if(headingChange < -profile.turnAngle) return MOVEMENT_STATES.TURNING_LEFT;
         }
+        
         if(Math.abs(slope) > MOVEMENT_CONFIG.CLIMB_RATE) return slope > 0 ? MOVEMENT_STATES.CLIMBING : MOVEMENT_STATES.DESCENDING;
         if(speed < MOVEMENT_CONFIG.SEARCH_SPEED_MAX && Math.abs(headingChange) > 15) return MOVEMENT_STATES.SEARCHING;
         return MOVEMENT_STATES.WALKING_STRAIGHT;
@@ -590,7 +659,8 @@
         if (now - lastRotationDecision < 1000) return rotationMode;
         lastRotationDecision = now;
         if (backtrackActive) { rotationMode = 'HEADING_UP'; return rotationMode; }
-        if (!lastPosition || lastPosition.speed < 1.5) { rotationMode = 'NORTH_UP'; headingStableCount = 0; return rotationMode; }
+        const speedThreshold = currentVehicle === 'WALKING' ? 1.0 : (currentVehicle === 'MOTOR' ? 2.0 : 3.0);
+        if (!lastPosition || lastPosition.speed < speedThreshold) { rotationMode = 'NORTH_UP'; headingStableCount = 0; return rotationMode; }
         if (fusedHeading) {
             const delta = Math.abs(lastStableHeading - fusedHeading);
             if (delta < 5) headingStableCount++; else headingStableCount = Math.max(0, headingStableCount - 1);
@@ -849,6 +919,14 @@
         }
     }
     
+    function computeTotalDistance() { 
+        if(isNaN(cachedTotalDistance) || cachedTotalDistance > 1000000 || cachedTotalDistance < 0) {
+            console.warn('[DISTANCE] Reset due to overflow:', cachedTotalDistance);
+            cachedTotalDistance = 0;
+        }
+        return cachedTotalDistance; 
+    }
+    
     function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
         let finalAlt = altitude;
         if(finalAlt != null) { if(smoothedAltitude == null) smoothedAltitude = finalAlt; smoothedAltitude = smoothedAltitude * 0.85 + finalAlt * 0.15; finalAlt = smoothedAltitude; }
@@ -856,6 +934,11 @@
         const point = {lat,lng,alt:finalAlt||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now(), hash:hash, _checksum: hash};
         const prevPoint = getLastPoint();
         if(prevPoint && haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng) < 1.2) return;
+        
+        // Vehicle-based minimum distance filter
+        const minDistance = VEHICLE_PROFILES[currentVehicle].minDistance;
+        if(prevPoint && haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng) < minDistance) return;
+        
         if(prevPoint) { const driftDist = haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng); if((speed || 0) < DRIFT_CONFIG.STATIONARY_SPEED && driftDist < DRIFT_CONFIG.DRIFT_RADIUS) { stationaryCounter++; if(stationaryCounter >= DRIFT_CONFIG.REQUIRED_STABLE_COUNT) return; } else stationaryCounter = 0; }
         if(prevPoint) point.heading = calculateBearing(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
         if(fusedHeading && point.speed > 0.5) point.heading = circularMean(point.heading, lastCompassHeading);
@@ -874,7 +957,6 @@
     function getPoint(idx) { if(idx < 0 || idx >= bufferLen) return null; const compact = trackBuffer[(bufferStart + idx) % CONFIG.CIRCULAR_BUFFER_SIZE]; if(!compact) return null; return { lat: compact[P_LAT], lng: compact[P_LNG], timestamp: compact[P_TS], accuracy: compact[P_ACC], speed: compact[P_SPD], heading: compact[P_HDG], alt: compact[P_ALT], hash: generatePersistentHash(compact[P_LAT], compact[P_LNG], compact[P_TS]), _checksum: '' }; }
     function getLastPoint() { if(bufferLen === 0) return null; return getPoint(bufferLen-1); }
     function getAllPoints() { const r = []; for(let i=0;i<bufferLen;i++) r.push(getPoint(i)); return r; }
-    function computeTotalDistance() { return cachedTotalDistance; }
     
     function initBacktrackRoute() {
         if(bufferLen < 2) return false;
@@ -1229,7 +1311,7 @@
         const distance = computeTotalDistance(); 
         const trackId = Date.now() + '_' + Math.random().toString(36); 
         const points = getAllPoints().map(p => ({ lat: p.lat, lng: p.lng, alt: p.alt, accuracy: p.accuracy, heading: p.heading, speed: p.speed, timestamp: p.timestamp })); 
-        const trackData = { trackId, name, date: Date.now(), dateStr: new Date().toLocaleString(), totalPoints: bufferLen, distance, points, semanticVectors: getSemanticVectors(), movementState: currentMovementState, checkpoints: checkpoints }; 
+        const trackData = { trackId, name, date: Date.now(), dateStr: new Date().toLocaleString(), totalPoints: bufferLen, distance, points, semanticVectors: getSemanticVectors(), movementState: currentMovementState, checkpoints: checkpoints, vehicleMode: currentVehicle }; 
         if(!db) await openDB(); 
         await safeTx([CONFIG.TRACKS_STORE], 'readwrite', (tx) => { tx.objectStore(CONFIG.TRACKS_STORE).put(trackData); }); 
         savedTracks.unshift({ trackId, name, dateStr: trackData.dateStr, totalPoints: bufferLen, distance }); 
@@ -1251,6 +1333,7 @@
             const track=req.result; 
             if(track && confirm(`Muat track "${track.name}"?`)){ 
                 clearBuffer(); resetMovementEngine(); 
+                if(track.vehicleMode) setVehicle(track.vehicleMode);
                 for(let i=0;i<track.points.length;i++){ 
                     const point=track.points[i]; const prev=i>0?track.points[i-1]:null; 
                     pushPoint(point); addMovementVector(point,prev); 
@@ -1274,6 +1357,7 @@
             const track=req.result; 
             if(track && confirm(`Mulai navigasi mengikuti track "${track.name}"?`)){ 
                 if(backtrackActive) stopBacktrackMode();
+                if(track.vehicleMode) setVehicle(track.vehicleMode);
                 startFollowMode(track); 
                 const hp = document.getElementById('historyPanel'); if(hp) hp.classList.remove('show'); 
             } 
@@ -1398,10 +1482,10 @@
     async function pruneSyncedRecords() { if(!db) return; const cutoff = Date.now() - (CONFIG.SYNCED_RETENTION_DAYS * 24 * 3600000); await safeTx([CONFIG.SYNCED_STORE], 'readwrite', (tx) => { const store = tx.objectStore(CONFIG.SYNCED_STORE); const index = store.index('syncedAt'); const range = IDBKeyRange.upperBound(cutoff); index.openCursor(range).onsuccess = (e) => { const cur = e.target.result; if(cur) { store.delete(cur.primaryKey); cur.continue(); } }; }); }
     async function capUnsyncedWAL() { if(!db) return; let count = 0; await new Promise(r => { db.transaction([CONFIG.PENDING_STORE], 'readonly').objectStore(CONFIG.PENDING_STORE).count().onsuccess = (e) => { count = e.target.result; r(); }; }); if(count <= CONFIG.MAX_UNSYNCED_POINTS) return; const toDelete = []; await safeTx([CONFIG.PENDING_STORE], 'readwrite', (tx) => { const store = tx.objectStore(CONFIG.PENDING_STORE); store.openCursor().onsuccess = (e) => { const cur = e.target.result; if(cur && toDelete.length < (count - CONFIG.MAX_UNSYNCED_POINTS)) { toDelete.push(cur.primaryKey); cur.continue(); } else { for(const key of toDelete) store.delete(key); } }; }); }
     
-    function updateAdaptiveSampling() { if(!isTracking) return; const now = Date.now(); let targetInterval = CONFIG.ADAPTIVE_INTERVAL_WALKING; if(currentProfile === 'STATIONARY') targetInterval = CONFIG.ADAPTIVE_INTERVAL_STATIONARY; else if(currentProfile === 'VEHICLE') targetInterval = CONFIG.ADAPTIVE_INTERVAL_VEHICLE; if(systemPressure === 'HIGH') targetInterval = Math.min(targetInterval * 1.5, 5000); if(systemPressure === 'CRITICAL') targetInterval = Math.min(targetInterval * 3, 10000); adaptiveInterval = targetInterval; if(now - lastAdaptiveUpdate > adaptiveInterval) { lastAdaptiveUpdate = now; if(gpsState !== GPS_STATE.COOLDOWN && gpsState !== GPS_STATE.RESTARTING) queueGpsRestart('adaptive', GPS_PROFILES[currentProfile]); } }
+    function updateAdaptiveSampling() { if(!isTracking) return; const now = Date.now(); let targetInterval = VEHICLE_PROFILES[currentVehicle].adaptiveInterval; if(systemPressure === 'HIGH') targetInterval = Math.min(targetInterval * 1.5, 5000); if(systemPressure === 'CRITICAL') targetInterval = Math.min(targetInterval * 3, 10000); adaptiveInterval = targetInterval; if(now - lastAdaptiveUpdate > adaptiveInterval) { lastAdaptiveUpdate = now; if(gpsState !== GPS_STATE.COOLDOWN && gpsState !== GPS_STATE.RESTARTING) queueGpsRestart('adaptive', GPS_PROFILES[currentProfile]); } }
     
     function detectGPSProfile(speed) { if(speed > profileSpeedThresholdHigh) return 'VEHICLE'; if(speed < profileSpeedThresholdLow) return 'STATIONARY'; return 'WALKING'; }
-    function updateGPSProfile(speed) { const now = Date.now(); if(now - lastProfileSwitch < lastProfileSwitchCooldown) return; const newProfile = detectGPSProfile(speed); if(newProfile !== currentProfile) { lastProfileSwitch = now; currentProfile = newProfile; const pb = document.getElementById('profileBadge'); if(pb) pb.innerHTML = `📡 PROFILE: ${currentProfile}`; updateAdaptiveSampling(); if(window.watchId && isTracking) queueGpsRestart('profile_change', GPS_PROFILES[currentProfile]); } }
+    function updateGPSProfile(speed) { const now = Date.now(); if(now - lastProfileSwitch < lastProfileSwitchCooldown) return; const newProfile = detectGPSProfile(speed); if(newProfile !== currentProfile) { lastProfileSwitch = now; currentProfile = newProfile; updateAdaptiveSampling(); if(window.watchId && isTracking) queueGpsRestart('profile_change', GPS_PROFILES[currentProfile]); } }
     
     async function syncToServer() {
         if(syncLock && activeSyncPromise) return activeSyncPromise;
@@ -1487,66 +1571,33 @@
     function toggleHistory(){ const hp = document.getElementById('historyPanel'); if(hp) hp.classList.toggle('show'); }
     function escapeHtml(str){ if(!str) return ''; return str.replace(/[&<>]/g,(m)=>m==='&'?'&amp;':(m==='<'?'&lt;':'&gt;')); }
     function centerMap(){ 
-    if(!map || currentTab !== '2D') return;
-    
-    // Reset rotation first
-    if(map.getPane('mapPane')) {
-        map.getPane('mapPane').style.transform = '';
+        if(!map || currentTab !== '2D') return;
+        if(map.getPane('mapPane')) { map.getPane('mapPane').style.transform = ''; }
+        smoothRotation = 0;
+        if(isTracking && lastPosition) {
+            map.setView([lastPosition.lat, lastPosition.lng], 18);
+            const tempMarker = L.circleMarker([lastPosition.lat, lastPosition.lng], { radius: 12, color: '#00f2a0', fillColor: '#00f2a0', fillOpacity: 0.9, weight: 2 }).addTo(map);
+            setTimeout(() => { if(map && map.hasLayer(tempMarker)) map.removeLayer(tempMarker); }, 2000);
+            return;
+        }
+        if(navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const {latitude, longitude} = pos.coords;
+                    map.setView([latitude, longitude], 18);
+                    const tempMarker = L.circleMarker([latitude, longitude], { radius: 12, color: '#00f2a0', fillColor: '#00f2a0', fillOpacity: 0.9, weight: 2 }).addTo(map);
+                    setTimeout(() => { if(map && map.hasLayer(tempMarker)) map.removeLayer(tempMarker); }, 3000);
+                },
+                (err) => {
+                    console.warn('[CENTER] GPS error:', err.message);
+                    if(lastPosition) map.setView([lastPosition.lat, lastPosition.lng], 18);
+                    else { const center = map.getCenter(); map.setView([center.lat, center.lng], map.getZoom()); }
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+            );
+        } else if(lastPosition) { map.setView([lastPosition.lat, lastPosition.lng], 18); }
+        else { map.invalidateSize(); }
     }
-    smoothRotation = 0;
-    
-    // Priority 1: Jika tracking aktif dan punya posisi
-    if(isTracking && lastPosition) {
-        map.setView([lastPosition.lat, lastPosition.lng], 18);
-        // Tampilkan marker konfirmasi
-        const tempMarker = L.circleMarker([lastPosition.lat, lastPosition.lng], {
-            radius: 12,
-            color: '#00f2a0',
-            fillColor: '#00f2a0',
-            fillOpacity: 0.9,
-            weight: 2
-        }).addTo(map);
-        setTimeout(() => { if(map && map.hasLayer(tempMarker)) map.removeLayer(tempMarker); }, 2000);
-        return;
-    }
-    
-    // Priority 2: Ambil lokasi real dari browser GPS (tanpa tracking)
-    if(navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const {latitude, longitude} = pos.coords;
-                map.setView([latitude, longitude], 18);
-                // Tampilkan marker hijau sebagai konfirmasi
-                const tempMarker = L.circleMarker([latitude, longitude], {
-                    radius: 12,
-                    color: '#00f2a0',
-                    fillColor: '#00f2a0',
-                    fillOpacity: 0.9,
-                    weight: 2
-                }).addTo(map);
-                setTimeout(() => { 
-                    if(map && map.hasLayer(tempMarker)) map.removeLayer(tempMarker); 
-                }, 3000);
-            },
-            (err) => {
-                console.warn('[CENTER] GPS error:', err.message);
-                // Fallback: ke lastPosition jika ada
-                if(lastPosition) {
-                    map.setView([lastPosition.lat, lastPosition.lng], 18);
-                } else {
-                    // Fallback terakhir: tetap di posisi map saat ini
-                    const center = map.getCenter();
-                    map.setView([center.lat, center.lng], map.getZoom());
-                }
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
-        );
-    } else if(lastPosition) {
-        map.setView([lastPosition.lat, lastPosition.lng], 18);
-    } else {
-        map.invalidateSize();
-    }
-}
     function safeRemoveLayer(layer) { if(layer && map && map.hasLayer && map.hasLayer(layer)) map.removeLayer(layer); }
     
     document.addEventListener('visibilitychange', () => { isPageVisible=document.visibilityState==='visible'; redrawSuspended=!isPageVisible; if(syncWorker) syncWorker.postMessage({ type: 'VISIBILITY', visible: isPageVisible }); if(isPageVisible){ if(currentTab==='3D') draw3D(); updateTrail(); } if(!isPageVisible && walQueue && walQueue.length > 0) flushWalQueue(); });
@@ -1561,7 +1612,6 @@
     setInterval(() => { updateAdaptiveSampling(); updateSystemPressure(); if(isTracking) checkStorageQuota(); }, 60000);
     setInterval(() => { if(Date.now() - lastCanvasReset > CANVAS_RESET_INTERVAL && currentTab === '3D') { lastCanvasReset = Date.now(); hardResetCanvasGPU(); draw3D(); } }, 60000);
     
-    // Memory pressure sweeper
     let lastMemorySweep = 0;
     setInterval(() => {
         const now = Date.now();
@@ -1603,11 +1653,16 @@
     document.getElementById('playPauseBtn')?.addEventListener('click', () => { if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); });
     document.getElementById('stopPlaybackBtn')?.addEventListener('click', () => stopPlaybackNew());
     document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{ if(!playbackActive || !replaySnapshotIndices) return; const idx=parseInt(e.target.value); if(idx>=0 && idx<replaySnapshotIndices.length){ playbackIndex=idx; const p=getPoint(replaySnapshotIndices[playbackIndex]); if(playbackMarker) playbackMarker.setLatLng([p.lat,p.lng]); if(currentTab === '2D' && map) map.setView([p.lat, p.lng], map.getZoom(), {animate:false}); const pbPercent = document.getElementById('playbackPercent'); if(pbPercent) pbPercent.innerText=Math.round((idx/replaySnapshotIndices.length)*100)+"%"; if(isPlaying) pausePlayback(); } });
+    
+    document.getElementById('vehicleWalking')?.addEventListener('click', () => setVehicle('WALKING'));
+    document.getElementById('vehicleMotor')?.addEventListener('click', () => setVehicle('MOTOR'));
+    document.getElementById('vehicleCar')?.addEventListener('click', () => setVehicle('CAR'));
+    
     document.body.style.touchAction = 'manipulation';
     
     function openDB() { if(db) return Promise.resolve(db); if(dbOpeningPromise) return dbOpeningPromise; dbOpeningPromise = new Promise((resolve, reject) => { const req = indexedDB.open(CONFIG.DB_NAME, 28); req.onblocked = () => { console.warn('[DB] BLOCKED'); }; req.onupgradeneeded = (e) => { const dbInst = e.target.result; if(!dbInst.objectStoreNames.contains(CONFIG.PENDING_STORE)) { const store = dbInst.createObjectStore(CONFIG.PENDING_STORE, { keyPath: 'id', autoIncrement: true }); store.createIndex('synced', 'synced'); store.createIndex('hash', 'hash'); } if(!dbInst.objectStoreNames.contains(CONFIG.SYNCED_STORE)) { const store = dbInst.createObjectStore(CONFIG.SYNCED_STORE, { keyPath: 'id', autoIncrement: true }); store.createIndex('syncedAt', 'syncedAt'); } if(!dbInst.objectStoreNames.contains(CONFIG.TRACKS_STORE)) { dbInst.createObjectStore(CONFIG.TRACKS_STORE, { keyPath: 'trackId' }); } }; req.onsuccess = () => { db = req.result; db.onversionchange = () => { console.warn('[DB] VERSION CHANGE'); try { db.close(); } catch(e){} db = null; }; db.onclose = () => { console.warn('[DB] CLOSED'); db = null; }; resolve(db); }; req.onerror = () => { reject(req.error); }; }).finally(() => { dbOpeningPromise = null; }); return dbOpeningPromise; }
     
-    async function bootstrap(){ console.log("VMS v5.18 - TACTICAL BACKTRACK + GPS FSM + SMART ROTATION + CHECKPOINT - 12h Stable"); await openDB(); initMap(); init3D(); await loadSavedTracks(); initWorker(); initCompass(); initWakeLock(); isPageVisible = true; lastAdaptiveUpdate = Date.now(); transitionGpsState(GPS_STATE.IDLE); updateGPSStatus('READY','yellow',null); updateSyncStatus('STANDBY','yellow'); updateUI(); switchTab('2D'); console.log("[BOOT] VMS v5.18 Siap - GPS FSM + Smart Rotation Active"); }
+    async function bootstrap(){ console.log("VMS v5.18 - MULTI-VEHICLE TACTICAL TRACKER - 12h Stable"); await openDB(); initMap(); init3D(); await loadSavedTracks(); initWorker(); initCompass(); initWakeLock(); setVehicle('WALKING'); isPageVisible = true; lastAdaptiveUpdate = Date.now(); transitionGpsState(GPS_STATE.IDLE); updateGPSStatus('READY','yellow',null); updateSyncStatus('STANDBY','yellow'); updateUI(); switchTab('2D'); console.log("[BOOT] VMS v5.18 Siap - Multi-Vehicle Tactical Tracker Active"); }
     
     bootstrap();
 })();
