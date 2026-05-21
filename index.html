@@ -213,8 +213,8 @@
 
 <script>
 (function(){
-    // ======================= VMS v5.18 - MULTI-VEHICLE TACTICAL TRACKER =======================
-    console.log("[VMS] Starting v5.18 - Multi-Vehicle Tactical Tracker");
+    // ======================= VMS v5.18 - MULTI-VEHICLE TACTICAL TRACKER (GPS FIXED) =======================
+    console.log("[VMS] Starting v5.18 - Multi-Vehicle Tactical Tracker (GPS Fixed)");
     
     // ======================= VEHICLE PROFILES =======================
     const VEHICLE_PROFILES = {
@@ -612,9 +612,10 @@
                 const remaining = GPS_COOLDOWN_MS - (Date.now() - gpsStateEnterTime);
                 if (remaining > 0) await new Promise(r => setTimeout(r, Math.min(remaining, 2000)));
             }
-            if (gpsState === GPS_STATE.ACTIVE && lastGPSFixTime && (Date.now() - lastGPSFixTime) < 15000) {
-                gpsStateLock = false; gpsRestartProcessing = false; processGpsRestartQueue(); return;
-            }
+            // FIX GPS: Hapus kondisi blocking yang mencegah GPS lock pertama kali
+            // if (gpsState === GPS_STATE.ACTIVE && lastGPSFixTime && (Date.now() - lastGPSFixTime) < 15000) {
+            //     gpsStateLock = false; gpsRestartProcessing = false; processGpsRestartQueue(); return;
+            // }
             transitionGpsState(GPS_STATE.RESTARTING);
             if (window.watchId) { navigator.geolocation.clearWatch(window.watchId); window.watchId = null; }
             await new Promise(r => setTimeout(r, 300));
@@ -1201,9 +1202,15 @@
     };
     
     let onGPSError = function(err){ 
-        if (err.code === 3) queueGpsRestart('timeout', GPS_PROFILES[currentProfile]);
-        else if (err.code === 2 && gpsState === GPS_STATE.ACTIVE) transitionGpsState(GPS_STATE.STALE);
-        else if (err.code === 1) transitionGpsState(GPS_STATE.DISABLED);
+        // FIX: Jangan restart otomatis terlalu agresif, biarkan user restart via tombol
+        if (err.code === 3) {
+            console.log('[GPS] Timeout, masih mencoba...');
+        } else if (err.code === 2 && gpsState === GPS_STATE.ACTIVE) {
+            transitionGpsState(GPS_STATE.STALE);
+        } else if (err.code === 1) {
+            transitionGpsState(GPS_STATE.DISABLED);
+            alert('Izin lokasi ditolak. Silakan izinkan di pengaturan browser.');
+        }
         updateGPSStatus(err.code===1?'DENIED':(err.code===2?'WEAK':'TIMEOUT'),'red',null); 
         const accEl = document.getElementById('accuracyText'); if(accEl) accEl.innerHTML=`--m`; 
     };
@@ -1248,12 +1255,35 @@
     async function releaseWakeLock() { if (wakeLock !== null) { try { await wakeLock.release(); wakeLock = null; const wb = document.getElementById('wakeBadge'); if(wb) wb.innerHTML = '🔋 WAKE LOCK OFF'; } catch(err) { console.error('[WAKE LOCK] Release error:', err); } } }
     function initWakeLock() { if ('wakeLock' in navigator) { const handleVisibilityChange = () => { if (document.visibilityState === 'visible' && isTracking) requestWakeLock(); else if (document.visibilityState === 'hidden') releaseWakeLock(); }; document.addEventListener('visibilitychange', handleVisibilityChange); } }
     
+    // FIX GPS: startTracking langsung panggil watchPosition tanpa blocking queue
     let startTracking = function(){ 
         if(isTracking) return; 
         if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId = null; }
         if(!navigator.geolocation){ alert("GPS tidak didukung"); return; } 
+        
+        console.log('[GPS] Starting tracking directly...');
         transitionGpsState(GPS_STATE.STARTING);
-        queueGpsRestart('tracking_start', GPS_PROFILES[currentProfile]);
+        
+        // Langsung panggil watchPosition, bypass queue
+        const gen = ++gpsGeneration;
+        const options = { enableHighAccuracy: true, timeout: 20000, maximumAge: 5000 };
+        
+        window.watchId = navigator.geolocation.watchPosition(
+            pos => { 
+                console.log('[GPS] POSITION LOCKED!', pos.coords.latitude, pos.coords.longitude);
+                if(gen === gpsGeneration) {
+                    transitionGpsState(GPS_STATE.ACTIVE);
+                    lastGPSFixTime = Date.now();
+                    onGPSPosition(pos);
+                }
+            },
+            err => {
+                console.error('[GPS] Watch error:', err.code, err.message);
+                if(gen === gpsGeneration) onGPSError(err);
+            },
+            options
+        );
+        
         isTracking=true; 
         lastGPSFixTime=Date.now(); 
         startGPSWatchdog(); 
@@ -1266,6 +1296,8 @@
         initBattery();
         if(document.visibilityState === 'visible') requestWakeLock();
         lastCheckpointDistance = 0; lastCheckpointTime = Date.now(); checkpoints = [];
+        
+        console.log('[GPS] Tracking started, watchId:', window.watchId);
     };
     
     let stopTracking = function(){ 
@@ -1283,6 +1315,7 @@
         releaseWakeLock();
         transitionGpsState(GPS_STATE.IDLE);
         if(lastPosition && bufferLen > 0) saveAutoCheckpoint();
+        console.log('[GPS] Tracking stopped');
     };
     
     function clearBuffer() {
