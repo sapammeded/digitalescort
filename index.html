@@ -208,24 +208,63 @@
     }
     
     // ======================= RESOURCE REGISTRY =======================
-    const resourceRegistry = {
-        intervals: new Set(), timeouts: new Set(), animationFrames: new Set(), eventListeners: new Map(),
-        registerInterval(fn, ms) {
-    const intervalId = setInterval(fn, ms);
-    this.intervals.add(intervalId);
-    return intervalId;
-}
-        registerTimeout(fn, ms) { const timeoutId = setTimeout(() => { this.timeouts.delete(timeoutId); fn(); }, ms); this.timeouts.add(timeoutId); return timeoutId; },
-        clearIntervalId(id) { if(id) { clearInterval(id); this.intervals.delete(id); } },
-        clearTimeoutId(id) { if(id) { clearTimeout(id); this.timeouts.delete(id); } },
-        destroyAll() {
-            this.intervals.forEach(id => { try { clearInterval(id); } catch(e) {} });
-            this.timeouts.forEach(id => { try { clearTimeout(id); } catch(e) {} });
-            this.animationFrames.forEach(id => { try { cancelAnimationFrame(id); } catch(e) {} });
-            this.intervals.clear(); this.timeouts.clear(); this.animationFrames.clear(); this.eventListeners.clear();
-            console.log('[RESOURCE] All resources destroyed');
+const resourceRegistry = {
+    intervals: new Set(),
+    timeouts: new Set(),
+    animationFrames: new Set(),
+    eventListeners: new Map(),
+
+    registerInterval(fn, ms) {
+        const intervalId = setInterval(fn, ms);
+        this.intervals.add(intervalId);
+        return intervalId;
+    },
+
+    registerTimeout(fn, ms) {
+        const timeoutId = setTimeout(() => {
+            this.timeouts.delete(timeoutId);
+            fn();
+        }, ms);
+
+        this.timeouts.add(timeoutId);
+        return timeoutId;
+    },
+
+    clearIntervalId(id) {
+        if(id) {
+            clearInterval(id);
+            this.intervals.delete(id);
         }
-    };
+    },
+
+    clearTimeoutId(id) {
+        if(id) {
+            clearTimeout(id);
+            this.timeouts.delete(id);
+        }
+    },
+
+    destroyAll() {
+        this.intervals.forEach(id => {
+            try { clearInterval(id); } catch(e) {}
+        });
+
+        this.timeouts.forEach(id => {
+            try { clearTimeout(id); } catch(e) {}
+        });
+
+        this.animationFrames.forEach(id => {
+            try { cancelAnimationFrame(id); } catch(e) {}
+        });
+
+        this.intervals.clear();
+        this.timeouts.clear();
+        this.animationFrames.clear();
+        this.eventListeners.clear();
+
+        console.log('[RESOURCE] All resources destroyed');
+    }
+};
     
     // ======================= KALMAN FILTER =======================
     let kalmanLat = null, kalmanLng = null, kalmanVariance = 1;
