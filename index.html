@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#0a0f1a">
-    <title>VMS | v5.18 · Phase 1 Fully Integrated</title>
+    <title>VMS | v5.18 · Multi-Vehicle Tactical Tracker</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -13,7 +13,12 @@
         body{font-family:'Segoe UI',Roboto,system-ui;background:#0a0f1a;overflow:hidden;position:fixed;width:100%;height:100%;}
         #map{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;background:#101624;}
         #canvas3D{position:absolute;top:0;left:0;width:100%;height:100%;z-index:2;background:#0c1122;display:none;}
-        .leaflet-map-pane{transition:transform 0.12s linear;will-change:transform;}
+        
+        .leaflet-map-pane{
+            transition: transform 0.12s linear;
+            will-change: transform;
+        }
+        
         .status-bar{position:fixed;top:12px;left:12px;right:12px;z-index:1100;background:rgba(10,15,26,0.95);backdrop-filter:blur(12px);border-radius:28px;padding:8px 12px;font-family:'SF Mono',monospace;font-size:10px;box-shadow:0 4px 14px rgba(0,0,0,0.5);border:1px solid rgba(72,187,255,0.4);pointer-events:none;}
         .status-grid{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;}
         .status-item{display:flex;align-items:center;gap:4px;color:#ffffff;font-weight:500;}
@@ -22,13 +27,16 @@
         .led-red{background:#ff4d6d;}
         .led-yellow{background:#ffb347;}
         @keyframes pulseGreen{0%{opacity:0.4;}100%{opacity:1;transform:scale(1.2);}}
+        
         .tab-bar{position:fixed;top:75px;left:12px;right:12px;z-index:1100;display:flex;gap:10px;}
         .tab-btn{flex:1;background:#1e2a3e;border:none;border-radius:40px;padding:8px 0;font-weight:700;font-size:12px;cursor:pointer;color:#ffffff;}
         .tab-btn.active{background:#1e88e5;color:white;box-shadow:0 0 12px #1e88e5;}
+        
         .vehicle-selector{position:fixed;top:130px;left:12px;z-index:1055;display:flex;gap:6px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px);padding:4px 8px;border-radius:40px;}
         .btn-vehicle{background:#1e2a3e;border:none;border-radius:40px;padding:6px 12px;font-size:11px;font-weight:bold;cursor:pointer;color:#ffffff;transition:all 0.1s ease;}
         .btn-vehicle.active{background:#2c6e2f;box-shadow:0 0 8px #2c6e2f;}
         .btn-vehicle:active{transform:scale(0.95);}
+        
         .control-panel{position:fixed;bottom:20px;left:12px;right:12px;z-index:1050;display:flex;flex-wrap:wrap;justify-content:center;gap:6px;pointer-events:none;}
         button{pointer-events:auto;background:#1e2a3e;border:none;padding:8px 12px;border-radius:40px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;color:#ffffff;transition:transform 0.05s ease;}
         button:active{transform:scale(0.96);}
@@ -41,16 +49,19 @@
         .btn-history{background:#9b59b6;color:white;}
         .btn-return{background:#fd7e2c;color:white;}
         .btn-sheet{background:#2c6e2f;color:white;}
+        
         .info-panel{position:fixed;top:130px;right:12px;width:180px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;border-left:3px solid #1e88e5;pointer-events:none;}
         .info-panel-item{font-size:9px;margin:6px 0;display:flex;justify-content:space-between;}
         .info-panel-label{color:#cccccc;}
         .info-panel-value{color:#00f2a0;font-weight:bold;}
+        
         .state-badge{position:fixed;bottom:95px;left:12px;background:#000000cc;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;color:#ffb347;font-weight:bold;}
         .confidence-badge{position:fixed;bottom:95px;right:12px;background:#000000cc;backdrop-filter:blur(8px);padding:6px 12px;border-radius:40px;font-size:9px;font-family:monospace;z-index:1060;font-weight:bold;}
         .profile-badge{position:fixed;top:160px;left:12px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#00f2a0;font-weight:bold;z-index:1050;pointer-events:none;}
         .wake-badge{position:fixed;top:130px;right:12px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:9px;font-family:monospace;color:#ffb347;font-weight:bold;z-index:1050;pointer-events:none;}
         .battery-badge{position:fixed;top:130px;right:95px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 8px;border-radius:20px;font-size:8px;font-family:monospace;color:#ffb347;z-index:1050;}
         .gps-state-badge{position:fixed;top:130px;right:180px;background:#000000cc;backdrop-filter:blur(8px);padding:4px 8px;border-radius:20px;font-size:8px;font-family:monospace;color:#00f2a0;z-index:1050;display:none;}
+        
         .nav-panel{position:fixed;bottom:100px;left:12px;right:12px;z-index:1080;background:rgba(10,15,26,0.95);backdrop-filter:blur(16px);border-radius:28px;padding:12px 16px;border-left:4px solid #2c6e2f;display:none;}
         .nav-panel.show{display:block;}
         .nav-instruction{font-size:16px;font-weight:bold;color:#00f2a0;margin-bottom:6px;}
@@ -58,27 +69,92 @@
         .nav-progress{height:3px;background:#2a3a55;border-radius:2px;margin-top:8px;overflow:hidden;}
         .nav-progress-fill{height:100%;background:#2c6e2f;width:0%;transition:width 0.3s;}
         .nav-close{position:absolute;top:8px;right:12px;background:none;border:none;color:#ffffff;font-size:14px;cursor:pointer;padding:0;}
-        .return-arrow{position:fixed;bottom:160px;right:20px;width:60px;height:60px;background:rgba(0,0,0,0.8);border-radius:50%;display:flex;align-items:center;justify-content:center;z-index:1070;backdrop-filter:blur(8px);border:2px solid #fd7e2c;transition:transform 0.1s ease;pointer-events:none;}
-        .return-arrow span{font-size:32px;filter:drop-shadow(0 0 4px #fd7e2c);}
-        .offroute-badge{position:fixed;bottom:95px;left:50%;transform:translateX(-50%);background:#ff5a5f;color:white;padding:4px 12px;border-radius:20px;font-size:9px;font-weight:bold;z-index:1065;display:none;white-space:nowrap;}
-        .backtrack-progress{position:fixed;bottom:95px;right:12px;background:#000000cc;padding:4px 10px;border-radius:20px;font-size:8px;font-family:monospace;color:#00f2a0;z-index:1060;display:none;}
+        
+        .return-arrow{
+            position:fixed;
+            bottom:160px;
+            right:20px;
+            width:60px;
+            height:60px;
+            background:rgba(0,0,0,0.8);
+            border-radius:50%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            z-index:1070;
+            backdrop-filter:blur(8px);
+            border:2px solid #fd7e2c;
+            transition:transform 0.1s ease;
+            pointer-events:none;
+        }
+        .return-arrow span{
+            font-size:32px;
+            filter:drop-shadow(0 0 4px #fd7e2c);
+        }
+        .offroute-badge{
+            position:fixed;
+            bottom:95px;
+            left:50%;
+            transform:translateX(-50%);
+            background:#ff5a5f;
+            color:white;
+            padding:4px 12px;
+            border-radius:20px;
+            font-size:9px;
+            font-weight:bold;
+            z-index:1065;
+            display:none;
+            white-space:nowrap;
+        }
+        .backtrack-progress{
+            position:fixed;
+            bottom:95px;
+            right:12px;
+            background:#000000cc;
+            padding:4px 10px;
+            border-radius:20px;
+            font-size:8px;
+            font-family:monospace;
+            color:#00f2a0;
+            z-index:1060;
+            display:none;
+        }
+        
         .semantic-panel{position:fixed;top:200px;left:12px;width:200px;max-height:250px;z-index:1050;background:rgba(18,25,40,0.95);backdrop-filter:blur(12px);border-radius:20px;padding:10px;overflow-y:auto;display:none;font-size:9px;border-left:3px solid #1e88e5;}
         .semantic-panel.show{display:block;}
         .semantic-title{color:#00f2a0;font-weight:bold;margin-bottom:8px;}
         .semantic-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #2a3a55;color:#ffffff;}
+        
         .history-panel{position:fixed;top:135px;left:12px;right:12px;bottom:100px;z-index:1150;background:rgba(18,25,40,0.98);border-radius:28px;padding:16px;overflow-y:auto;box-shadow:0 12px 28px rgba(0,0,0,0.5);border:1px solid #2c3e5c;display:none;backdrop-filter:blur(8px);}
         .history-panel.show{display:block;}
         .history-title{color:#00f2a0;font-weight:bold;margin-bottom:12px;}
         .history-item{background:#0f172a;margin:8px 0;padding:10px;border-radius:20px;cursor:pointer;border:1px solid #2a3a55;color:#ffffff;}
         .history-buttons{display:flex;gap:8px;margin-top:8px;}
         .history-buttons button{padding:4px 8px;font-size:9px;border-radius:20px;color:white;}
+        
         .breadcrumb-info{position:fixed;bottom:95px;left:16px;background:rgba(0,0,0,0.85);backdrop-filter:blur(16px);padding:8px 18px;border-radius:40px;font-family:monospace;font-size:11px;color:#ffd966;z-index:1060;display:none;gap:8px;pointer-events:none;font-weight:bold;}
         .breadcrumb-info.show{display:flex;}
+        
         .stats-mini{position:fixed;bottom:20px;right:16px;background:rgba(0,0,0,0.7);padding:5px 12px;border-radius:40px;font-size:10px;font-family:monospace;color:#b9e6ff;z-index:1020;pointer-events:none;}
         .playback-bar{position:fixed;bottom:85px;left:12px;right:12px;background:#111a28cc;backdrop-filter:blur(16px);border-radius:60px;padding:10px 16px;display:flex;gap:12px;align-items:center;z-index:1080;border:1px solid #3a4c70;display:none;}
         .playback-bar.show{display:flex;}
         .playback-bar span{color:#ffffff;}
-        .checkpoint-badge{position:fixed;top:75px;right:12px;background:#2c6e2fcc;backdrop-filter:blur(8px);padding:4px 10px;border-radius:20px;font-size:8px;font-family:monospace;color:#00f2a0;z-index:1055;display:none;}
+        
+        .checkpoint-badge{
+            position:fixed;
+            top:75px;
+            right:12px;
+            background:#2c6e2fcc;
+            backdrop-filter:blur(8px);
+            padding:4px 10px;
+            border-radius:20px;
+            font-size:8px;
+            font-family:monospace;
+            color:#00f2a0;
+            z-index:1055;
+            display:none;
+        }
+        
         @media (max-width:640px){button{padding:6px 10px;font-size:9px;}.status-bar{font-size:8px;}.info-panel{width:160px;}.semantic-panel{width:170px;}.profile-badge,.wake-badge,.battery-badge,.gps-state-badge{font-size:7px;padding:2px 8px;}.nav-instruction{font-size:14px;}.return-arrow{width:50px;height:50px;bottom:140px;}.return-arrow span{font-size:26px;}.vehicle-selector{top:110px;left:8px;gap:3px;}.btn-vehicle{padding:3px 8px;font-size:9px;}}
     </style>
 </head>
@@ -129,20 +205,45 @@
     <div class="nav-detail"><span id="navDistance">Sisa: 0 m</span><span id="navNextTurn">Belokan: --</span></div>
     <div class="nav-progress"><div class="nav-progress-fill" id="navProgress"></div></div>
 </div>
+
 <div class="return-arrow" id="returnArrow" style="display:none;"><span>⬆️</span></div>
 <div class="offroute-badge" id="offrouteBadge">⚠️ ANDA KELUAR DARI JALUR</div>
 <div class="backtrack-progress" id="backtrackProgress">Progress: 0%</div>
 
 <script>
 (function(){
-    // ======================= VMS v5.18 - PHASE 1 FULLY INTEGRATED =======================
+    // ======================= VMS v5.18 - MULTI-VEHICLE TACTICAL TRACKER (PHASE 1 FULLY INTEGRATED) =======================
     console.log("[VMS] Starting v5.18 - Phase 1 Fully Integrated");
     
     // ======================= VEHICLE PROFILES =======================
     const VEHICLE_PROFILES = {
-        WALKING: { name: '🚶 PEJALAN KAKI', minSpeed: 0.3, maxSpeed: 3.0, turnAngle: 30, minDistance: 0.8, headingSmooth: 0.7, adaptiveInterval: 3000 },
-        MOTOR: { name: '🏍️ MOTOR', minSpeed: 2.0, maxSpeed: 17.0, turnAngle: 20, minDistance: 2.5, headingSmooth: 0.85, adaptiveInterval: 1500 },
-        CAR: { name: '🚗 MOBIL', minSpeed: 5.0, maxSpeed: 35.0, turnAngle: 15, minDistance: 5.0, headingSmooth: 0.92, adaptiveInterval: 800 }
+        WALKING: {
+            name: '🚶 PEJALAN KAKI',
+            minSpeed: 0.3,
+            maxSpeed: 3.0,
+            turnAngle: 30,
+            minDistance: 0.8,
+            headingSmooth: 0.7,
+            adaptiveInterval: 3000
+        },
+        MOTOR: {
+            name: '🏍️ MOTOR',
+            minSpeed: 2.0,
+            maxSpeed: 17.0,
+            turnAngle: 20,
+            minDistance: 2.5,
+            headingSmooth: 0.85,
+            adaptiveInterval: 1500
+        },
+        CAR: {
+            name: '🚗 MOBIL',
+            minSpeed: 5.0,
+            maxSpeed: 35.0,
+            turnAngle: 15,
+            minDistance: 5.0,
+            headingSmooth: 0.92,
+            adaptiveInterval: 800
+        }
     };
     
     const VEHICLE_FILTERS = {
@@ -208,63 +309,37 @@
     }
     
     // ======================= RESOURCE REGISTRY =======================
-const resourceRegistry = {
-    intervals: new Set(),
-    timeouts: new Set(),
-    animationFrames: new Set(),
-    eventListeners: new Map(),
-
-    registerInterval(fn, ms) {
-        const intervalId = setInterval(fn, ms);
-        this.intervals.add(intervalId);
-        return intervalId;
-    },
-
-    registerTimeout(fn, ms) {
-        const timeoutId = setTimeout(() => {
-            this.timeouts.delete(timeoutId);
-            fn();
-        }, ms);
-
-        this.timeouts.add(timeoutId);
-        return timeoutId;
-    },
-
-    clearIntervalId(id) {
-        if(id) {
-            clearInterval(id);
-            this.intervals.delete(id);
+    const resourceRegistry = {
+        intervals: new Set(),
+        timeouts: new Set(),
+        animationFrames: new Set(),
+        eventListeners: new Map(),
+        registerInterval(id, fn, ms) {
+            const intervalId = setInterval(fn, ms);
+            this.intervals.add(intervalId);
+            return intervalId;
+        },
+        registerTimeout(fn, ms) {
+            const timeoutId = setTimeout(() => {
+                this.timeouts.delete(timeoutId);
+                fn();
+            }, ms);
+            this.timeouts.add(timeoutId);
+            return timeoutId;
+        },
+        clearIntervalId(id) { if(id) { clearInterval(id); this.intervals.delete(id); } },
+        clearTimeoutId(id) { if(id) { clearTimeout(id); this.timeouts.delete(id); } },
+        destroyAll() {
+            this.intervals.forEach(id => { try { clearInterval(id); } catch(e) {} });
+            this.timeouts.forEach(id => { try { clearTimeout(id); } catch(e) {} });
+            this.animationFrames.forEach(id => { try { cancelAnimationFrame(id); } catch(e) {} });
+            this.intervals.clear();
+            this.timeouts.clear();
+            this.animationFrames.clear();
+            this.eventListeners.clear();
+            console.log('[RESOURCE] All resources destroyed');
         }
-    },
-
-    clearTimeoutId(id) {
-        if(id) {
-            clearTimeout(id);
-            this.timeouts.delete(id);
-        }
-    },
-
-    destroyAll() {
-        this.intervals.forEach(id => {
-            try { clearInterval(id); } catch(e) {}
-        });
-
-        this.timeouts.forEach(id => {
-            try { clearTimeout(id); } catch(e) {}
-        });
-
-        this.animationFrames.forEach(id => {
-            try { cancelAnimationFrame(id); } catch(e) {}
-        });
-
-        this.intervals.clear();
-        this.timeouts.clear();
-        this.animationFrames.clear();
-        this.eventListeners.clear();
-
-        console.log('[RESOURCE] All resources destroyed');
-    }
-};
+    };
     
     // ======================= KALMAN FILTER =======================
     let kalmanLat = null, kalmanLng = null, kalmanVariance = 1;
@@ -311,8 +386,9 @@ const resourceRegistry = {
             if (typeof updateBacktrackNavigation === 'function') updateBacktrackNavigation();
         }, targetInterval);
         if (Math.abs(currentAppliedInterval - targetInterval) >= 2000) {
-    currentAppliedInterval = targetInterval;
-}
+            currentAppliedInterval = targetInterval;
+            triggerHardenedGpsEscalation();
+        }
     }
     
     function applyConfidenceSoftening(currentConfidence, point) {
@@ -363,18 +439,11 @@ const resourceRegistry = {
             if (windowGpsWatcherId) navigator.geolocation.clearWatch(windowGpsWatcherId);
             const geoOptions = { enableHighAccuracy: true, timeout: adaptiveInterval || 3000, maximumAge: 0 };
             windowGpsWatcherId = navigator.geolocation.watchPosition(
-                (pos) => { 
-                    resetGpsEscalationCounter(); 
-                    if (typeof onGPSPosition === 'function') onGPSPosition(pos); 
-                },
-                (err) => { 
-                    if (typeof onGPSError === 'function') onGPSError(err); 
-                }, 
+                (pos) => { resetGpsEscalationCounter(); if (typeof onGPSPosition === 'function') onGPSPosition(pos); },
+                (err) => { if (typeof onGPSError === 'function') onGPSError(err); },
                 geoOptions
             );
-        } catch (err) {
-            console.error("[GPS HARDENED] Failed to engage watchPosition:", err);
-        }
+        } catch (err) { console.error("[GPS HARDENED] Failed to engage watchPosition:", err); }
     }
     
     function executeFullGpsRecovery() {
@@ -713,15 +782,10 @@ const resourceRegistry = {
             return;
         }
         if (!rotationEnabled) return;
-        
-        // PHASE 1: Apply throttled transform
+        // PHASE 1 INTEGRATION: Apply throttled transform
         const mp = map?.getPane('mapPane');
-        if (mp && lastPosition) {
-            applyThrottledTransform(mp, -smoothRotation, lastPosition.speed);
-        }
-        if (currentMarker?._path) {
-            applyThrottledTransform(currentMarker._path, smoothRotation, lastPosition?.speed || 0);
-        }
+        if (mp && lastPosition) { applyThrottledTransform(mp, -smoothRotation, lastPosition.speed); }
+        if (currentMarker?._path) { applyThrottledTransform(currentMarker._path, smoothRotation, lastPosition?.speed || 0); }
         
         const now = performance.now();
         if (now - lastSmartRotationFrame < 80) return;
@@ -915,14 +979,12 @@ const resourceRegistry = {
         console.log('[VEHICLE] Changed to:', vehicle, profile);
     }
     
-    // ======================= PHASE 1: onGPSPosition (FULLY DECLARED WITH INTEGRATION) =======================
-    function onGPSPosition(pos) {
+    // ======================= PHASE 1 INTEGRATED onGPSPosition =======================
+    let onGPSPosition = function(pos){ 
         if(!isTracking || isReplaying) return;
         
-        // 1. Reset escalation counter on successful GPS lock
-        if (typeof resetGpsEscalationCounter === 'function') {
-            resetGpsEscalationCounter();
-        }
+        // PHASE 1: Reset escalation counter on successful GPS lock
+        if (typeof resetGpsEscalationCounter === 'function') resetGpsEscalationCounter();
         
         if (gpsState !== GPS_STATE.ACTIVE && gpsState !== GPS_STATE.RECOVERING) transitionGpsState(GPS_STATE.ACTIVE);
         const {latitude,longitude,accuracy,heading,speed,altitude}=pos.coords; 
@@ -934,64 +996,40 @@ const resourceRegistry = {
         const speedEl = document.getElementById('speedText');
         if(speedEl) speedEl.innerHTML=(currentSpeed*3.6).toFixed(1); 
         updateGPSProfile(currentSpeed); 
-        if(accuracy > 250) return;
+        if(accuracy > 100) return;
         const filtered = kalmanUpdate(latitude, longitude, accuracy, currentSpeed);
         if(!isPointValidWithConfidence(filtered.lat, filtered.lng, accuracy, ts, currentSpeed)){ 
-    console.warn('weak gps accepted');
-
-    const accEl = document.getElementById('accuracyText');
-
-    if(accEl){
-        accEl.innerHTML =
-        `${Math.round(accuracy)}m (weak)`;
-    }
-
-    if(consecutiveInvalidCount > 5){
-        gpsConfidenceScore =
-        Math.max(0, gpsConfidenceScore - 5);
-    }
-}
+            const accEl = document.getElementById('accuracyText');
+            if(accEl) accEl.innerHTML=`${Math.round(accuracy)}m (conf:${gpsConfidenceScore}%)`; 
+            if(consecutiveInvalidCount > 5) gpsConfidenceScore = Math.max(0, gpsConfidenceScore - 5); 
+            return; 
+        } 
         lastValidCoord={lat:filtered.lat,lng:filtered.lng,t:ts}; 
         updateGPSStatus('ACTIVE','green',accuracy); 
         const accEl = document.getElementById('accuracyText');
         if(accEl) accEl.innerHTML=`${Math.round(accuracy)}m`;
         
-        // ======================= PHASE 1 INTEGRATION =======================
-        // Hitung confidence
-        const currentConfidence = calculateMovementConfidence(currentSpeed, 0, headingStabilityCounter, accuracy);
-        
-        // Softening - ganti hard reject
+        // PHASE 1: Prepare point for confidence softening (replaces hard reject)
         let currentPoint = { lat: filtered.lat, lng: filtered.lng, alt: altitude || 0, timestamp: ts };
+        const currentConfidence = calculateMovementConfidence(currentSpeed, 0, headingStabilityCounter, accuracy);
         currentPoint = applyConfidenceSoftening(currentConfidence, currentPoint);
         
-        // Adaptive interval pipeline
+        // PHASE 1: Call adaptive interval pipeline
         const currentTurnRate = Math.abs(lastPosition?.headingChange || 0);
         if (typeof applyAdaptiveIntervalPipeline === 'function') {
             applyAdaptiveIntervalPipeline(currentSpeed, currentTurnRate);
         }
-        // ======================= END PHASE 1 INTEGRATION =======================
         
-        addPoint(filtered.lat, filtered.lng, accuracy, heading, currentSpeed, altitude, ts);
-    }
+        addPoint(filtered.lat, filtered.lng, accuracy, heading, currentSpeed, altitude, ts); 
+    };
     
-    // ======================= PHASE 1: onGPSError (FULLY DECLARED) =======================
-    function onGPSError(err) {
-        console.warn(`[GPS ERROR] Code: ${err.code} - ${err.message}`);
-        if (err.code === 3) {
-            console.log('[GPS] Timeout, trigger escalation...');
-            if (typeof triggerHardenedGpsEscalation === 'function') {
-                triggerHardenedGpsEscalation();
-            }
-        } else if (err.code === 2 && gpsState === GPS_STATE.ACTIVE) {
-            transitionGpsState(GPS_STATE.STALE);
-        } else if (err.code === 1) {
-            transitionGpsState(GPS_STATE.DISABLED);
-            alert('Izin lokasi ditolak. Silakan izinkan di pengaturan browser.');
-        }
-        updateGPSStatus(err.code===1?'DENIED':(err.code===2?'WEAK':'TIMEOUT'),'red',null);
-        const accEl = document.getElementById('accuracyText');
-        if(accEl) accEl.innerHTML = '--m';
-    }
+    let onGPSError = function(err){ 
+        if (err.code === 3) { console.log('[GPS] Timeout, masih mencoba...');
+        } else if (err.code === 2 && gpsState === GPS_STATE.ACTIVE) { transitionGpsState(GPS_STATE.STALE);
+        } else if (err.code === 1) { transitionGpsState(GPS_STATE.DISABLED); alert('Izin lokasi ditolak. Silakan izinkan di pengaturan browser.'); }
+        updateGPSStatus(err.code===1?'DENIED':(err.code===2?'WEAK':'TIMEOUT'),'red',null); 
+        const accEl = document.getElementById('accuracyText'); if(accEl) accEl.innerHTML=`--m`; 
+    };
     
     function updateGPSStatus(status,ledColor,accuracy){ 
         const led=document.getElementById('gpsLed'); 
@@ -1080,8 +1118,7 @@ const resourceRegistry = {
             err => { console.error('[GPS] Watch error:', err.code, err.message); if(gen === gpsGeneration) onGPSError(err); },
             options
         );
-        isTracking=true; lastGPSFixTime=Date.now(); // startGPSWatchdog(); // disabled
-startGpsStaleMonitor();
+        isTracking=true; lastGPSFixTime=Date.now(); startGPSWatchdog(); startGpsStaleMonitor();
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; 
@@ -1335,7 +1372,7 @@ startGpsStaleMonitor();
         const point = {lat,lng,alt:finalAlt||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now(), hash:hash, _checksum: hash};
         const prevPoint = getLastPoint();
         const vehicleCfg = VEHICLE_FILTERS[currentVehicle];
-        // warmup disabled
+        if(gpsWarmupCount < vehicleCfg.warmup) { gpsWarmupCount++; console.log('[GPS] Warmup skip:', gpsWarmupCount, '/', vehicleCfg.warmup); return; }
         if(prevPoint) {
             const rawDist = haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
             if(rawDist < vehicleCfg.minDistance) return;
@@ -1382,7 +1419,7 @@ startGpsStaleMonitor();
     
     function draw3D(){ if(!ctx3D && canvas3D){ ctx3D = canvas3D.getContext('2d'); if(!ctx3D) return; if(ctx3D) ctx3D.imageSmoothingEnabled = false; } if(currentTab !== '3D') return; if(!ctx3D || bufferLen<2){ if(ctx3D){ ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height); ctx3D.fillStyle='#0f172a'; ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height); ctx3D.fillStyle='#aaa'; ctx3D.font='14px monospace'; ctx3D.fillText("📡 3D ELEVATION PROFILE", 50, 100); ctx3D.font='12px monospace'; ctx3D.fillText("Klik START dan berjalan untuk melihat grafik", 50, 140); ctx3D.fillText("Minimal 2 titik GPS diperlukan", 50, 170); } return; } const now = performance.now(); const renderGap = lowPowerGPU ? 180 : 120; if(now - last3DRender < renderGap) return; last3DRender = now; ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height); ctx3D.fillStyle = '#0f172a'; ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height); let points = [], hasRealAlt = false; for(let i=0;i<bufferLen;i++) { const p = getPoint(i); if(p) { points.push(p); if(p.alt && p.alt !== 0) hasRealAlt = true; } } if(points.length < 2) return; let distances = [0]; for(let i=1;i<points.length;i++) distances.push(distances[i-1] + haversineFast(points[i-1].lat, points[i-1].lng, points[i].lat, points[i].lng)); const maxDist = distances[distances.length-1] || 1; let altitudes = points.map(p => p.alt || 0); if(!hasRealAlt && points.length > 0) for(let i=0;i<altitudes.length;i++) altitudes[i] = 25 + Math.sin(distances[i] / 50) * 12 + Math.cos(distances[i] / 120) * 8; const minAlt = Math.min(...altitudes) - 5, maxAlt = Math.max(...altitudes) + 5, altRange = Math.max(maxAlt - minAlt, 20); const margin = { top: 60, right: 40, bottom: 60, left: 60 }; const w = canvas3D.width - margin.left - margin.right, h = canvas3D.height - margin.top - margin.bottom; if(w <= 0 || h <= 0) return; ctx3D.strokeStyle = '#2a3f6e'; ctx3D.lineWidth = 0.5; for(let i=0;i<=5;i++){ let x = margin.left + (w * i / 5); ctx3D.beginPath(); ctx3D.moveTo(x, margin.top); ctx3D.lineTo(x, margin.top + h); ctx3D.stroke(); ctx3D.fillStyle = '#9aaec5'; ctx3D.font = '9px monospace'; ctx3D.fillText(Math.round(maxDist * i / 5) + 'm', x-15, margin.top + h + 15); let y = margin.top + (h * i / 5); ctx3D.beginPath(); ctx3D.moveTo(margin.left, y); ctx3D.lineTo(margin.left + w, y); ctx3D.stroke(); ctx3D.fillStyle = '#9aaec5'; ctx3D.fillText(Math.round(maxAlt - (altRange * i / 5)) + 'm', 5, y+3); } ctx3D.fillStyle = '#00f2a0'; ctx3D.font = 'bold 10px monospace'; ctx3D.fillText('Jarak (meter)', margin.left + w/2 - 40, margin.top + h + 35); ctx3D.save(); ctx3D.translate(20, margin.top + h/2); ctx3D.rotate(-Math.PI/2); ctx3D.fillText('Ketinggian (meter)', -30, 0); ctx3D.restore(); ctx3D.beginPath(); ctx3D.strokeStyle = '#3bc0fc'; ctx3D.lineWidth = 2.5; const step = Math.max(1, Math.floor(points.length / 800)); for(let i=0;i<points.length;i+=step){ const x = margin.left + (distances[i] / maxDist) * w; const y = margin.top + h - ((altitudes[i] - minAlt) / altRange) * h; if(i===0) ctx3D.moveTo(x,y); else ctx3D.lineTo(x,y); } ctx3D.stroke(); ctx3D.beginPath(); for(let i=0;i<points.length;i+=step){ const x = margin.left + (distances[i] / maxDist) * w; const y = margin.top + h - ((altitudes[i] - minAlt) / altRange) * h; if(i===0) ctx3D.moveTo(x,y); else ctx3D.lineTo(x,y); } ctx3D.lineTo(margin.left + w, margin.top + h); ctx3D.lineTo(margin.left, margin.top + h); ctx3D.closePath(); ctx3D.fillStyle = '#1e88e540'; ctx3D.fill(); const pointStep = Math.max(1, Math.floor(points.length / 200)); for(let i=0;i<points.length;i+=pointStep){ const x = margin.left + (distances[i] / maxDist) * w; const y = margin.top + h - ((altitudes[i] - minAlt) / altRange) * h; ctx3D.fillStyle = i===points.length-1 ? '#ff7760' : '#22ddbb'; ctx3D.beginPath(); ctx3D.arc(x, y, i===points.length-1 ? 5 : 2, 0, Math.PI*2); ctx3D.fill(); } ctx3D.fillStyle = '#00f2a0'; ctx3D.font = 'bold 12px monospace'; ctx3D.fillText('📊 ELEVATION PROFILE', margin.left, 25); ctx3D.fillStyle = '#ffb347'; ctx3D.font = '10px monospace'; ctx3D.fillText(`Titik: ${points.length} | Jarak: ${Math.round(maxDist)}m | Elevasi: ${Math.round(altitudes[points.length-1])}m`, margin.left, 45); if(!hasRealAlt && points.length > 5) ctx3D.fillStyle = '#ffaa44'; ctx3D.font = '9px monospace'; ctx3D.fillText('⚠️ Simulasi ketinggian (GPS tidak menyediakan data altitude)', margin.left, canvas3D.height - 10); if(points.length > 0) { const startX = margin.left, startY = margin.top + h - ((altitudes[0] - minAlt) / altRange) * h; ctx3D.fillStyle = '#4caf50'; ctx3D.beginPath(); ctx3D.arc(startX, startY, 6, 0, Math.PI*2); ctx3D.fill(); ctx3D.fillStyle = 'white'; ctx3D.font = 'bold 8px monospace'; ctx3D.fillText('START', startX-12, startY-5); const endX = margin.left + w, endY = margin.top + h - ((altitudes[points.length-1] - minAlt) / altRange) * h; ctx3D.fillStyle = '#ff4444'; ctx3D.beginPath(); ctx3D.arc(endX, endY, 6, 0, Math.PI*2); ctx3D.fill(); ctx3D.fillStyle = 'white'; ctx3D.fillText('END', endX-8, endY-5); } }
     
-    async function bootstrap(){ console.log("VMS v5.18 - PHASE 1 FULLY INTEGRATED & ACTIVE - 12h Stable"); await openDB(); initMap(); init3D(); await loadSavedTracks(); initWorker(); initCompass(); initWakeLock(); setVehicle('WALKING'); isPageVisible = true; lastAdaptiveUpdate = Date.now(); transitionGpsState(GPS_STATE.IDLE); updateGPSStatus('READY','yellow',null); updateSyncStatus('STANDBY','yellow'); updateUI(); switchTab('2D'); console.log("[BOOT] VMS v5.18 Siap - Phase 1 Fully Integrated - Adaptive Pipeline, Softening, Throttling, Escalation ACTIVE"); }
+    async function bootstrap(){ console.log("VMS v5.18 - MULTI-VEHICLE TACTICAL TRACKER - PHASE 1 FULLY INTEGRATED - 12h Stable"); await openDB(); initMap(); init3D(); await loadSavedTracks(); initWorker(); initCompass(); initWakeLock(); setVehicle('WALKING'); isPageVisible = true; lastAdaptiveUpdate = Date.now(); transitionGpsState(GPS_STATE.IDLE); updateGPSStatus('READY','yellow',null); updateSyncStatus('STANDBY','yellow'); updateUI(); switchTab('2D'); console.log("[BOOT] VMS v5.18 Siap - Phase 1 Fully Integrated - Adaptive Pipeline Active"); }
     
     bootstrap();
 })();
