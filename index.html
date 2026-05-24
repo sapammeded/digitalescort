@@ -210,7 +210,11 @@
     // ======================= RESOURCE REGISTRY =======================
     const resourceRegistry = {
         intervals: new Set(), timeouts: new Set(), animationFrames: new Set(), eventListeners: new Map(),
-        registerInterval(id, fn, ms) { const intervalId = setInterval(fn, ms); this.intervals.add(intervalId); return intervalId; },
+        registerInterval(fn, ms) {
+    const intervalId = setInterval(fn, ms);
+    this.intervals.add(intervalId);
+    return intervalId;
+}
         registerTimeout(fn, ms) { const timeoutId = setTimeout(() => { this.timeouts.delete(timeoutId); fn(); }, ms); this.timeouts.add(timeoutId); return timeoutId; },
         clearIntervalId(id) { if(id) { clearInterval(id); this.intervals.delete(id); } },
         clearTimeoutId(id) { if(id) { clearTimeout(id); this.timeouts.delete(id); } },
@@ -268,9 +272,8 @@
             if (typeof updateBacktrackNavigation === 'function') updateBacktrackNavigation();
         }, targetInterval);
         if (Math.abs(currentAppliedInterval - targetInterval) >= 2000) {
-            currentAppliedInterval = targetInterval;
-            triggerHardenedGpsEscalation();
-        }
+    currentAppliedInterval = targetInterval;
+}
     }
     
     function applyConfidenceSoftening(currentConfidence, point) {
@@ -892,14 +895,23 @@
         const speedEl = document.getElementById('speedText');
         if(speedEl) speedEl.innerHTML=(currentSpeed*3.6).toFixed(1); 
         updateGPSProfile(currentSpeed); 
-        if(accuracy > 100) return;
+        if(accuracy > 250) return;
         const filtered = kalmanUpdate(latitude, longitude, accuracy, currentSpeed);
         if(!isPointValidWithConfidence(filtered.lat, filtered.lng, accuracy, ts, currentSpeed)){ 
-            const accEl = document.getElementById('accuracyText');
-            if(accEl) accEl.innerHTML=`${Math.round(accuracy)}m (conf:${gpsConfidenceScore}%)`; 
-            if(consecutiveInvalidCount > 5) gpsConfidenceScore = Math.max(0, gpsConfidenceScore - 5); 
-            return; 
-        } 
+    console.warn('weak gps accepted');
+
+    const accEl = document.getElementById('accuracyText');
+
+    if(accEl){
+        accEl.innerHTML =
+        `${Math.round(accuracy)}m (weak)`;
+    }
+
+    if(consecutiveInvalidCount > 5){
+        gpsConfidenceScore =
+        Math.max(0, gpsConfidenceScore - 5);
+    }
+}
         lastValidCoord={lat:filtered.lat,lng:filtered.lng,t:ts}; 
         updateGPSStatus('ACTIVE','green',accuracy); 
         const accEl = document.getElementById('accuracyText');
@@ -1029,7 +1041,8 @@
             err => { console.error('[GPS] Watch error:', err.code, err.message); if(gen === gpsGeneration) onGPSError(err); },
             options
         );
-        isTracking=true; lastGPSFixTime=Date.now(); startGPSWatchdog(); startGpsStaleMonitor();
+        isTracking=true; lastGPSFixTime=Date.now(); // startGPSWatchdog(); // disabled
+startGpsStaleMonitor();
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         if(startBtn) startBtn.style.display='none'; if(stopBtn) stopBtn.style.display='inline-block'; 
@@ -1283,7 +1296,7 @@
         const point = {lat,lng,alt:finalAlt||0,accuracy:accuracy||0,heading:heading||0,speed:speed||0,timestamp:timestamp||Date.now(), hash:hash, _checksum: hash};
         const prevPoint = getLastPoint();
         const vehicleCfg = VEHICLE_FILTERS[currentVehicle];
-        if(gpsWarmupCount < vehicleCfg.warmup) { gpsWarmupCount++; console.log('[GPS] Warmup skip:', gpsWarmupCount, '/', vehicleCfg.warmup); return; }
+        // warmup disabled
         if(prevPoint) {
             const rawDist = haversine(prevPoint.lat, prevPoint.lng, point.lat, point.lng);
             if(rawDist < vehicleCfg.minDistance) return;
