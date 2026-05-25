@@ -1292,16 +1292,13 @@ const P_LAT=0, P_LNG=1, P_TS=2, P_ACC=3, P_SPD=4, P_HDG=5, P_ALT=6;
 // =====================================================================
 
 // --- map & rendering ---
-let map, canvas3D, ctx3D;
+let map;
 let currentMarker = null, accuracyCircle = null;
 let trailSegments = [], activeSegment = null, segmentPointCount = 0;
 const SEGMENT_LIMIT = 800;
 let currentTab = '2D';
-let last3DRender = 0, lastCircleUpdate = 0;
+let lastCircleUpdate = 0;
 let lowPowerGPU = (navigator.hardwareConcurrency || 4) <= 4;
-let drawDecimationStep = 1;
-let lastCanvasReset = Date.now();
-const CANVAS_RESET_INTERVAL = 30 * 60 * 1000;
 
 // --- rotation / camera ---
 let rotCurrentAngle = 0;
@@ -2197,7 +2194,6 @@ function updateTrail(){
         adaptiveCameraFollow(last.lat,last.lng,0);
     }
 
-    if(currentTab==='3D') draw3D();
 }
 
 // Drains trailQueue into Leaflet in a single RAF frame with budget enforcement
@@ -2489,109 +2485,6 @@ function initMap(){
 }
 
 // =====================================================================
-// SECTION 20: 3D ELEVATION
-// =====================================================================
-function init3D(){
-    canvas3D=document.getElementById('canvas3D');
-    ctx3D=canvas3D.getContext('2d');
-    if(ctx3D) ctx3D.imageSmoothingEnabled=false;
-    resize3D();
-    window.addEventListener('resize',()=>{ resize3D(); if(currentTab==='3D') draw3D(); });
-}
-
-function resize3D(){
-    if(canvas3D){ canvas3D.width=window.innerWidth; canvas3D.height=window.innerHeight; }
-}
-
-function draw3D(){
-    if(!ctx3D&&canvas3D){ ctx3D=canvas3D.getContext('2d'); if(!ctx3D) return; }
-    if(currentTab!=='3D') return;
-
-    const now=performance.now();
-    const gap=lowPowerGPU?200:120;
-    if(now-last3DRender<gap) return;
-    last3DRender=now;
-
-    ctx3D.clearRect(0,0,canvas3D.width,canvas3D.height);
-    ctx3D.fillStyle='#0f172a';
-    ctx3D.fillRect(0,0,canvas3D.width,canvas3D.height);
-
-    if(bufferLen<2){
-        ctx3D.fillStyle='#aaa'; ctx3D.font='14px monospace';
-        ctx3D.fillText('📡 3D ELEVATION PROFILE', 50, 100);
-        ctx3D.font='12px monospace';
-        ctx3D.fillText('Klik START dan berjalan untuk melihat grafik', 50, 140);
-        return;
-    }
-
-    const pts=[]; let hasRealAlt=false;
-    const step=Math.max(1,Math.floor(bufferLen/800));
-    for(let i=0;i<bufferLen;i+=step){ const p=getPoint(i); if(p){ pts.push(p); if(p.alt&&p.alt!==0) hasRealAlt=true; }}
-    if(pts.length<2) return;
-
-    const dists=[0];
-    for(let i=1;i<pts.length;i++) dists.push(dists[i-1]+haversineFast(pts[i-1].lat,pts[i-1].lng,pts[i].lat,pts[i].lng));
-    const maxDist=dists[dists.length-1]||1;
-    let alts=pts.map(p=>p.alt||0);
-    if(!hasRealAlt) for(let i=0;i<alts.length;i++) alts[i]=25+Math.sin(dists[i]/50)*12+Math.cos(dists[i]/120)*8;
-
-    const minAlt=Math.min(...alts)-5, maxAlt=Math.max(...alts)+5, altRange=Math.max(maxAlt-minAlt,20);
-    const mg={top:60,right:40,bottom:60,left:65};
-    const w=canvas3D.width-mg.left-mg.right, h=canvas3D.height-mg.top-mg.bottom;
-    if(w<=0||h<=0) return;
-
-    ctx3D.strokeStyle='#2a3f6e'; ctx3D.lineWidth=0.5;
-    for(let i=0;i<=5;i++){
-        const x=mg.left+w*i/5, y=mg.top+h*i/5;
-        ctx3D.beginPath(); ctx3D.moveTo(x,mg.top); ctx3D.lineTo(x,mg.top+h); ctx3D.stroke();
-        ctx3D.fillStyle='#9aaec5'; ctx3D.font='9px monospace';
-        ctx3D.fillText(Math.round(maxDist*i/5)+'m',x-15,mg.top+h+15);
-        ctx3D.beginPath(); ctx3D.moveTo(mg.left,y); ctx3D.lineTo(mg.left+w,y); ctx3D.stroke();
-        ctx3D.fillText(Math.round(maxAlt-altRange*i/5)+'m',5,y+3);
-    }
-    ctx3D.fillStyle='#00f2a0'; ctx3D.font='bold 10px monospace';
-    ctx3D.fillText('Jarak (meter)',mg.left+w/2-40,mg.top+h+35);
-    ctx3D.save(); ctx3D.translate(20,mg.top+h/2); ctx3D.rotate(-Math.PI/2);
-    ctx3D.fillText('Ketinggian (meter)',-30,0); ctx3D.restore();
-
-    ctx3D.beginPath(); ctx3D.strokeStyle='#3bc0fc'; ctx3D.lineWidth=2.5;
-    for(let i=0;i<pts.length;i++){
-        const x=mg.left+(dists[i]/maxDist)*w, y=mg.top+h-((alts[i]-minAlt)/altRange)*h;
-        i===0?ctx3D.moveTo(x,y):ctx3D.lineTo(x,y);
-    }
-    ctx3D.stroke();
-
-    ctx3D.beginPath();
-    for(let i=0;i<pts.length;i++){
-        const x=mg.left+(dists[i]/maxDist)*w, y=mg.top+h-((alts[i]-minAlt)/altRange)*h;
-        i===0?ctx3D.moveTo(x,y):ctx3D.lineTo(x,y);
-    }
-    ctx3D.lineTo(mg.left+w,mg.top+h); ctx3D.lineTo(mg.left,mg.top+h);
-    ctx3D.closePath(); ctx3D.fillStyle='#1e88e540'; ctx3D.fill();
-
-    const pStep=Math.max(1,Math.floor(pts.length/200));
-    for(let i=0;i<pts.length;i+=pStep){
-        const x=mg.left+(dists[i]/maxDist)*w, y=mg.top+h-((alts[i]-minAlt)/altRange)*h;
-        ctx3D.fillStyle=i===pts.length-1?'#ff7760':'#22ddbb';
-        ctx3D.beginPath(); ctx3D.arc(x,y,i===pts.length-1?5:2,0,Math.PI*2); ctx3D.fill();
-    }
-
-    ctx3D.fillStyle='#00f2a0'; ctx3D.font='bold 12px monospace'; ctx3D.fillText('📊 ELEVATION PROFILE',mg.left,25);
-    ctx3D.fillStyle='#ffb347'; ctx3D.font='10px monospace';
-    ctx3D.fillText(`Titik:${pts.length} | Jarak:${Math.round(maxDist)}m | Elev:${Math.round(alts[pts.length-1])}m`,mg.left,45);
-    if(!hasRealAlt){ ctx3D.fillStyle='#ffaa44'; ctx3D.font='9px monospace'; ctx3D.fillText('⚠️ Simulasi ketinggian',mg.left,canvas3D.height-10); }
-
-    if(pts.length>0){
-        const sx=mg.left, sy=mg.top+h-((alts[0]-minAlt)/altRange)*h;
-        ctx3D.fillStyle='#4caf50'; ctx3D.beginPath(); ctx3D.arc(sx,sy,6,0,Math.PI*2); ctx3D.fill();
-        ctx3D.fillStyle='white'; ctx3D.font='bold 8px monospace'; ctx3D.fillText('START',sx-12,sy-5);
-        const ex=mg.left+w, ey=mg.top+h-((alts[pts.length-1]-minAlt)/altRange)*h;
-        ctx3D.fillStyle='#ff4444'; ctx3D.beginPath(); ctx3D.arc(ex,ey,6,0,Math.PI*2); ctx3D.fill();
-        ctx3D.fillStyle='white'; ctx3D.fillText('END',ex-8,ey-5);
-    }
-}
-
-// =====================================================================
 // SECTION 21: WAL / SYNC
 // v5.20: walFlushLock prevents WAL/sync overlap
 // =====================================================================
@@ -2875,7 +2768,7 @@ window.loadTrack=async(trackId)=>{
             if(track.checkpoints) checkpoints=track.checkpoints.slice();
             rebuildTrail();
             if(map&&lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16);
-            if(currentTab==='3D') draw3D();
+    
             const hp=document.getElementById('historyPanel'); if(hp) hp.classList.remove('show');
         }
     };
@@ -3574,18 +3467,10 @@ async function releaseWakeLock(){
 // SECTION 34: TAB SWITCHING
 // =====================================================================
 function switchTab(tab){
-    currentTab=tab;
-    const mapDiv=document.getElementById('map-wrapper'), canvasDiv=document.getElementById('canvas3D');
-    const b2D=document.getElementById('btn2D'), b3D=document.getElementById('btn3D');
-    if(tab==='2D'){
-        mapDiv.style.display='block'; canvasDiv.style.display='none';
-        b2D.classList.add('active'); b3D.classList.remove('active');
-        requestAnimationFrame(()=>{ if(map) map.invalidateSize(); });
-    } else {
-        mapDiv.style.display='none'; canvasDiv.style.display='block';
-        b2D.classList.remove('active'); b3D.classList.add('active');
-        resize3D(); draw3D();
-    }
+    currentTab='2D'; // 3D removed — always 2D
+    const b2D=document.getElementById('btn2D');
+    if(b2D) b2D.classList.add('active');
+    requestAnimationFrame(()=>{ if(map) map.invalidateSize(); });
 }
 
 // =====================================================================
@@ -3606,7 +3491,7 @@ function centerMap(){
 
 function clearAll(){
     if(!confirm('Hapus semua titik tracking? Data tersimpan tetap ada.')) return;
-    clearBuffer(); updateUI(); if(currentTab==='3D') draw3D();
+    clearBuffer(); updateUI();
     updateGPSStatus('CLEARED','red',null);
 }
 
@@ -3625,14 +3510,7 @@ setInterval(()=>{
     if(isTracking){ checkStorageQuota(); }
 },60000);
 
-// v5.20: canvas reset only when 3D tab is active AND page is visible
-setInterval(()=>{
-    if(Date.now()-lastCanvasReset>CANVAS_RESET_INTERVAL&&currentTab==='3D'&&isPageVisible){
-        lastCanvasReset=Date.now();
-        if(ctx3D&&canvas3D){ const w=canvas3D.width,h=canvas3D.height; canvas3D.width=1; canvas3D.height=1; canvas3D.width=w; canvas3D.height=h; ctx3D=canvas3D.getContext('2d'); if(ctx3D) ctx3D.imageSmoothingEnabled=false; }
-        draw3D();
-    }
-},60000);
+
 
 // v5.20: Android memory cleanup — also rebuilds RBush after trim to stay consistent
 setInterval(()=>{
@@ -3683,7 +3561,7 @@ document.addEventListener('visibilitychange',()=>{
     if(isPageVisible){
         // v5.20: re-acquire wake lock if we lost it while hidden
         if(isTracking&&!wakeLock) requestWakeLock();
-        if(currentTab==='3D') draw3D();
+
         rebuildTrail();
         if(isTracking&&gpsState===GPS_STATE.STALE) scheduleGPSRestart('visibility_restore');
         // v5.20: ensure rotation loop is alive after tab restore
@@ -3734,7 +3612,6 @@ document.getElementById('saveBtn')?.addEventListener('click',saveCurrentTrack);
 document.getElementById('returnBtn')?.addEventListener('click',toggleReturnMode);
 document.getElementById('sheetBtn')?.addEventListener('click',openSheet);
 document.getElementById('btn2D')?.addEventListener('click',()=>switchTab('2D'));
-document.getElementById('btn3D')?.addEventListener('click',()=>switchTab('3D'));
 document.getElementById('btnSemantic')?.addEventListener('click',toggleSemanticPanel);
 document.getElementById('playbackToggleBtn')?.addEventListener('click',()=>{ if(playbackActive) stopPlayback(); else startPlayback(); });
 document.getElementById('playPauseBtn')?.addEventListener('click',()=>{ if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); });
@@ -3780,7 +3657,6 @@ async function bootstrap(){
     console.log('[VMS] v5.21 FINAL STABILIZED — Booting...');
     await openDB();
     initMap();
-    init3D();
     await loadSavedTracks();
     initWorker();
     initCompass();
