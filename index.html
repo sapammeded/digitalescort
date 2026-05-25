@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.21 · Final Stabilization Build</title>
+    <title>VMS | v5.21-UI · Touch Interaction Fixed</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -188,13 +188,17 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     border-top:1px solid var(--c-border);
     border-radius:18px 18px 0 0;
     padding:12px 12px 10px;
-    /* Collapsed: zero height, invisible */
+    /* Collapsed: zero height, invisible — MUST NOT intercept touches */
     max-height:0;overflow:hidden;
+    pointer-events:none;
+    touch-action:none;
     transition:max-height .25s cubic-bezier(.4,0,.2,1), padding .2s;
 }
 #secondaryMenu.open{
     max-height:240px;
     padding:14px 12px 12px;
+    pointer-events:auto;
+    touch-action:auto;
 }
 
 /* Section label in secondary menu */
@@ -506,9 +510,23 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     box-shadow:0 16px 50px rgba(0,0,0,0.8);
     border:1px solid rgba(40,60,90,0.7);
     display:none;
+    pointer-events:none;
+    touch-action:none;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
-.history-panel.show{display:block;}
+.history-panel.show{display:block;pointer-events:auto;touch-action:auto;}
+/* History close button */
+.history-close-btn{
+    float:right;margin:-2px -2px 8px 8px;
+    background:rgba(255,90,95,0.18);
+    border:1px solid var(--c-red)!important;
+    color:var(--c-text)!important;
+    padding:5px 14px!important;font-size:12px!important;
+    border-radius:20px!important;cursor:pointer;
+    font-family:'SF Mono','Courier New',monospace;
+    font-weight:700;pointer-events:auto;
+}
+.history-close-btn:active{transform:scale(0.91);}
 .history-title{color:var(--c-green);font-weight:700;margin-bottom:12px;font-size:12px;}
 .history-item{
     background:#09131f;margin:8px 0;padding:11px;border-radius:14px;
@@ -530,11 +548,13 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
     border-radius:16px;
     padding:14px;
-    z-index:1190;
+    z-index:1196;
     border:2px solid rgba(142,68,173,0.5);
     display:none;font-size:10px;
+    pointer-events:none;
+    touch-action:none;
 }
-.sim-panel.show{display:block;}
+.sim-panel.show{display:block;pointer-events:auto;touch-action:auto;}
 .sim-panel h4{color:#c080f0;margin-bottom:10px;font-size:11px;font-weight:700;}
 .sim-btn{
     background:rgba(30,44,66,0.9);border:1px solid rgba(255,255,255,0.08);
@@ -553,6 +573,8 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     z-index:1194;
     background:rgba(0,0,0,0);
     pointer-events:none;
+    /* Exclude the bottom toolbar area so primary buttons always work */
+    bottom:calc(var(--sab) + var(--tb-h));
     transition:background .2s;
 }
 #menuDimmer.open{
@@ -715,7 +737,10 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
      HISTORY PANEL (full-screen overlay)
 ══════════════════════════════════════════ -->
 <div class="history-panel" id="historyPanel">
-    <div class="history-title">📁 SAVED TRACKS (klik muat / navigasi)</div>
+    <div class="history-title" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;">
+        <span>📁 SAVED TRACKS</span>
+        <button class="history-close-btn" onclick="toggleHistory()" title="Tutup panel">✕ TUTUP</button>
+    </div>
     <div id="historyList">Kosong</div>
 </div>
 
@@ -830,65 +855,174 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 </div>
 
 <!-- ══════════════════════════════════════════
-     COLLAPSIBLE UI CONTROLLER
+     GLOBAL PANEL STATE MANAGER  v5.21-FIXED
+     RULES:
+       • Only ONE panel open at a time
+       • Opening a panel closes all others first
+       • Closing = removes .show, releases pointer-events, releases touch-action
+       • Backdrop (menuDimmer) closes active panel when tapped
+       • Toggle = open if closed, close if open (second tap closes)
+       • Secondary menu is its own layer; closing it does NOT close panels
 ══════════════════════════════════════════ -->
 <script>
 (function(){
-    // ── Info panel toggle ──
-    var _infoPanelOpen = false;
-    window.toggleInfoPanel = function(){
-        _infoPanelOpen = !_infoPanelOpen;
-        var body = document.getElementById('infoPanelBody');
-        var icon = document.getElementById('ipt_icon');
-        if(_infoPanelOpen){
-            body.classList.add('open');
-            if(icon) icon.textContent = '▼';
-        } else {
-            body.classList.remove('open');
-            if(icon) icon.textContent = '▲';
-        }
-    };
+'use strict';
 
-    // Mirror totalDistance into info chip and toggle chip label
-    var _distMirrorIv = setInterval(function(){
-        var v = document.getElementById('totalDistance');
-        var chip = document.getElementById('bbDist');
-        var iptDist = document.getElementById('ipt_dist');
-        if(v && chip) chip.textContent = v.textContent;
-        if(v && iptDist) iptDist.textContent = v.textContent;
-    }, 800);
+// ─── Panel registry ───────────────────────────────────────────────────
+// Each entry: { id, type }
+// type 'show'  → toggled via classList.add/remove('show')
+// type 'menu'  → the slide-up secondary menu (special behaviour)
+var PANELS = {
+    history:  { id: 'historyPanel',  type: 'show' },
+    sim:      { id: 'simPanel',      type: 'show' }
+};
 
-    // ── Secondary menu toggle ──
-    var _menuOpen = false;
-    window.toggleSecondaryMenu = function(){
-        _menuOpen ? closeSecondaryMenu() : openSecondaryMenu();
-    };
-    window.openSecondaryMenu = function(){
-        _menuOpen = true;
-        document.getElementById('secondaryMenu').classList.add('open');
-        document.getElementById('menuDimmer').classList.add('open');
-        document.getElementById('menuToggleBtn').classList.add('open');
-        document.getElementById('menuToggleBtn').textContent = '✕';
-    };
-    window.closeSecondaryMenu = function(){
-        _menuOpen = false;
-        document.getElementById('secondaryMenu').classList.remove('open');
-        document.getElementById('menuDimmer').classList.remove('open');
-        document.getElementById('menuToggleBtn').classList.remove('open');
-        document.getElementById('menuToggleBtn').textContent = '☰';
-    };
+// Active panel key — null means all closed
+var _activePanel = null;
 
-    // Auto-close secondary menu when a tool button is tapped
-    var closeOnTap = ['syncBtn','clearBtn','saveBtn','historyBtn','returnBtn',
-                      'sheetBtn','playbackToggleBtn','simToggleBtn'];
-    closeOnTap.forEach(function(id){
-        var el = document.getElementById(id);
-        if(el) el.addEventListener('click', function(){ setTimeout(closeSecondaryMenu, 120); });
+// ─── Internal helpers ─────────────────────────────────────────────────
+function _getEl(id){ return document.getElementById(id); }
+
+function _closePanel(key){
+    if(!PANELS[key]) return;
+    var el = _getEl(PANELS[key].id);
+    if(!el) return;
+    el.classList.remove('show');
+    // Hard-enforce hidden state: no touches, no z-index blocking
+    el.style.pointerEvents = 'none';
+    el.style.touchAction   = 'none';
+    if(_activePanel === key) _activePanel = null;
+}
+
+function _openPanel(key){
+    if(!PANELS[key]) return;
+    // Close every other panel first (one-panel-at-a-time rule)
+    Object.keys(PANELS).forEach(function(k){ if(k !== key) _closePanel(k); });
+    var el = _getEl(PANELS[key].id);
+    if(!el) return;
+    el.classList.add('show');
+    el.style.pointerEvents = 'auto';
+    el.style.touchAction   = 'auto';
+    _activePanel = key;
+}
+
+// ─── Public: close all panels ─────────────────────────────────────────
+window.closeAllPanels = function(){
+    Object.keys(PANELS).forEach(_closePanel);
+    _activePanel = null;
+};
+
+// ─── Public: toggle a named panel ─────────────────────────────────────
+window.togglePanel = function(key){
+    if(_activePanel === key){
+        _closePanel(key);   // second tap → close
+    } else {
+        _openPanel(key);    // first tap → open (others auto-close)
+    }
+};
+
+// ─── Backward-compatible wrappers called by engine ────────────────────
+// toggleHistory — called from event listener in Section 38
+window.toggleHistory = function(){
+    window.togglePanel('history');
+};
+
+// simToggle — replaces inline toggle('show') usage
+window.toggleSimPanel = function(){
+    window.togglePanel('sim');
+};
+
+// ─── Secondary (slide-up) menu ────────────────────────────────────────
+// Kept as a fully separate layer — NOT part of the one-panel system
+// so that opening it doesn't accidentally close the sim or history panel.
+var _menuOpen = false;
+
+window.toggleSecondaryMenu = function(){
+    _menuOpen ? window.closeSecondaryMenu() : window.openSecondaryMenu();
+};
+
+window.openSecondaryMenu = function(){
+    _menuOpen = true;
+    var sm  = _getEl('secondaryMenu');
+    var dim = _getEl('menuDimmer');
+    var btn = _getEl('menuToggleBtn');
+    if(sm)  sm.classList.add('open');
+    if(dim) dim.classList.add('open');
+    if(btn){ btn.classList.add('open'); btn.textContent = '✕'; }
+};
+
+window.closeSecondaryMenu = function(){
+    _menuOpen = false;
+    var sm  = _getEl('secondaryMenu');
+    var dim = _getEl('menuDimmer');
+    var btn = _getEl('menuToggleBtn');
+    if(sm)  sm.classList.remove('open');
+    if(dim) dim.classList.remove('open');
+    if(btn){ btn.classList.remove('open'); btn.textContent = '☰'; }
+};
+
+// Dimmer tap: close secondary menu AND close any open panel
+_getEl('menuDimmer').onclick = function(){
+    window.closeSecondaryMenu();
+    window.closeAllPanels();
+};
+
+// ─── Secondary menu: auto-close on tool-button tap ────────────────────
+// simToggleBtn and historyBtn handled separately below
+['syncBtn','clearBtn','saveBtn','returnBtn','sheetBtn'].forEach(function(id){
+    var el = _getEl(id);
+    if(el) el.addEventListener('click', function(){ window.closeSecondaryMenu(); });
+});
+
+// historyBtn: close menu first, then toggle history panel
+var histBtn = _getEl('historyBtn');
+if(histBtn){
+    histBtn.addEventListener('click', function(){
+        window.closeSecondaryMenu();
+        window.togglePanel('history');
     });
+}
 
-    // Close secondary menu when history panel opens
-    var histBtn = document.getElementById('historyBtn');
-    if(histBtn) histBtn.addEventListener('click', function(){ setTimeout(closeSecondaryMenu, 160); });
+// simToggleBtn: close menu first, then toggle sim panel
+var simBtn = _getEl('simToggleBtn');
+if(simBtn){
+    simBtn.addEventListener('click', function(){
+        window.closeSecondaryMenu();
+        window.togglePanel('sim');
+    });
+}
+
+// playbackToggleBtn: close menu; actual playback toggled by engine listener in Section 38
+var pbBtn = _getEl('playbackToggleBtn');
+if(pbBtn){
+    pbBtn.addEventListener('click', function(){ window.closeSecondaryMenu(); });
+}
+
+// ─── Info panel toggle (independent — not part of one-panel system) ───
+var _infoPanelOpen = false;
+window.toggleInfoPanel = function(){
+    _infoPanelOpen = !_infoPanelOpen;
+    var body = _getEl('infoPanelBody');
+    var icon = _getEl('ipt_icon');
+    if(body) body.classList.toggle('open', _infoPanelOpen);
+    if(icon) icon.textContent = _infoPanelOpen ? '▼' : '▲';
+};
+
+// ─── Distance mirror ──────────────────────────────────────────────────
+setInterval(function(){
+    var v      = _getEl('totalDistance');
+    var chip   = _getEl('bbDist');
+    var iptDist= _getEl('ipt_dist');
+    if(v && chip)    chip.textContent    = v.textContent;
+    if(v && iptDist) iptDist.textContent = v.textContent;
+}, 800);
+
+// ─── Boot: ensure all panels start fully hidden ───────────────────────
+document.addEventListener('DOMContentLoaded', function(){
+    window.closeAllPanels();
+    window.closeSecondaryMenu();
+});
+
 })();
 </script>
 
@@ -3290,7 +3424,9 @@ function clearAll(){
 }
 
 function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit','_blank'); }
-function toggleHistory(){ const hp=document.getElementById('historyPanel'); if(hp) hp.classList.toggle('show'); }
+function toggleHistory(){
+    window.togglePanel('history');
+}
 function toggleSemanticPanel(){ const sp=document.getElementById('semanticPanel'); if(sp) sp.classList.toggle('show'); updateSemanticBreadcrumb(); }
 function toggleReturnMode(){ if(bufferLen===0){ alert('Tidak ada jalur untuk kembali'); return; } if(isReplaying){ alert('Matikan replay terlebih dahulu'); return; } if(backtrackActive) stopBacktrackMode(); else startBacktrackMode(); }
 
@@ -3407,7 +3543,7 @@ document.getElementById('stopBtn')?.addEventListener('click',stopTracking);
 document.getElementById('syncBtn')?.addEventListener('click',()=>scheduleSync());
 document.getElementById('clearBtn')?.addEventListener('click',clearAll);
 document.getElementById('saveBtn')?.addEventListener('click',saveCurrentTrack);
-document.getElementById('historyBtn')?.addEventListener('click',toggleHistory);
+// historyBtn handled by panel manager above
 document.getElementById('returnBtn')?.addEventListener('click',toggleReturnMode);
 document.getElementById('sheetBtn')?.addEventListener('click',openSheet);
 document.getElementById('btn2D')?.addEventListener('click',()=>switchTab('2D'));
@@ -3429,8 +3565,8 @@ document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{
     }
 });
 
-// Simulation
-document.getElementById('simToggleBtn')?.addEventListener('click',()=>{ document.getElementById('simPanel')?.classList.toggle('show'); });
+// simToggleBtn handled by panel manager above
+
 document.getElementById('simWalk')?.addEventListener('click',()=>startSimulation('WALKING'));
 document.getElementById('simMotor')?.addEventListener('click',()=>startSimulation('MOTOR'));
 document.getElementById('simCar')?.addEventListener('click',()=>startSimulation('CAR'));
