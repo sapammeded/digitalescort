@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.22 · Tactical Checkpoint System</title>
+    <title>VMS | v5.25 · DEPLOY READY</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -190,15 +190,15 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     padding:12px 12px 10px;
     /* Collapsed: zero height, invisible — MUST NOT intercept touches */
     max-height:0;overflow:hidden;
-    pointer-events:none;
-    touch-action:none;
+    pointer-events:none!important;
+    touch-action:none!important;
     transition:max-height .25s cubic-bezier(.4,0,.2,1), padding .2s;
 }
 #secondaryMenu.open{
     max-height:240px;
     padding:14px 12px 12px;
-    pointer-events:auto;
-    touch-action:auto;
+    pointer-events:auto!important;
+    touch-action:auto!important;
 }
 
 /* Section label in secondary menu */
@@ -510,11 +510,11 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     box-shadow:0 16px 50px rgba(0,0,0,0.8);
     border:1px solid rgba(40,60,90,0.7);
     display:none;
-    pointer-events:none;
-    touch-action:none;
+    pointer-events:none!important;
+    touch-action:none!important;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
-.history-panel.show{display:block;pointer-events:auto;touch-action:auto;}
+.history-panel.show{display:block;pointer-events:auto!important;touch-action:auto!important;}
 /* History close button */
 .history-close-btn{
     float:right;margin:-2px -2px 8px 8px;
@@ -551,16 +551,20 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     z-index:1196;
     border:2px solid rgba(142,68,173,0.5);
     display:none;font-size:10px;
-    pointer-events:none;
-    touch-action:none;
+    pointer-events:none!important;
+    touch-action:none!important;
 }
-.sim-panel.show{display:block;pointer-events:auto;touch-action:auto;}
+.sim-panel.show{display:block;pointer-events:auto!important;touch-action:auto!important;}
 .sim-panel h4{color:#c080f0;margin-bottom:10px;font-size:11px;font-weight:700;}
 .sim-btn{
     background:rgba(30,44,66,0.9);border:1px solid rgba(255,255,255,0.08);
-    padding:7px 11px;border-radius:20px;color:#fff;
+    padding:9px 13px;border-radius:20px;color:#fff;
     margin:3px;cursor:pointer;font-size:10px;font-weight:600;pointer-events:auto;
     font-family:'SF Mono','Courier New',monospace;
+    /* Larger touch targets for Android */
+    min-height:40px;min-width:60px;
+    -webkit-tap-highlight-color:rgba(142,68,173,0.3);
+    touch-action:manipulation;
 }
 .sim-btn:active{transform:scale(0.93);}
 .sim-status{color:var(--c-green);font-size:9px;margin-top:7px;}
@@ -675,11 +679,11 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     box-shadow:0 16px 50px rgba(0,0,0,0.8);
     border:1px solid rgba(40,60,90,0.7);
     display:none;
-    pointer-events:none;
-    touch-action:none;
+    pointer-events:none!important;
+    touch-action:none!important;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
-.points-panel.show{display:block;pointer-events:auto;touch-action:auto;}
+.points-panel.show{display:block;pointer-events:auto!important;touch-action:auto!important;}
 .points-panel-title{color:var(--c-green);font-weight:700;margin-bottom:12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .points-close-btn{
     background:rgba(255,90,95,0.18);
@@ -723,11 +727,12 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     background:rgba(0,0,0,0.75);
     display:none;
     align-items:center;justify-content:center;
-    pointer-events:none;
-    touch-action:none;
+    pointer-events:none!important;
+    touch-action:none!important;
     backdrop-filter:blur(4px);
 }
-#addPointModal.show{display:flex;pointer-events:auto;touch-action:auto;}
+#addPointModal.show{display:flex;pointer-events:auto!important;touch-action:auto!important;}
+#addPointModal.show > #addPointModalBox{pointer-events:auto;}
 #addPointModalBox{
     background:#0c1424;
     border:1px solid var(--c-border);
@@ -964,8 +969,8 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 <!-- ══════════════════════════════════════════
      ADD POINT MODAL
 ══════════════════════════════════════════ -->
-<div id="addPointModal">
-    <div id="addPointModalBox">
+<div id="addPointModal" onclick="if(event.target===this)window.closeAddPointModal();">
+    <div id="addPointModalBox" onclick="event.stopPropagation()">
         <h3>📍 TAMBAH TACTICAL POINT</h3>
         <div class="modal-field">
             <label class="modal-label" for="apName">Nama Point</label>
@@ -1061,7 +1066,8 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 // type 'menu'  → the slide-up secondary menu (special behaviour)
 var PANELS = {
     history:  { id: 'historyPanel',  type: 'show' },
-    sim:      { id: 'simPanel',      type: 'show' }
+    sim:      { id: 'simPanel',      type: 'show' },
+    points:   { id: 'pointsPanel',   type: 'show' }
 };
 
 // Active panel key — null means all closed
@@ -1075,9 +1081,8 @@ function _closePanel(key){
     var el = _getEl(PANELS[key].id);
     if(!el) return;
     el.classList.remove('show');
-    // Hard-enforce hidden state: no touches, no z-index blocking
-    el.style.pointerEvents = 'none';
-    el.style.touchAction   = 'none';
+    // Use cssText for clean deterministic close — no !important wars with .show rule
+    el.style.cssText = 'display:none;pointer-events:none;touch-action:none;';
     if(_activePanel === key) _activePanel = null;
 }
 
@@ -1087,9 +1092,17 @@ function _openPanel(key){
     Object.keys(PANELS).forEach(function(k){ if(k !== key) _closePanel(k); });
     var el = _getEl(PANELS[key].id);
     if(!el) return;
-    el.classList.add('show');
+    // Clear any forced inline style before opening
+    el.style.cssText = '';
+    el.style.display = 'block';
     el.style.pointerEvents = 'auto';
     el.style.touchAction   = 'auto';
+    // rAF so display:block takes effect before adding class
+    requestAnimationFrame(function(){
+        el.classList.add('show');
+        el.style.pointerEvents = 'auto';
+        el.style.touchAction   = 'auto';
+    });
     _activePanel = key;
 }
 
@@ -1097,6 +1110,14 @@ function _openPanel(key){
 window.closeAllPanels = function(){
     Object.keys(PANELS).forEach(_closePanel);
     _activePanel = null;
+    // Extra safety pass: guarantee no panel can block touches after close
+    Object.keys(PANELS).forEach(function(k){
+        var el = _getEl(PANELS[k].id);
+        if(el){
+            el.classList.remove('show');
+            el.style.cssText = 'display:none;pointer-events:none;touch-action:none;';
+        }
+    });
 };
 
 // ─── Public: toggle a named panel ─────────────────────────────────────
@@ -1183,6 +1204,14 @@ if(simBtn){
 var pbBtn = _getEl('playbackToggleBtn');
 if(pbBtn){
     pbBtn.addEventListener('click', function(){ window.closeSecondaryMenu(); });
+}
+
+// btnPoints: tab → open points panel
+var bpBtn = _getEl('btnPoints');
+if(bpBtn){
+    bpBtn.addEventListener('click', function(){
+        window.togglePanel('points');
+    });
 }
 
 // ─── Info panel toggle (independent — not part of one-panel system) ───
@@ -2375,6 +2404,8 @@ function startTracking(){
     if(!rotRAFRunning) startRotationLoop();
     document.getElementById('startBtn').style.display='none';
     document.getElementById('stopBtn').style.display='inline-block';
+    // show add-point button
+    const apb=document.getElementById('addPointBtn'); if(apb) apb.classList.add('visible');
     updateGPSStatus('ACTIVE','green',null);
     if('getBattery' in navigator) initBattery();
     if(document.visibilityState==='visible') requestWakeLock();
@@ -2390,6 +2421,8 @@ function stopTracking(){
     if(walBatchTimer){ clearTimeout(walBatchTimer); walBatchTimer=null; flushWalQueue(); }
     document.getElementById('startBtn').style.display='inline-block';
     document.getElementById('stopBtn').style.display='none';
+    // hide add-point button
+    const apb2=document.getElementById('addPointBtn'); if(apb2) apb2.classList.remove('visible');
     updateGPSStatus('STOP','red',null);
     releaseWakeLock();
     transitionGPS(GPS_STATE.IDLE);
@@ -2896,20 +2929,19 @@ function startPlayback(){
 
     const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS;
     let lastFrameTs=0, lastPanTs=0;
-    let rafActive=false; // v5.20 FIX 3: prevent double-queued RAF
 
     function animate(now){
-        rafActive=false;
-        // v5.20: zombie guard — token mismatch means stopPlayback() was called
+        // v5.25: token guard first — any stopPlayback() call makes this frame a zombie immediately
         if(myTok!==replayToken||!playbackActive||!isPlaying){ playbackTimer=null; return; }
-        // Re-queue immediately (single queue)
-        if(!rafActive){ rafActive=true; playbackTimer=requestAnimationFrame(animate); }
+        // Queue next frame BEFORE doing work — guarantees single RAF chain, no double-queue
+        playbackTimer=requestAnimationFrame(animate);
         if(now-lastFrameTs<frameMs) return;
         lastFrameTs=now;
         if(playbackIndex>=replaySnapshotPoints.length){
+            cancelAnimationFrame(playbackTimer); playbackTimer=null;
             isReplaying=false; stopPlayback(); alert('Replay selesai'); return;
         }
-        // v5.20 FIX 2: read from frozen snapshot, never from live buffer
+        // Read from frozen snapshot, never from live buffer
         const p=replaySnapshotPoints[playbackIndex];
         if(p&&playbackMarker){
             try{ playbackMarker.setLatLng([p.lat,p.lng]); } catch(e){}
@@ -2925,7 +2957,6 @@ function startPlayback(){
         const pctEl=document.getElementById('playbackPercent'); if(pctEl) pctEl.innerText=Math.round((playbackIndex/replaySnapshotPoints.length)*100)+'%';
         playbackIndex++;
     }
-    rafActive=true;
     playbackTimer=requestAnimationFrame(animate);
 }
 
@@ -3464,12 +3495,13 @@ async function releaseWakeLock(){
 }
 
 // =====================================================================
-// SECTION 34: TAB SWITCHING
+// SECTION 34: TAB SWITCHING — 2D only (3D removed in v5.24)
 // =====================================================================
 function switchTab(tab){
-    currentTab='2D'; // 3D removed — always 2D
+    currentTab='2D'; // 3D fully removed — always 2D
     const b2D=document.getElementById('btn2D');
     if(b2D) b2D.classList.add('active');
+    // Ensure map fills container after any panel state change
     requestAnimationFrame(()=>{ if(map) map.invalidateSize(); });
 }
 
@@ -3594,9 +3626,17 @@ window.addEventListener('pagehide',()=>{
 });
 
 window.addEventListener('beforeunload',()=>{ if(walQueue&&walQueue.length>0) flushWalQueue(); });
-document.addEventListener('touchstart',()=>{},{passive:true});
-document.addEventListener('touchmove',()=>{},{passive:true});
-document.body.style.touchAction='manipulation';
+// =====================================================================
+// SECTION 37-B: TOUCH COMPATIBILITY (v5.24 STABLE)
+// All document-level touch listeners MUST be passive to avoid
+// Android Chrome warnings and to preserve Leaflet map dragging.
+// Only per-element listeners (sim buttons) use non-passive when needed.
+// =====================================================================
+document.addEventListener('touchstart', function(){}, {passive:true});
+document.addEventListener('touchmove',  function(){}, {passive:true});
+document.addEventListener('touchend',   function(){}, {passive:true});
+// Ensure body touch-action allows normal panning for Leaflet
+document.body.style.touchAction = 'manipulation';
 
 // =====================================================================
 // SECTION 38: EVENT LISTENERS
@@ -3613,6 +3653,8 @@ document.getElementById('returnBtn')?.addEventListener('click',toggleReturnMode)
 document.getElementById('sheetBtn')?.addEventListener('click',openSheet);
 document.getElementById('btn2D')?.addEventListener('click',()=>switchTab('2D'));
 document.getElementById('btnSemantic')?.addEventListener('click',toggleSemanticPanel);
+// addPointBtn — open add-point modal
+document.getElementById('addPointBtn')?.addEventListener('click',()=>{ window.openAddPointModal(); });
 document.getElementById('playbackToggleBtn')?.addEventListener('click',()=>{ if(playbackActive) stopPlayback(); else startPlayback(); });
 document.getElementById('playPauseBtn')?.addEventListener('click',()=>{ if(!playbackActive) return; if(isPlaying) pausePlayback(); else resumePlayback(); });
 document.getElementById('stopPlaybackBtn')?.addEventListener('click',()=>stopPlayback());
@@ -3631,18 +3673,66 @@ document.getElementById('playbackSlider')?.addEventListener('input',(e)=>{
 
 // simToggleBtn handled by panel manager above
 
-document.getElementById('simWalk')?.addEventListener('click',()=>startSimulation('WALKING'));
-document.getElementById('simMotor')?.addEventListener('click',()=>startSimulation('MOTOR'));
-document.getElementById('simCar')?.addEventListener('click',()=>startSimulation('CAR'));
-document.getElementById('simTurnLeft')?.addEventListener('click',()=>{ if(!simActive) return; simHeading=normalizeAngle(simHeading-45); simAddEvent('🔄 BELOK KIRI 45°'); });
-document.getElementById('simTurnRight')?.addEventListener('click',()=>{ if(!simActive) return; simHeading=normalizeAngle(simHeading+45); simAddEvent('🔄 BELOK KANAN 45°'); });
-document.getElementById('simClimb')?.addEventListener('click',()=>{ if(!simActive) return; simAlt+=3.5; simAddEvent('⛰️ NAIK LANTAI'); });
-document.getElementById('simDescend')?.addEventListener('click',()=>{ if(!simActive) return; simAlt=Math.max(0,simAlt-3.5); simAddEvent('⛰️ TURUN LANTAI'); });
-document.getElementById('simStop')?.addEventListener('click',stopSimulation);
-document.getElementById('simDriftToggle')?.addEventListener('click',()=>{
-    simDriftEnabled=!simDriftEnabled;
-    const b=document.getElementById('simDriftToggle');
-    if(b){ b.innerHTML=`📡 DRIFT: ${simDriftEnabled?'ON':'OFF'}`; b.style.background=simDriftEnabled?'#8e3030':'#1a3a5c'; }
+// =====================================================================
+// SECTION 38-B: SIM TOUCH BINDINGS (v5.24 STABLE — Android hardened)
+// Uses touchend for reliable single-fire on Android; stopPropagation
+// prevents sim panel touch from leaking to map. preventDefault on
+// touchstart prevents the 300ms click delay without blocking scroll.
+// =====================================================================
+function _simBtn(id, fn){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var _fired = false;
+    // touchend: fires after finger lifts — single reliable event
+    el.addEventListener('touchend', function(e){
+        e.stopPropagation();
+        e.preventDefault(); // prevent ghost click
+        _fired = true;
+        fn();
+        setTimeout(function(){ _fired = false; }, 400);
+    }, {passive:false});
+    // click fallback for desktop/mouse
+    el.addEventListener('click', function(e){
+        e.stopPropagation();
+        if(_fired) return; // skip ghost click after touch
+        fn();
+    });
+    // Prevent touchstart from propagating to Leaflet
+    el.addEventListener('touchstart', function(e){
+        e.stopPropagation();
+    }, {passive:true});
+}
+
+_simBtn('simWalk',  function(){ startSimulation('WALKING'); });
+_simBtn('simMotor', function(){ startSimulation('MOTOR'); });
+_simBtn('simCar',   function(){ startSimulation('CAR'); });
+_simBtn('simStop',  function(){ stopSimulation(); });
+_simBtn('simTurnLeft', function(){
+    if(!simActive) return;
+    simHeadingTarget = normalizeAngle(simHeadingTarget - 45);
+    simHeading = simHeadingTarget; // immediate snap — also aligns current so lerp starts fresh
+    simAddEvent('🔄 BELOK KIRI 45°');
+});
+_simBtn('simTurnRight', function(){
+    if(!simActive) return;
+    simHeadingTarget = normalizeAngle(simHeadingTarget + 45);
+    simHeading = simHeadingTarget; // immediate snap — also aligns current so lerp starts fresh
+    simAddEvent('🔄 BELOK KANAN 45°');
+});
+_simBtn('simClimb', function(){
+    if(!simActive) return;
+    simAlt += 3.5;
+    simAddEvent('⛰️ NAIK LANTAI');
+});
+_simBtn('simDescend', function(){
+    if(!simActive) return;
+    simAlt = Math.max(0, simAlt - 3.5);
+    simAddEvent('⛰️ TURUN LANTAI');
+});
+_simBtn('simDriftToggle', function(){
+    simDriftEnabled = !simDriftEnabled;
+    var b = document.getElementById('simDriftToggle');
+    if(b){ b.innerHTML = '📡 DRIFT: ' + (simDriftEnabled ? 'ON' : 'OFF'); b.style.background = simDriftEnabled ? '#8e3030' : '#1a3a5c'; }
 });
 
 // Vehicle
@@ -3651,10 +3741,161 @@ document.getElementById('vehicleMotor')?.addEventListener('click',()=>setVehicle
 document.getElementById('vehicleCar')?.addEventListener('click',()=>setVehicle('CAR'));
 
 // =====================================================================
+// SECTION 39-A: TACTICAL POINTS SYSTEM (v5.22 FIX)
+// Fixes: modal not opening, save not working, panel broken, no storage
+// =====================================================================
+let tacticalPoints = [];
+let tacticalPointMarkers = {};  // id → Leaflet marker
+
+// Load from localStorage on boot
+(function loadTacticalPoints(){
+    try{
+        const raw=localStorage.getItem('vms_tactical_points');
+        if(raw){ tacticalPoints=JSON.parse(raw)||[]; }
+    }catch(e){ tacticalPoints=[]; }
+})();
+
+function saveTacticalPointsToStorage(){
+    try{ localStorage.setItem('vms_tactical_points',JSON.stringify(tacticalPoints)); }catch(e){}
+}
+
+function getTacticalPointCount(){ return tacticalPoints.length; }
+
+function updatePointCounter(){
+    const pc=document.getElementById('pointCounter');
+    if(pc) pc.innerText=tacticalPoints.length;
+    const cb=document.getElementById('pointsCountBadge');
+    if(cb) cb.innerText=tacticalPoints.length+' points';
+}
+
+function renderTacticalPointOnMap(pt){
+    if(!map) return;
+    // Remove old marker if exists
+    if(tacticalPointMarkers[pt.id]){ try{ map.removeLayer(tacticalPointMarkers[pt.id]); }catch(e){} }
+    const icon=L.divIcon({
+        className:'',
+        html:`<div style="background:#005b65;border:2px solid #00b0b9;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 0 6px rgba(0,242,192,.5);">📍</div>`,
+        iconSize:[18,18],iconAnchor:[9,9]
+    });
+    const marker=L.marker([pt.lat,pt.lng],{icon,interactive:true,zIndexOffset:200})
+        .addTo(map)
+        .bindTooltip(`<b>${pt.name}</b><br>${pt.category}<br>${pt.notes||''}`,{permanent:false,direction:'top'});
+    tacticalPointMarkers[pt.id]=marker;
+}
+
+function renderAllTacticalPointsOnMap(){
+    // Clear all existing markers
+    Object.values(tacticalPointMarkers).forEach(m=>{ try{ map.removeLayer(m); }catch(e){} });
+    tacticalPointMarkers={};
+    tacticalPoints.forEach(pt=>renderTacticalPointOnMap(pt));
+}
+
+function renderPointsList(){
+    const list=document.getElementById('pointsList');
+    if(!list) return;
+    if(tacticalPoints.length===0){
+        list.innerHTML='<div class="points-empty">📭 Belum ada point tersimpan.<br>Tekan 📍+ saat tracking untuk menambahkan.</div>';
+        return;
+    }
+    list.innerHTML=tacticalPoints.map((pt,idx)=>`
+        <div class="point-item" id="pitem_${pt.id}">
+            <div class="point-item-header">
+                <span class="point-item-icon">📍</span>
+                <span class="point-item-name">${escapeHtml(pt.name)}</span>
+                <span class="point-item-time">${pt.timeStr||''}</span>
+            </div>
+            <div class="point-item-category">${escapeHtml(pt.category)}</div>
+            ${pt.notes?`<div class="point-item-notes">${escapeHtml(pt.notes)}</div>`:''}
+            <div class="point-item-coords">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)} | ${Math.round(pt.alt||0)}m</div>
+            <div class="point-item-btns">
+                <button onclick="window.zoomToPoint('${pt.id}')">🗺️ PETA</button>
+                <button onclick="window.deletePoint('${pt.id}')" style="background:rgba(180,40,50,0.7);border-color:#ff5a5f;">🗑 HAPUS</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+window.openAddPointModal = function(){
+    const modal=document.getElementById('addPointModal');
+    if(!modal) return;
+    // Reset fields
+    const nameEl=document.getElementById('apName');
+    const notesEl=document.getElementById('apNotes');
+    const catEl=document.getElementById('apCategory');
+    if(nameEl) nameEl.value='';
+    if(notesEl) notesEl.value='';
+    if(catEl) catEl.selectedIndex=0;
+    // Show current coordinates
+    const coordEl=document.getElementById('apCoordDisplay');
+    if(coordEl){
+        if(lastPosition)
+            coordEl.innerHTML=`📍 ${lastPosition.lat.toFixed(6)}, ${lastPosition.lng.toFixed(6)} | Alt: ${Math.round(lastPosition.alt||0)}m`;
+        else
+            coordEl.innerHTML='📍 Koordinat: menunggu GPS atau simulator...';
+    }
+    modal.classList.add('show');
+    // Focus name field after paint
+    setTimeout(()=>{ if(nameEl) nameEl.focus(); }, 80);
+};
+
+window.closeAddPointModal = function(){
+    const modal=document.getElementById('addPointModal');
+    if(modal) modal.classList.remove('show');
+};
+
+window.saveAddPoint = function(){
+    const nameEl=document.getElementById('apName');
+    const catEl=document.getElementById('apCategory');
+    const notesEl=document.getElementById('apNotes');
+    const name=(nameEl?.value||'').trim();
+    if(!name){ alert('Masukkan nama point terlebih dahulu'); if(nameEl) nameEl.focus(); return; }
+    if(!lastPosition && !simActive){ alert('GPS belum aktif. Tekan START atau aktifkan simulator.'); return; }
+
+    const lat=lastPosition?.lat||simLat;
+    const lng=lastPosition?.lng||simLng;
+    const alt=lastPosition?.alt||simAlt||0;
+
+    const pt={
+        id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
+        name,
+        category: catEl?.value||'📌 Custom',
+        notes: notesEl?.value?.trim()||'',
+        lat, lng, alt,
+        timestamp: Date.now(),
+        timeStr: new Date().toLocaleTimeString()
+    };
+    tacticalPoints.push(pt);
+    saveTacticalPointsToStorage();
+    renderTacticalPointOnMap(pt);
+    renderPointsList();
+    updatePointCounter();
+    window.closeAddPointModal();
+    // Brief confirmation badge
+    const cpb=document.getElementById('checkpointBadge');
+    if(cpb){ cpb.style.display='block'; cpb.innerHTML=`📍 POINT DISIMPAN: ${name}`; setTimeout(()=>{ cpb.style.display='none'; },2500); }
+};
+
+window.deletePoint = function(id){
+    if(!confirm('Hapus point ini?')) return;
+    tacticalPoints=tacticalPoints.filter(pt=>pt.id!==id);
+    if(tacticalPointMarkers[id]){ try{ map.removeLayer(tacticalPointMarkers[id]); }catch(e){} delete tacticalPointMarkers[id]; }
+    saveTacticalPointsToStorage();
+    renderPointsList();
+    updatePointCounter();
+};
+
+window.zoomToPoint = function(id){
+    const pt=tacticalPoints.find(p=>p.id===id);
+    if(!pt||!map) return;
+    map.setView([pt.lat,pt.lng],18);
+    window.togglePanel('points'); // close panel to reveal map
+};
+
+// =====================================================================
 // SECTION 39: BOOTSTRAP
 // =====================================================================
 async function bootstrap(){
-    console.log('[VMS] v5.21 FINAL STABILIZED — Booting...');
+    console.log('[VMS] v5.22 FIXED — Booting...');
     await openDB();
     initMap();
     await loadSavedTracks();
@@ -3668,8 +3909,9 @@ async function bootstrap(){
     updateUI();
     switchTab('2D');
     startRotationLoop();
-    // v5.20: wake lock handled by top-level visibilitychange listener (dedup guard — do not re-register here)
-    console.log('[VMS] v5.21 BOOT COMPLETE');
+    // Render saved tactical points on map
+    setTimeout(()=>{ renderAllTacticalPointsOnMap(); renderPointsList(); updatePointCounter(); },500);
+    console.log('[VMS] v5.22 BOOT COMPLETE');
     console.log('[INFO] Klik START lalu SIM untuk test tanpa GPS fisik');
 }
 
