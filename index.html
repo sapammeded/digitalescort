@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.25 · DEPLOY READY</title>
+    <title>VMS | v5.26 · HARDENED</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -510,11 +510,11 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     box-shadow:0 16px 50px rgba(0,0,0,0.8);
     border:1px solid rgba(40,60,90,0.7);
     display:none;
-    pointer-events:none!important;
-    touch-action:none!important;
+    pointer-events:none;
+    touch-action:none;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
-.history-panel.show{display:block;pointer-events:auto!important;touch-action:auto!important;}
+.history-panel.show{display:block;pointer-events:auto;touch-action:auto;}
 /* History close button */
 .history-close-btn{
     float:right;margin:-2px -2px 8px 8px;
@@ -551,10 +551,10 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     z-index:1196;
     border:2px solid rgba(142,68,173,0.5);
     display:none;font-size:10px;
-    pointer-events:none!important;
-    touch-action:none!important;
+    pointer-events:none;
+    touch-action:none;
 }
-.sim-panel.show{display:block;pointer-events:auto!important;touch-action:auto!important;}
+.sim-panel.show{display:block;pointer-events:auto;touch-action:auto;}
 .sim-panel h4{color:#c080f0;margin-bottom:10px;font-size:11px;font-weight:700;}
 .sim-btn{
     background:rgba(30,44,66,0.9);border:1px solid rgba(255,255,255,0.08);
@@ -679,11 +679,11 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     box-shadow:0 16px 50px rgba(0,0,0,0.8);
     border:1px solid rgba(40,60,90,0.7);
     display:none;
-    pointer-events:none!important;
-    touch-action:none!important;
+    pointer-events:none;
+    touch-action:none;
     backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
-.points-panel.show{display:block;pointer-events:auto!important;touch-action:auto!important;}
+.points-panel.show{display:block;pointer-events:auto;touch-action:auto;}
 .points-panel-title{color:var(--c-green);font-weight:700;margin-bottom:12px;font-size:12px;display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .points-close-btn{
     background:rgba(255,90,95,0.18);
@@ -727,12 +727,15 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     background:rgba(0,0,0,0.75);
     display:none;
     align-items:center;justify-content:center;
-    pointer-events:none!important;
-    touch-action:none!important;
+    pointer-events:none;
+    touch-action:none;
     backdrop-filter:blur(4px);
 }
-#addPointModal.show{display:flex;pointer-events:auto!important;touch-action:auto!important;}
-#addPointModal.show > #addPointModalBox{pointer-events:auto;}
+#addPointModal.show{
+    display:flex;
+    pointer-events:auto;
+    touch-action:auto;
+}
 #addPointModalBox{
     background:#0c1424;
     border:1px solid var(--c-border);
@@ -1224,14 +1227,25 @@ window.toggleInfoPanel = function(){
     if(icon) icon.textContent = _infoPanelOpen ? '▼' : '▲';
 };
 
-// ─── Distance mirror ──────────────────────────────────────────────────
-setInterval(function(){
-    var v      = _getEl('totalDistance');
-    var chip   = _getEl('bbDist');
-    var iptDist= _getEl('ipt_dist');
-    if(v && chip)    chip.textContent    = v.textContent;
-    if(v && iptDist) iptDist.textContent = v.textContent;
-}, 800);
+// ─── Distance mirror — throttled via rAF, not interval ────────────────
+(function(){
+    var _mirrorRaf=null;
+    function _doMirror(){
+        _mirrorRaf=null;
+        var v=document.getElementById('totalDistance');
+        var chip=document.getElementById('bbDist');
+        var iptDist=document.getElementById('ipt_dist');
+        var txt=v?v.textContent:'0 m';
+        if(chip&&chip.textContent!==txt) chip.textContent=txt;
+        if(iptDist&&iptDist.textContent!==txt) iptDist.textContent=txt;
+    }
+    // schedule mirror update at most once per frame via 1s interval -> rAF
+    var _mirrorIv=setInterval(function(){
+        if(!_mirrorRaf) _mirrorRaf=requestAnimationFrame(_doMirror);
+    },1000);
+    // cleanup on pagehide
+    window.addEventListener('pagehide',function(){ clearInterval(_mirrorIv); if(_mirrorRaf){cancelAnimationFrame(_mirrorRaf);_mirrorRaf=null;} },{once:true});
+})();
 
 // ─── Boot: ensure all panels start fully hidden ───────────────────────
 document.addEventListener('DOMContentLoaded', function(){
@@ -1583,11 +1597,18 @@ function transitionGPS(newState){
     return true;
 }
 
-// v5.21: GPS RESTART STORM PROTECTION
-// Registry tracks restart timestamps; oscillation detector blocks degraded restarts
+// v5.26: GPS RESTART STORM PROTECTION — fixed ordering and degraded mode expiry
 function scheduleGPSRestart(reason){
     if(!isTracking||gpsState===GPS_STATE.DISABLED||gpsState===GPS_STATE.FAILED) return;
     const now=Date.now();
+
+    // --- exit degraded mode if lockout expired (check FIRST) ---
+    if(gpsDegradedMode&&now>gpsDegradedUntil){
+        gpsDegradedMode=false;
+        gpsRestartHistory=[]; // clear history after degraded mode exits
+        console.log('[GPS] Degraded mode expired — normal restarts allowed');
+    }
+    if(gpsDegradedMode){ console.log('[GPS] Degraded: restart suppressed for:', reason); return; }
 
     // --- cooldown guard ---
     if(now-gpsRestartTs < GPS_RESTART_COOLDOWN){ console.log('[GPS] Restart rate-limited:', reason); return; }
@@ -1600,23 +1621,15 @@ function scheduleGPSRestart(reason){
     gpsRestartHistory.push(now);
 
     if(gpsRestartHistory.length>=GPS_RESTART_STORM_LIMIT){
-        // Storm detected — enter degraded mode: much longer cooldown, no recursive restarts
         if(!gpsDegradedMode){
             gpsDegradedMode=true;
-            gpsDegradedUntil=now+120000; // 2 minute degraded lockout
+            gpsDegradedUntil=now+120000;
             gpsRestartHistory=[];
             console.warn('[GPS] STORM detected — entering degraded mode for 120s');
             updateGPSStatus('DEGRADED','yellow',null);
         }
         return;
     }
-
-    // --- exit degraded mode if lockout expired ---
-    if(gpsDegradedMode&&now>gpsDegradedUntil){
-        gpsDegradedMode=false;
-        console.log('[GPS] Degraded mode expired — normal restarts allowed');
-    }
-    if(gpsDegradedMode){ console.log('[GPS] Degraded: restart suppressed for:', reason); return; }
 
     gpsRestartScheduled=true;
     console.log('[GPS] Restart scheduled:', reason, '('+gpsRestartHistory.length+' in window)');
@@ -1657,11 +1670,12 @@ function startGPSStaleMonitor(){
     if(gpsStaleIv) clearInterval(gpsStaleIv);
     gpsStaleIv=setInterval(()=>{
         if(!isTracking||gpsState!==GPS_STATE.ACTIVE||!gpsLastFixTime) return;
-        if(Date.now()-gpsLastFixTime > 30000){
+        const stale=Date.now()-gpsLastFixTime;
+        if(stale > CONFIG.MAX_STALE_GPS_MS * 3){ // 30s default
             transitionGPS(GPS_STATE.STALE);
-            scheduleGPSRestart('stale');
+            scheduleGPSRestart('stale_monitor');
         }
-    },10000);
+    },15000); // check every 15s (was 10s — reduce wakeup frequency)
 }
 
 function startGPSWatchdog(){
@@ -1669,10 +1683,16 @@ function startGPSWatchdog(){
     gpsWatchdogIv=setInterval(()=>{
         if(!isTracking) return;
         const stale=Date.now()-gpsLastFixTime;
-        if(stale>60000){ updateGPSStatus('STALE','yellow',null); scheduleGPSRestart('watchdog'); }
-        else if(stale>30000){ updateGPSStatus('WARNING','yellow',null); }
-        else if(stale<15000 && gpsState===GPS_STATE.ACTIVE){ updateGPSStatus('ACTIVE','green',null); }
-    },15000);
+        // watchdog uses longer threshold to avoid fighting with stale monitor
+        if(stale>90000){
+            updateGPSStatus('STALE','yellow',null);
+            if(gpsState!==GPS_STATE.STALE) scheduleGPSRestart('watchdog_90s');
+        } else if(stale>45000){
+            updateGPSStatus('WARNING','yellow',null);
+        } else if(stale<15000&&gpsState===GPS_STATE.ACTIVE){
+            updateGPSStatus('ACTIVE','green',null);
+        }
+    },20000); // check every 20s (was 15s)
 }
 
 // =====================================================================
@@ -1712,18 +1732,31 @@ function isPointValid(lat,lng,accuracy,ts,speed){
     consecutiveInvalidCount=0; return true;
 }
 
+// v5.26: GPS profile switching — smoothed, debounced, requires stability
+let _profileSpeedBuf=[], _profileSwitchDebounce=0;
 function updateGPSProfile(speed){
     const now=Date.now();
     if(now-lastProfileSwitchTs<PROFILE_SWITCH_COOLDOWN) return;
+    // collect speed readings for stability check
+    _profileSpeedBuf.push(speed);
+    if(_profileSpeedBuf.length>5) _profileSpeedBuf.shift();
+    if(_profileSpeedBuf.length<3) return; // need at least 3 readings
+    const avgSpeed=_profileSpeedBuf.reduce((a,b)=>a+b,0)/_profileSpeedBuf.length;
     let newProfile;
-    if(speed>18) newProfile='VEHICLE';
-    else if(speed<1.5) newProfile='STATIONARY';
+    if(avgSpeed>18) newProfile='VEHICLE';
+    else if(avgSpeed<1.5) newProfile='STATIONARY';
     else newProfile='WALKING';
     if(newProfile!==gpsProfile){
-        gpsProfile=newProfile; lastProfileSwitchTs=now;
-        if(gpsState===GPS_STATE.ACTIVE&&(now-gpsLastFixTime)<10000) return;
-        scheduleGPSRestart('profile_change');
-    }
+        // require this profile to be stable for 2 consecutive checks
+        if(_profileSwitchDebounce!==newProfile){
+            _profileSwitchDebounce=newProfile;
+            return; // wait one more cycle
+        }
+        gpsProfile=newProfile; lastProfileSwitchTs=now; _profileSwitchDebounce=0;
+        // only restart if GPS is healthy and we have recent fix
+        if(gpsState===GPS_STATE.ACTIVE&&(now-gpsLastFixTime)<8000) return;
+        scheduleGPSRestart('profile_change_'+newProfile);
+    } else { _profileSwitchDebounce=0; }
 }
 
 // =====================================================================
@@ -2037,7 +2070,12 @@ function updateLostPattern(){
     if(el) el.innerHTML=lostPatternDetected?'⚠️ YA':'TIDAK';
 }
 
+let _lastMovStatsUpdate=0;
 function updateMovementStats(){
+    const now=Date.now();
+    // throttle: max once per 3 seconds — avoid O(n) on every GPS fix
+    if(now-_lastMovStatsUpdate<3000) return;
+    _lastMovStatsUpdate=now;
     const vectors=movementVectors.filter(v=>v);
     let totalClimb=0,totalDescent=0,turnCount=0;
     for(let i=1;i<vectors.length;i++){
@@ -2115,43 +2153,37 @@ function getAllPoints(){
 // =====================================================================
 function addToSpatialIndex(point,idx){
     const item={minX:point.lng-0.0001,minY:point.lat-0.0001,maxX:point.lng+0.0001,maxY:point.lat+0.0001,idx,lat:point.lat,lng:point.lng};
-    spatialIndex.insert(item); spatialHistory.push(item);
+    spatialIndex.insert(item);
+    // v5.26: only track items for bulk-load cleanup (not full objects to save RAM)
+    // We store just the item reference since RBush already has it internally
+    spatialHistory.push(item);
 
-    // v5.21: TRUE INCREMENTAL RBUSH CLEANUP
-    // Instead of one big synchronous rebuild, schedule chunked incremental prune
     if(spatialHistory.length>MAX_SPATIAL_POINTS && !rbushRebuildPending){
         rbushRebuildPending=true;
         scheduleRBushChunkedClean();
     }
 }
 
-// Schedules a chunked RBush cleanup — bounded time per chunk, deferred between chunks
 function scheduleRBushChunkedClean(){
-    if(rbushChunkTimer) return; // already scheduled
-    // Use idle timeout to avoid competing with GPS callback
+    if(rbushChunkTimer) return;
     rbushChunkTimer=setTimeout(()=>{
         rbushChunkTimer=null;
         _doRBushChunk();
-    }, 80); // 80ms defer — after GPS callback finishes
+    }, 200); // longer defer to yield to GPS callback
 }
 
 function _doRBushChunk(){
-    // Only rebuild if we are actually over limit (condition may have changed)
     if(spatialHistory.length<=MAX_SPATIAL_POINTS){ rbushRebuildPending=false; return; }
-
-    // Measure time budget — stop if we exceed 8ms (one frame budget)
     const start=performance.now();
-    const keep=Math.floor(MAX_SPATIAL_POINTS*0.7);
-
-    // Build new tree from kept slice — bulk O(n log n)
+    const keep=Math.floor(MAX_SPATIAL_POINTS*0.65); // keep 65% — more aggressive than 70%
     const toKeep=spatialHistory.slice(-keep);
+    // bulk load is much faster than individual remove()
     spatialIndex=new RBush();
     spatialIndex.load(toKeep);
     spatialHistory=toKeep;
     rbushRebuildPending=false;
-
     const elapsed=performance.now()-start;
-    console.log('[RBush] Incremental cleanup: kept',keep,'items in',elapsed.toFixed(1),'ms');
+    console.log('[RBush] Cleanup: kept',keep,'items in',elapsed.toFixed(1),'ms');
 }
 
 function findNearbyIndices(lat,lng,radius=0.002){
@@ -2233,7 +2265,9 @@ function flushTrailQueue(){
 
     // adaptive step: reduce flush density under pressure
     const step=systemPressure==='CRITICAL'?4:(systemPressure==='HIGH'?2:1);
-    const budget=systemPressure==='CRITICAL'?8:(systemPressure==='HIGH'?16:30);
+    const budget=systemPressure==='CRITICAL'?6:(systemPressure==='HIGH'?12:25);
+    // max segments to keep alive: fewer = less GPU/memory on Android
+    const maxSegs=systemPressure==='CRITICAL'?2:(systemPressure==='HIGH'?4:8);
 
     let flushed=0;
     while(trailQueue.length>0 && flushed<budget){
@@ -2246,7 +2280,8 @@ function flushTrailQueue(){
         if(!activeSegment||!map.hasLayer(activeSegment)||segmentPointCount>=SEGMENT_LIMIT){
             const newSeg=L.polyline([],{color:'#1e88e5',weight:4,smoothFactor:2,interactive:false}).addTo(map);
             trailSegments.push(newSeg);
-            while(trailSegments.length>12){
+            // aggressively prune old segments to prevent accumulation
+            while(trailSegments.length>maxSegs){
                 const old=trailSegments.shift();
                 if(old!==activeSegment) safeRemoveLayer(old);
             }
@@ -2390,6 +2425,10 @@ function onGPSError(err){
 function startTracking(){
     if(isTracking) return;
     if(!navigator.geolocation){ alert('GPS tidak didukung'); return; }
+    // v5.26: reset GPS storm history on fresh start — prevent previous session's degraded mode blocking new session
+    gpsRestartHistory=[]; gpsDegradedMode=false; gpsDegradedUntil=0; gpsRestartScheduled=false;
+    gpsRecoveryAttempts=0; consecutiveInvalidCount=0; gpsConfidenceScore=100;
+    _profileSpeedBuf=[]; _profileSwitchDebounce=0;
     transitionGPS(GPS_STATE.STARTING);
     gpsWarmupCount=0; kalmanLat=null; kalmanLng=null; kalmanVariance=1;
     const gen=++gpsGeneration;
@@ -2404,13 +2443,12 @@ function startTracking(){
     if(!rotRAFRunning) startRotationLoop();
     document.getElementById('startBtn').style.display='none';
     document.getElementById('stopBtn').style.display='inline-block';
-    // show add-point button
     const apb=document.getElementById('addPointBtn'); if(apb) apb.classList.add('visible');
     updateGPSStatus('ACTIVE','green',null);
     if('getBattery' in navigator) initBattery();
     if(document.visibilityState==='visible') requestWakeLock();
     lastCheckpointDistance=0; lastCheckpointTime=Date.now(); checkpoints=[];
-    console.log('[GPS] Tracking started');
+    console.log('[GPS] Tracking started gen='+gen);
 }
 
 function stopTracking(){
@@ -2527,10 +2565,11 @@ function initMap(){
 function flushWalQueue(){
     if(!Array.isArray(walQueue)) walQueue=[];
     if(walQueue.length===0) return;
-    // Duplicate-enqueue protection: check if chain is already pending a flush
-    // by scheduling the actual work inside the mutex chain
+    // Chain serializes all flushes — guaranteed no overlap
     walMutexChain=walMutexChain.then(()=>_doFlushWAL()).catch(e=>{
         console.error('[WAL] Chain error:',e);
+        // Reset chain so future calls don't chain on a rejected promise
+        walMutexChain=Promise.resolve();
     });
 }
 
@@ -2538,7 +2577,7 @@ async function _doFlushWAL(){
     if(!Array.isArray(walQueue)||walQueue.length===0) return;
     let batch=[];
     try{
-        if(!db) await openDB();
+        if(!db){ await openDB(); }
         batch=walQueue.splice(0,Math.min(CONFIG.WAL_BATCH_SIZE,walQueue.length));
         if(batch.length===0) return;
         await safeTx([CONFIG.PENDING_STORE],'readwrite',(tx)=>{
@@ -2548,10 +2587,12 @@ async function _doFlushWAL(){
         // schedule next flush if more pending
         if(walQueue.length>0) setTimeout(flushWalQueue,1200);
     } catch(e){
-        console.error('[WAL] Flush failed:',e);
+        console.error('[WAL] Flush failed:',e.message||e);
+        // restore unwritten items to front of queue
         if(batch.length) walQueue.unshift(...batch);
-        // retry after backoff even on error
-        setTimeout(flushWalQueue,3000);
+        // cap queue to prevent infinite growth on persistent DB failure
+        while(walQueue.length>CONFIG.MAX_WAL_QUEUE_SIZE) walQueue.shift();
+        setTimeout(flushWalQueue,5000); // longer backoff on error
     }
 }
 
@@ -2574,32 +2615,42 @@ function scheduleSync(){
 }
 
 async function syncToServer(){
-    if(syncLock&&activeSyncPromise) return activeSyncPromise;
-    if(syncLock) return; // v5.20: lock is held by another caller with no promise — bail
+    if(syncLock) return; // already running
     syncLock=true;
-    if(syncRetryCount>=CONFIG.SYNC_RETRY_BUDGET){ syncLock=false; return; }
+    // reset budget periodically so sync recovers after errors
+    if(syncRetryCount>=CONFIG.SYNC_RETRY_BUDGET){
+        // if budget exhausted wait for backoff then reset
+        const wait=Math.min(syncBackoffMs,CONFIG.SYNC_MAX_RETRY_MS);
+        syncLock=false;
+        setTimeout(()=>{ syncRetryCount=0; syncBackoffMs=CONFIG.SYNC_RETRY_BASE_MS; syncToServer(); },wait);
+        return;
+    }
     const tok=++syncMutexToken;
-    if(activeSyncPromise){ await activeSyncPromise; if(tok!==syncMutexToken){ syncLock=false; return; }}
     activeSyncPromise=(async()=>{
         updateSyncStatus('SYNCING','yellow');
         try{
             if(!db) await openDB();
             const pending=[];
-            await new Promise(r=>{
-                db.transaction([CONFIG.PENDING_STORE],'readonly').objectStore(CONFIG.PENDING_STORE)
-                  .openCursor().onsuccess=(e)=>{
+            await new Promise((resolve,reject)=>{
+                let req;
+                try{ req=db.transaction([CONFIG.PENDING_STORE],'readonly').objectStore(CONFIG.PENDING_STORE).openCursor(); }
+                catch(e){ reject(e); return; }
+                req.onsuccess=(e)=>{
                     const cur=e.target.result;
                     if(cur&&!cur.value.synced&&pending.length<CONFIG.BATCH_SYNC){ pending.push({id:cur.primaryKey,...cur.value}); cur.continue(); }
-                    else r();
+                    else resolve();
                 };
+                req.onerror=()=>reject(req.error);
             });
             if(pending.length){
-                const batchHash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pending.map(p=>p.hash).join('|'))).then(h=>[...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join(''));
+                const batchHash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pending.map(p=>p.hash||'').join('|'))).then(h=>[...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join(''));
                 const ctrl=new AbortController();
                 const tid=setTimeout(()=>ctrl.abort(),20000);
-                const res=await fetch(CONFIG.SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify({points:pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,pointHash:p.hash})),deviceId,batchId:batchHash,version:'5.20'}),signal:ctrl.signal});
-                clearTimeout(tid);
+                let res;
+                try{
+                    res=await fetch(CONFIG.SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({points:pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,pointHash:p.hash})),deviceId,batchId:batchHash,version:'5.26'}),signal:ctrl.signal});
+                } finally { clearTimeout(tid); }
                 const result=await res.json().catch(()=>null);
                 if(result&&result.success===true){
                     await safeTx([CONFIG.PENDING_STORE,CONFIG.SYNCED_STORE],'readwrite',(tx)=>{
@@ -2609,12 +2660,23 @@ async function syncToServer(){
                     updateSyncStatus('ONLINE','green'); syncRetryCount=0; syncBackoffMs=CONFIG.SYNC_RETRY_BASE_MS;
                     if(syncWorker) syncWorker.postMessage({type:'SYNC_DONE'});
                 } else throw new Error('SERVER_ERROR');
-            } else { updateSyncStatus('IDLE','green'); if(syncWorker) syncWorker.postMessage({type:'SYNC_DONE'}); }
+            } else {
+                updateSyncStatus('IDLE','green');
+                if(syncWorker) syncWorker.postMessage({type:'SYNC_DONE'});
+            }
         } catch(e){
-            updateSyncStatus('ERROR','red'); syncRetryCount++; syncBackoffMs=Math.min(syncBackoffMs*2,CONFIG.SYNC_MAX_RETRY_MS);
-            setTimeout(()=>{ syncLock=false; queueMicrotask(()=>syncToServer()); },syncBackoffMs);
+            console.error('[SYNC] Error:',e.message||e);
+            updateSyncStatus('ERROR','red');
+            syncRetryCount++;
+            syncBackoffMs=Math.min(syncBackoffMs*2,CONFIG.SYNC_MAX_RETRY_MS);
             if(syncWorker) syncWorker.postMessage({type:'SYNC_DONE'});
-        } finally { activeSyncPromise=null; syncLock=false; }
+            // schedule retry — lock will be released in finally
+            const retryDelay=syncBackoffMs;
+            setTimeout(()=>{ if(!syncLock) syncToServer(); },retryDelay);
+        } finally {
+            activeSyncPromise=null;
+            syncLock=false; // always release
+        }
     })();
     return activeSyncPromise;
 }
@@ -2783,41 +2845,49 @@ async function loadSavedTracks(){
 
 window.loadTrack=async(trackId)=>{
     if(!db) await openDB();
-    const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId);
-    req.onsuccess=()=>{
-        const track=req.result;
-        if(track&&confirm(`Muat track "${track.name}"?`)){
-            clearBuffer(); resetMovementEngine();
-            if(track.vehicleMode) setVehicle(track.vehicleMode);
-            clearSpatialIndex();
-            for(let i=0;i<track.points.length;i++){
-                const p=track.points[i], prev=i>0?track.points[i-1]:null;
-                pushPoint(p);
-                addMovementVector(p,prev);
-                if(prev) cachedTotalDistance+=haversineFast(prev.lat,prev.lng,p.lat,p.lng);
-                addToSpatialIndex(p,i);
-            }
-            if(track.semanticVectors&&track.semanticVectors.length){ movementVectors=track.semanticVectors.slice(); updateSemanticBreadcrumb(); updateMovementStats(); }
-            if(track.checkpoints) checkpoints=track.checkpoints.slice();
-            rebuildTrail();
-            if(map&&lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16);
-    
-            const hp=document.getElementById('historyPanel'); if(hp) hp.classList.remove('show');
-        }
-    };
+    let track=null;
+    await new Promise((res,rej)=>{
+        try{
+            const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId);
+            req.onsuccess=()=>{ track=req.result; res(); };
+            req.onerror=()=>rej(req.error);
+        }catch(e){ rej(e); }
+    }).catch(e=>{ console.error('[loadTrack]',e); });
+    if(!track){ alert('Track tidak ditemukan'); return; }
+    if(!confirm(`Muat track "${track.name}"?`)) return;
+    clearBuffer(); resetMovementEngine();
+    if(track.vehicleMode) setVehicle(track.vehicleMode);
+    clearSpatialIndex();
+    for(let i=0;i<track.points.length;i++){
+        const p=track.points[i], prev=i>0?track.points[i-1]:null;
+        pushPoint(p);
+        addMovementVector(p,prev);
+        if(prev) cachedTotalDistance+=haversineFast(prev.lat,prev.lng,p.lat,p.lng);
+        addToSpatialIndex(p,i);
+    }
+    if(track.semanticVectors&&track.semanticVectors.length){ movementVectors=track.semanticVectors.slice(); updateSemanticBreadcrumb(); updateMovementStats(); }
+    if(track.checkpoints) checkpoints=track.checkpoints.slice();
+    rebuildTrail();
+    if(map&&lastPosition) map.setView([lastPosition.lat,lastPosition.lng],16);
+    // close via panel manager so _activePanel state is correctly cleared
+    if(window.closeAllPanels) window.closeAllPanels();
 };
 
 window.followTrack=async(trackId)=>{
     if(!db) await openDB();
-    const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId);
-    req.onsuccess=()=>{
-        const track=req.result;
-        if(track&&confirm(`Mulai navigasi mengikuti track "${track.name}"?`)){
-            if(track.vehicleMode) setVehicle(track.vehicleMode);
-            startFollowMode(track);
-            const hp=document.getElementById('historyPanel'); if(hp) hp.classList.remove('show');
-        }
-    };
+    let track=null;
+    await new Promise((res,rej)=>{
+        try{
+            const req=db.transaction([CONFIG.TRACKS_STORE],'readonly').objectStore(CONFIG.TRACKS_STORE).get(trackId);
+            req.onsuccess=()=>{ track=req.result; res(); };
+            req.onerror=()=>rej(req.error);
+        }catch(e){ rej(e); }
+    }).catch(e=>{ console.error('[followTrack]',e); });
+    if(!track){ alert('Track tidak ditemukan'); return; }
+    if(!confirm(`Mulai navigasi mengikuti track "${track.name}"?`)) return;
+    if(track.vehicleMode) setVehicle(track.vehicleMode);
+    startFollowMode(track);
+    if(window.closeAllPanels) window.closeAllPanels();
 };
 
 window.deleteTrack=async(trackId)=>{
@@ -2870,15 +2940,18 @@ function setVehicle(v){
 //  6. Slider scrub uses snapshot, never live buffer
 // =====================================================================
 function stopPlayback(){
-    // v5.20: bump token FIRST — all in-flight RAF frames become zombies immediately
+    // v5.26: bump token FIRST — all in-flight RAF frames become zombies immediately
     replayToken++;
     playbackActive=false; isPlaying=false; isReplaying=false;
     if(playbackTimer){ cancelAnimationFrame(playbackTimer); playbackTimer=null; }
     const pb=document.getElementById('playbackBar'); if(pb) pb.classList.remove('show');
-    // Clear snapshots after token bump — no race window
+    // Clear snapshots — safe after token bump (no race window)
     replaySnapshotIndices=null;
     replaySnapshotPoints=null;
+    // Always remove playback marker cleanly
     if(playbackMarker){ safeRemoveLayer(playbackMarker); playbackMarker=null; }
+    // Reset rotation to north-up after replay
+    rotMode='NORTH_UP'; rotTargetAngle=0;
 }
 
 function startPlayback(){
@@ -2967,17 +3040,14 @@ function pausePlayback(){
 
 function resumePlayback(){
     if(!playbackActive||isPlaying||!replaySnapshotPoints) return;
-    // v5.20 FIX: cancel any surviving RAF before restarting — prevents dual-loop
     if(playbackTimer){ cancelAnimationFrame(playbackTimer); playbackTimer=null; }
     isPlaying=true;
     const myTok=replayToken;
     const frameMs=lowPowerGPU?140:CONFIG.PLAYBACK_FRAME_MS;
     let lastFrameTs=0, lastPanTs=0;
-    let rafActive=false;
     function animate(now){
-        rafActive=false;
         if(myTok!==replayToken||!playbackActive||!isPlaying){ playbackTimer=null; return; }
-        if(!rafActive){ rafActive=true; playbackTimer=requestAnimationFrame(animate); }
+        playbackTimer=requestAnimationFrame(animate);
         if(now-lastFrameTs<frameMs) return;
         lastFrameTs=now;
         if(playbackIndex>=replaySnapshotPoints.length){ isReplaying=false; stopPlayback(); return; }
@@ -2995,7 +3065,6 @@ function resumePlayback(){
         const pctEl=document.getElementById('playbackPercent'); if(pctEl) pctEl.innerText=Math.round((playbackIndex/replaySnapshotPoints.length)*100)+'%';
         playbackIndex++;
     }
-    rafActive=true;
     playbackTimer=requestAnimationFrame(animate);
 }
 
@@ -3415,41 +3484,26 @@ function updateSystemPressure(){
     if(systemPressure!==prev){
         const pm=document.getElementById('powerMode');
         if(pm) pm.innerHTML=systemPressure==='CRITICAL'?'⚠️ CRITICAL':(systemPressure==='HIGH'?'📉 DEGRADED':'NORMAL');
+        if(systemPressure==='CRITICAL') console.warn('[PRESSURE] CRITICAL — adaptive quality engaged');
+        else if(systemPressure==='HIGH') console.log('[PRESSURE] HIGH — reduced quality mode');
+        else console.log('[PRESSURE] NORMAL — quality restored');
+    }
 
-        if(systemPressure==='CRITICAL'){
-            // --- CRITICAL: aggressive cleanup ---
-            while(trailSegments.length>3&&trailSegments[0]!==activeSegment){ safeRemoveLayer(trailSegments.shift()); }
-            // trim trail queue
-            if(trailQueue.length>10) trailQueue=trailQueue.slice(-5);
-            // trim movement vectors
-            if(movementVectors.length>200) movementVectors=movementVectors.slice(-200);
-            // trim WAL queue
-            if(walQueue.length>500) walQueue=walQueue.slice(-300);
-            // reduce camera update rate
-            camLastPanTs=now; // force camera wait
-            console.warn('[PRESSURE] CRITICAL — adaptive quality engaged');
-
-        } else if(systemPressure==='HIGH'){
-            while(trailSegments.length>6&&trailSegments[0]!==activeSegment){ safeRemoveLayer(trailSegments.shift()); }
-            if(trailQueue.length>30) trailQueue=trailQueue.slice(-20);
-            if(movementVectors.length>500) movementVectors=movementVectors.slice(-500);
-            console.log('[PRESSURE] HIGH — reduced quality mode');
-
-        } else {
-            // NORMAL: restore quality
-            console.log('[PRESSURE] NORMAL — quality restored');
-        }
-
-        // --- adaptive replay density ---
-        // If replaying and CRITICAL, we can do nothing here since snapshot is immutable;
-        // frame rate is already gated by frameMs in animate()
-
-        // --- adaptive rotation frequency ---
-        if(systemPressure==='CRITICAL'&&rotEnabled){
-            // reduce rotation lerp under critical pressure
-            // (ROT_LERP is const; we gate via rotDecisionTs instead)
-            rotDecisionTs=now+2000; // force 2s skip before next rotation decision
-        }
+    // Always run cleanup when under pressure (not just on transition)
+    if(systemPressure==='CRITICAL'){
+        // aggressively prune old trail segments — keep only 2 most recent
+        while(trailSegments.length>2&&trailSegments[0]!==activeSegment){ safeRemoveLayer(trailSegments.shift()); }
+        if(trailQueue.length>10) trailQueue=trailQueue.slice(-5);
+        if(movementVectors.length>200) movementVectors=movementVectors.slice(-200);
+        if(walQueue.length>500) walQueue=walQueue.slice(-300);
+        if(headingHistory.length>5) headingHistory=headingHistory.slice(-5);
+        camLastPanTs=now;
+        rotDecisionTs=now+2000;
+    } else if(systemPressure==='HIGH'){
+        while(trailSegments.length>4&&trailSegments[0]!==activeSegment){ safeRemoveLayer(trailSegments.shift()); }
+        if(trailQueue.length>30) trailQueue=trailQueue.slice(-20);
+        if(movementVectors.length>500) movementVectors=movementVectors.slice(-500);
+        if(walQueue.length>1000) walQueue=walQueue.slice(-800);
     }
 }
 
@@ -3544,34 +3598,53 @@ setInterval(()=>{
 
 
 
-// v5.20: Android memory cleanup — also rebuilds RBush after trim to stay consistent
+// v5.26: PERIODIC MEMORY SWEEP — runs every 2 minutes, aggressive on long sessions
 setInterval(()=>{
-    const now=Date.now();
-    if(now-lastMemorySweep<60000) return;
-    lastMemorySweep=now;
+    lastMemorySweep=Date.now();
     let memPct=0;
     if(performance&&performance.memory) memPct=performance.memory.usedJSHeapSize/performance.memory.jsHeapSizeLimit;
-    if(memPct>0.85||systemPressure==='CRITICAL'){
-        if(movementVectors.length>500) movementVectors=movementVectors.slice(-500);
-        if(checkpoints.length>20) checkpoints=checkpoints.slice(-20);
-        if(bufferLen>4000){
-            const keep=3000, nb=new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
-            const startIdx=bufferLen-keep;
-            for(let i=0;i<keep;i++) nb[i]=trackBuffer[(bufferStart+startIdx+i)%CONFIG.CIRCULAR_BUFFER_SIZE];
-            trackBuffer=nb; bufferStart=0; bufferLen=keep;
-            // v5.20: rebuild spatial index after buffer trim
-            if(!backtrackActive&&!followMode){
-                const items=[];
-                for(let i=0;i<bufferLen;i++){
-                    const p=getPoint(i);
-                    if(p) items.push({minX:p.lng-0.0001,minY:p.lat-0.0001,maxX:p.lng+0.0001,maxY:p.lat+0.0001,idx:i,lat:p.lat,lng:p.lng});
-                }
-                spatialIndex=new RBush(); if(items.length) spatialIndex.load(items);
-                spatialHistory=items;
+    const needsClean=memPct>0.75||systemPressure==='CRITICAL'||systemPressure==='HIGH';
+    if(!needsClean) return;
+
+    // trim movement vectors
+    if(movementVectors.length>300) movementVectors=movementVectors.slice(-300);
+    // trim checkpoints
+    if(checkpoints.length>20) checkpoints=checkpoints.slice(-20);
+    // trim heading history
+    if(headingHistory.length>10) headingHistory=headingHistory.slice(-10);
+    // trim spatial history reference array (not the RBush tree — that self-manages)
+    if(spatialHistory.length>MAX_SPATIAL_POINTS) spatialHistory=spatialHistory.slice(-Math.floor(MAX_SPATIAL_POINTS*0.7));
+    // trim GPS restart history
+    if(gpsRestartHistory.length>20) gpsRestartHistory=gpsRestartHistory.slice(-10);
+
+    // circular buffer trim on extreme pressure
+    if(bufferLen>4000&&memPct>0.80){
+        const keep=3000, nb=new Array(CONFIG.CIRCULAR_BUFFER_SIZE);
+        const startIdx=bufferLen-keep;
+        for(let i=0;i<keep;i++) nb[i]=trackBuffer[(bufferStart+startIdx+i)%CONFIG.CIRCULAR_BUFFER_SIZE];
+        trackBuffer=nb; bufferStart=0; bufferLen=keep;
+        // rebuild spatial index after buffer trim
+        if(!backtrackActive&&!followMode){
+            const items=[];
+            for(let i=0;i<bufferLen;i++){
+                const p=getPoint(i);
+                if(p) items.push({minX:p.lng-0.0001,minY:p.lat-0.0001,maxX:p.lng+0.0001,maxY:p.lat+0.0001,idx:i,lat:p.lat,lng:p.lng});
             }
+            spatialIndex=new RBush(); if(items.length) spatialIndex.load(items);
+            spatialHistory=items;
+        }
+        console.log('[MEM] Buffer trimmed to',keep,'points. Mem:',Math.round(memPct*100)+'%');
+    }
+
+    // extra: prune trail segments
+    if(trailSegments.length>4&&systemPressure!=='NORMAL'){
+        const keep=systemPressure==='CRITICAL'?1:3;
+        while(trailSegments.length>keep+1){
+            const old=trailSegments.shift();
+            if(old!==activeSegment) safeRemoveLayer(old);
         }
     }
-},60000);
+},120000); // every 2 minutes
 
 setInterval(()=>{ if(isTracking) capUnsyncedWAL(); },60000);
 
@@ -3606,23 +3679,26 @@ document.addEventListener('visibilitychange',()=>{
 
 window.addEventListener('pagehide',()=>{
     try{
-        if(window.watchId) navigator.geolocation.clearWatch(window.watchId);
-        if(gpsWatchdogIv) clearInterval(gpsWatchdogIv);
-        if(gpsStaleIv) clearInterval(gpsStaleIv);
-        if(followIv) clearInterval(followIv);
-        if(backtrackIv) clearInterval(backtrackIv);
-        if(playbackTimer) cancelAnimationFrame(playbackTimer);
-        if(rotRAFId) cancelAnimationFrame(rotRAFId);
+        if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId=null; }
+        if(gpsWatchdogIv){ clearInterval(gpsWatchdogIv); gpsWatchdogIv=null; }
+        if(gpsStaleIv){ clearInterval(gpsStaleIv); gpsStaleIv=null; }
+        if(followIv){ clearInterval(followIv); followIv=null; }
+        if(backtrackIv){ clearInterval(backtrackIv); backtrackIv=null; }
+        if(walBatchTimer){ clearTimeout(walBatchTimer); walBatchTimer=null; }
+        if(syncScheduleTimer){ clearTimeout(syncScheduleTimer); syncScheduleTimer=null; }
+        if(rbushChunkTimer){ clearTimeout(rbushChunkTimer); rbushChunkTimer=null; }
+        if(playbackTimer){ cancelAnimationFrame(playbackTimer); playbackTimer=null; }
+        // stop rotation loop: clear flag FIRST, then cancel RAF id to prevent re-entry
         rotRAFRunning=false;
-        // v5.21: cancel trail flush RAF
+        if(rotRAFId){ cancelAnimationFrame(rotRAFId); rotRAFId=null; }
+        // cancel trail flush RAF
         if(trailFlushRAFId){ cancelAnimationFrame(trailFlushRAFId); trailFlushRAFId=null; }
         trailFlushScheduled=false;
-        // v5.21: cancel RBush chunk timer
-        if(rbushChunkTimer){ clearTimeout(rbushChunkTimer); rbushChunkTimer=null; }
-        if(syncWorker) syncWorker.terminate();
+        if(syncWorker){ try{ syncWorker.terminate(); }catch(e){} syncWorker=null; }
+        if(workerHeartbeatIv){ clearInterval(workerHeartbeatIv); workerHeartbeatIv=null; }
         if(walQueue&&walQueue.length>0) flushWalQueue();
         if(simActive) stopSimulation();
-    } catch(e){ console.error(e); }
+    } catch(e){ console.error('[pagehide]',e); }
 });
 
 window.addEventListener('beforeunload',()=>{ if(walQueue&&walQueue.length>0) flushWalQueue(); });
@@ -3833,6 +3909,8 @@ window.openAddPointModal = function(){
         else
             coordEl.innerHTML='📍 Koordinat: menunggu GPS atau simulator...';
     }
+    // ensure clean state before showing
+    modal.style.cssText='';
     modal.classList.add('show');
     // Focus name field after paint
     setTimeout(()=>{ if(nameEl) nameEl.focus(); }, 80);
@@ -3840,7 +3918,10 @@ window.openAddPointModal = function(){
 
 window.closeAddPointModal = function(){
     const modal=document.getElementById('addPointModal');
-    if(modal) modal.classList.remove('show');
+    if(!modal) return;
+    modal.classList.remove('show');
+    // explicitly restore pointer-events:none so map touch is never blocked
+    modal.style.cssText='pointer-events:none;touch-action:none;';
 };
 
 window.saveAddPoint = function(){
@@ -3895,7 +3976,14 @@ window.zoomToPoint = function(id){
 // SECTION 39: BOOTSTRAP
 // =====================================================================
 async function bootstrap(){
-    console.log('[VMS] v5.22 FIXED — Booting...');
+    console.log('[VMS] v5.26 HARDENED — Booting...');
+    // v5.26: force-unlock all panels on boot — prevents deadlock from crashed previous session
+    ['historyPanel','simPanel','pointsPanel','addPointModal'].forEach(id=>{
+        const el=document.getElementById(id);
+        if(el){ el.classList.remove('show'); el.style.cssText='display:none;pointer-events:none;touch-action:none;'; }
+    });
+    const dimmer=document.getElementById('menuDimmer');
+    if(dimmer){ dimmer.classList.remove('open'); dimmer.style.pointerEvents='none'; }
     await openDB();
     initMap();
     await loadSavedTracks();
@@ -3911,7 +3999,7 @@ async function bootstrap(){
     startRotationLoop();
     // Render saved tactical points on map
     setTimeout(()=>{ renderAllTacticalPointsOnMap(); renderPointsList(); updatePointCounter(); },500);
-    console.log('[VMS] v5.22 BOOT COMPLETE');
+    console.log('[VMS] v5.26 BOOT COMPLETE');
     console.log('[INFO] Klik START lalu SIM untuk test tanpa GPS fisik');
 }
 
