@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.26 · HARDENED</title>
+    <title>VMS | v5.27 · ACTIVE NAV</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -224,6 +224,8 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 .btn-sheet{background:#1a4020;color:#fff;border-color:#2c6e2f;}
 .btn-sim{background:#4a1870;color:#fff;border-color:#8e44ad;}
 .btn-replay{background:#322090;color:#fff;border:1px solid #6c5ce7;}
+.btn-export{background:#0a3a4a;color:#fff;border:1px solid #00b4d8;}
+.btn-import{background:#1a3a1a;color:#fff;border:1px solid #52b788;}
 
 /* ═══════════════════════════════════════════════
    VEHICLE SELECTOR  — inside secondary menu
@@ -1020,7 +1022,12 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
         <button id="vehicleMotor" class="btn-vehicle">🏍️ MOTOR</button>
         <button id="vehicleCar" class="btn-vehicle">🚗 MOBIL</button>
     </div>
-    <div class="sec-label" style="margin-top:4px;">⚙️ Tools</div>
+    <div class="sec-label" style="margin-top:4px;">📡 Route I/O</div>
+    <div class="sec-row">
+        <button id="exportRouteBtn" class="btn-sec btn-export">📤 EXPORT</button>
+        <button id="importRouteBtn" class="btn-sec btn-import">📥 IMPORT</button>
+    </div>
+    <div class="sec-label" style="margin-top:2px;">⚙️ Tools</div>
     <div class="sec-row">
         <button id="syncBtn" class="btn-sec btn-sync">🔄 SYNC</button>
         <button id="clearBtn" class="btn-sec btn-clear">🗑 CLEAR</button>
@@ -1266,7 +1273,7 @@ document.addEventListener('DOMContentLoaded', function(){
 //        visibility-safe RAF, Android memory, camera pan jitter,
 //        battery drain reduction, long-session stability
 // =====================================================================
-console.log('[VMS] v5.21 FINAL STABILIZED — boot');
+console.log('[VMS] v5.27 GPS-BEARING + ACTIVE NAV + ROUTE IO — boot');
 
 // =====================================================================
 // SECTION 1: CONSTANTS & CONFIGURATION
@@ -1501,6 +1508,9 @@ let savedTracks = [];
 // --- memory sweep ---
 let lastMemorySweep = 0;
 
+// --- v5.27: GPS-track bearing buffer ---
+let _gpsBearBuf = [], _gpsBearLast = 0;
+
 // =====================================================================
 // v5.21 NEW STATE: Trail batching queue, adaptive camera, GPS storm guard
 // =====================================================================
@@ -1566,6 +1576,19 @@ function calcBearing(lat1,lon1,lat2,lon2){
 
 function normalizeAngle(a){ a=a%360; return a<0?a+360:a; }
 function shortestAngleDiff(a,b){ return (b-a+540)%360-180; }
+
+// v5.27: GPS-track bearing — circular mean of last 6 GPS-computed bearings
+// Avoids 0/360 wrap artifact; ignores sub-noise fixes; stable road-facing rotation
+function getSmoothedGPSBearing(rawBearing){
+    if(!Number.isFinite(rawBearing)) return _gpsBearLast;
+    _gpsBearBuf.push(rawBearing);
+    if(_gpsBearBuf.length>6) _gpsBearBuf.shift();
+    let sx=0,sy=0;
+    for(const b of _gpsBearBuf){ sx+=Math.cos(b*Math.PI/180); sy+=Math.sin(b*Math.PI/180); }
+    _gpsBearLast=((Math.atan2(sy/_gpsBearBuf.length,sx/_gpsBearBuf.length)*180/Math.PI)+360)%360;
+    return _gpsBearLast;
+}
+function resetGPSBearing(){ _gpsBearBuf=[]; _gpsBearLast=0; }
 
 function circularMean(a,b,wA=0.7,wB=0.3){
     const aR=a*Math.PI/180, bR=b*Math.PI/180;
@@ -1958,6 +1981,18 @@ function adaptiveCameraFollow(lat,lng,speed){
     } catch(e){}
 }
 
+// v5.27: forward-offset camera — looks ahead of movement direction
+// fwdM: 45m fast / 30m medium / 15m slow — keeps road ahead visible (Google Maps feel)
+function adaptiveCameraFollowOffset(lat,lng,speed,heading){
+    if(!map||currentTab!=='2D'||isReplaying) return;
+    const fwdM=speed>10?45:(speed>3?30:(speed>1?15:0));
+    if(fwdM<1){ adaptiveCameraFollow(lat,lng,speed); return; }
+    const rad=heading*Math.PI/180;
+    const dLat=fwdM/111320;
+    const dLng=fwdM/(111320*Math.cos(lat*Math.PI/180));
+    adaptiveCameraFollow(lat+dLat*Math.cos(rad),lng+dLng*Math.sin(rad),speed);
+}
+
 // =====================================================================
 // SECTION 8: COMPASS
 // =====================================================================
@@ -2247,10 +2282,15 @@ function updateTrail(){
         }
     }
 
-    // --- camera: use adaptive engine instead of direct pan ---
-    if(lastPosition&&lastPosition.speed>1.0&&fusedHeading){
-        setTargetRotation(fusedHeading);
-        adaptiveCameraFollow(last.lat,last.lng,lastPosition.speed||0);
+    // --- camera: GPS-track bearing dominant (v5.27) ---
+    // GPS-computed heading (prev→curr point) is far more stable than compass on Android
+    if(lastPosition&&lastPosition.speed>1.0){
+        const gpsHead=lastPosition.heading;
+        const rotHead=(Number.isFinite(gpsHead)&&gpsHead>0)
+            ? getSmoothedGPSBearing(gpsHead)
+            : (fusedHeading||gpsHead||0);
+        setTargetRotation(rotHead);
+        adaptiveCameraFollowOffset(last.lat,last.lng,lastPosition.speed||0,rotHead);
     } else {
         adaptiveCameraFollow(last.lat,last.lng,0);
     }
@@ -2494,6 +2534,7 @@ function clearBuffer(){
     checkpoints=[]; lastCheckpointDistance=0; lastCheckpointTime=0;
     if(simActive) stopSimulation();
     rotCurrentAngle=0; rotTargetAngle=0; applyMapRotation(0);
+    resetGPSBearing();
     updateUI(); resetMovementEngine();
 }
 
@@ -2649,7 +2690,7 @@ async function syncToServer(){
                 let res;
                 try{
                     res=await fetch(CONFIG.SYNC_URL,{method:'POST',headers:{'Content-Type':'application/json'},
-                        body:JSON.stringify({points:pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,pointHash:p.hash})),deviceId,batchId:batchHash,version:'5.26'}),signal:ctrl.signal});
+                        body:JSON.stringify({points:pending.map(p=>({lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:p.accuracy,timestamp:p.timestamp,pointHash:p.hash})),deviceId,batchId:batchHash,version:'5.27'}),signal:ctrl.signal});
                 } finally { clearTimeout(tid); }
                 const result=await res.json().catch(()=>null);
                 if(result&&result.success===true){
@@ -3120,9 +3161,14 @@ function findNearestBacktrack(){
         if(backtrackOffroute){
             if(ob) ob.style.display='block';
             if(np) np.style.borderLeftColor='#ff5a5f';
+            // v5.27: route line turns red when off-route
+            if(returnLine){ try{ returnLine.setStyle({color:'#ff5a5f',dashArray:'6,6',weight:3}); }catch(e){} }
+            if(navigator.vibrate) navigator.vibrate([60,40,60]);
         } else {
             if(ob) ob.style.display='none';
             if(np) np.style.borderLeftColor='#fd7e2c';
+            // v5.27: restore solid orange when back on route
+            if(returnLine){ try{ returnLine.setStyle({color:'#fd7e2c',dashArray:null,weight:5}); }catch(e){} }
         }
     }
     return nearestIdx;
@@ -3131,7 +3177,7 @@ function findNearestBacktrack(){
 function updateBacktrackNavigation(){
     if(!backtrackActive||isReplaying||followMode||backtrackRoute.length===0||!lastPosition) return;
     const now=Date.now();
-    const throttle=systemPressure==='CRITICAL'?2000:(systemPressure==='HIGH'?1200:800);
+    const throttle=systemPressure==='CRITICAL'?2000:(systemPressure==='HIGH'?1200:700);
     if(now-backtrackArrowTs<throttle) return;
     backtrackArrowTs=now;
 
@@ -3140,6 +3186,10 @@ function updateBacktrackNavigation(){
     const remainingDist=totalDist-backtrackCumDist[nearestIdx];
     const progressPct=((totalDist-remainingDist)/totalDist)*100;
 
+    // v5.27: snap position to nearest route segment for stable bearing calculation
+    const snapped=snapToBacktrack(lastPosition.lat,lastPosition.lng,nearestIdx);
+    const posLat=snapped.lat, posLng=snapped.lng;
+
     const progEl=document.getElementById('backtrackProgress');
     if(progEl){ progEl.style.display='block'; progEl.innerHTML=`🏠 ${Math.round(remainingDist)}m | ${Math.round(progressPct)}%`; }
     const navDist=document.getElementById('navDistance'); if(navDist) navDist.innerHTML=`Sisa: ${Math.round(remainingDist)}m`;
@@ -3147,39 +3197,52 @@ function updateBacktrackNavigation(){
 
     const navInst=document.getElementById('navInstruction');
     if(backtrackOffroute){
-        if(navInst){ navInst.innerHTML='⚠️ ANDA KELUAR DARI JALUR'; navInst.style.color='#ff5a5f'; }
+        if(navInst){ navInst.innerHTML='⚠️ KELUAR JALUR — KEMBALI KE GARIS ORANYE'; navInst.style.color='#ff5a5f'; }
+        // v5.27: arrow points toward nearest route point when off-route
+        if(backtrackRoute[nearestIdx]){
+            const bearBack=calcBearing(lastPosition.lat,lastPosition.lng,backtrackRoute[nearestIdx].lat,backtrackRoute[nearestIdx].lng);
+            const diffBack=shortestAngleDiff(_gpsBearLast||lastPosition.heading||0,bearBack);
+            const arrowEl=document.getElementById('returnArrow');
+            if(arrowEl){ arrowEl.style.display='flex'; arrowEl.style.transform=`rotate(${Math.round(diffBack)}deg)`; }
+        }
         return;
     } else { if(navInst) navInst.style.color='#00f2a0'; }
 
-    const nextIdx=nearestIdx+1;
-    if(nextIdx>=backtrackRoute.length){
-        if(remainingDist<15){
-            if(navInst) navInst.innerHTML='🏁 ANDA TELAH KEMBALI KE TITIK AWAL!';
-            if(progEl) progEl.style.display='none';
-            stopBacktrackMode(); return;
-        }
-        if(navInst) navInst.innerHTML=`⬆️ JALAN LURUS ${Math.round(remainingDist)}m LAGI`;
-        return;
+    // Arrival check
+    if(remainingDist<15){
+        if(navInst) navInst.innerHTML='🏁 ANDA TELAH KEMBALI KE TITIK AWAL!';
+        if(progEl) progEl.style.display='none';
+        stopBacktrackMode(); return;
     }
 
-    const target=backtrackRoute[nextIdx];
-    if(!target) return;
-    const bearingToTarget=calcBearing(lastPosition.lat,lastPosition.lng,target.lat,target.lng);
-    const diff=shortestAngleDiff(fusedHeading||lastPosition.heading||0,bearingToTarget);
+    // v5.27: look-ahead 2 segments for smoother turn anticipation
+    const lookahead=Math.min(nearestIdx+2,backtrackRoute.length-1);
+    const target=backtrackRoute[lookahead];
+    if(!target){ if(navInst) navInst.innerHTML=`⬆️ JALAN LURUS ${Math.round(remainingDist)}m`; return; }
 
-    let inst='', arrowRot=0, arrowEmoji='⬆️';
-    if(Math.abs(diff)<15){ inst='⬆️ LURUS'; arrowRot=0; arrowEmoji='⬆️'; }
-    else if(diff>0&&diff<75){ inst='↗️ BELOK KANAN SEDIKIT'; arrowRot=45; arrowEmoji='↗️'; }
-    else if(diff>0){ inst='➡️ BELOK KANAN'; arrowRot=90; arrowEmoji='➡️'; }
-    else if(diff<0&&diff>-75){ inst='↖️ BELOK KIRI SEDIKIT'; arrowRot=-45; arrowEmoji='↖️'; }
-    else { inst='⬅️ BELOK KIRI'; arrowRot=-90; arrowEmoji='⬅️'; }
+    // Compute bearing from snapped position to lookahead target
+    // Use smoothed GPS bearing (v5.27) for "current facing" — stable road direction
+    const bearingToTarget=calcBearing(posLat,posLng,target.lat,target.lng);
+    const currentFacing=_gpsBearLast||lastPosition.heading||fusedHeading||0;
+    const diff=shortestAngleDiff(currentFacing,bearingToTarget);
+    const distToNext=haversineFast(lastPosition.lat,lastPosition.lng,target.lat,target.lng);
 
-    if(navInst) navInst.innerHTML=`${inst} ${Math.round(Math.abs(remainingDist))}m`;
+    let inst='',arrowRot=0,arrowEmoji='⬆️';
+    if(Math.abs(diff)<12){      inst='⬆️ LURUS';                                   arrowRot=0;    arrowEmoji='⬆️'; }
+    else if(diff>0&&diff<60){   inst=`↗️ KANAN SEDIKIT ${Math.round(distToNext)}m`; arrowRot=35;   arrowEmoji='↗️'; }
+    else if(diff>0&&diff<120){  inst=`➡️ BELOK KANAN ${Math.round(distToNext)}m`;   arrowRot=90;   arrowEmoji='➡️'; }
+    else if(diff>0){            inst='↩️ BALIK KANAN';                              arrowRot=150;  arrowEmoji='↩️'; }
+    else if(diff>-60){          inst=`↖️ KIRI SEDIKIT ${Math.round(distToNext)}m`;  arrowRot=-35;  arrowEmoji='↖️'; }
+    else if(diff>-120){         inst=`⬅️ BELOK KIRI ${Math.round(distToNext)}m`;    arrowRot=-90;  arrowEmoji='⬅️'; }
+    else{                       inst='↪️ BALIK KIRI';                               arrowRot=-150; arrowEmoji='↪️'; }
+
+    if(remainingDist<30) inst='🏁 HAMPIR SAMPAI!';
+
+    if(navInst) navInst.innerHTML=inst;
     const arrowEl=document.getElementById('returnArrow');
     if(arrowEl){ arrowEl.style.display='flex'; arrowEl.style.transform=`rotate(${arrowRot}deg)`; }
     const arrowSpan=document.getElementById('returnArrowSpan');
     if(arrowSpan) arrowSpan.innerHTML=arrowEmoji;
-
     const rd=document.getElementById('returnDistance'); if(rd) rd.innerHTML=`${Math.round(remainingDist)}`;
 }
 
@@ -3202,10 +3265,35 @@ function startBacktrackMode(){
     backtrackIv=setInterval(()=>{ if(!backtrackActive||isReplaying) return; updateBacktrackNavigation(); },800);
     if(returnLine) safeRemoveLayer(returnLine);
     if(backtrackRoute.length>0){
-        returnLine=L.polyline(backtrackRoute.map(p=>[p.lat,p.lng]),{color:'#fd7e2c',weight:3,dashArray:'8,8',interactive:false}).addTo(map);
+        // v5.27: solid thick line — navigational, not decorative
+        returnLine=L.polyline(backtrackRoute.map(p=>[p.lat,p.lng]),{color:'#fd7e2c',weight:5,opacity:0.9,dashArray:null,interactive:false}).addTo(map);
     }
     updateBacktrackNavigation();
     alert(`🔄 BACKTRACK AKTIF\n📏 Total jalur pulang: ${Math.round(backtrackCumDist[backtrackCumDist.length-1])} meter`);
+}
+
+// v5.27: project GPS point P onto segment A→B — returns clamped nearest point on segment
+function projectOnSegment(pLat,pLng,aLat,aLng,bLat,bLng){
+    const dx=bLng-aLng,dy=bLat-aLat;
+    const lenSq=dx*dx+dy*dy;
+    if(lenSq<1e-14) return {lat:aLat,lng:aLng};
+    const t=Math.max(0,Math.min(1,((pLng-aLng)*dx+(pLat-aLat)*dy)/lenSq));
+    return {lat:aLat+t*dy,lng:aLng+t*dx};
+}
+
+// v5.27: snap GPS position to nearest backtrack segment — reduces side-drift wobble
+// Returns snapped coord or original if beyond SNAP_MAX threshold
+function snapToBacktrack(lat,lng,nearestIdx){
+    const SNAP_MAX=30; // meters — beyond this means genuinely off-route
+    let best={dist:Infinity,pt:{lat,lng}};
+    for(const i of [nearestIdx-1,nearestIdx]){
+        if(i<0||i>=backtrackRoute.length-1) continue;
+        const A=backtrackRoute[i],B=backtrackRoute[i+1];
+        const proj=projectOnSegment(lat,lng,A.lat,A.lng,B.lat,B.lng);
+        const d=haversineFast(lat,lng,proj.lat,proj.lng);
+        if(d<best.dist) best={dist:d,pt:proj};
+    }
+    return {lat:best.pt.lat,lng:best.pt.lng,snapped:best.dist<=SNAP_MAX,distFromRoute:best.dist};
 }
 
 function stopBacktrackMode(){
@@ -3582,6 +3670,81 @@ function clearAll(){
 }
 
 function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/1IlKDIHpMdA7FJwLFEpJP-V4iDnAXnpE9YKFJRkGZ6uI/edit','_blank'); }
+
+// v5.27: Route Export — offline JSON, timestamp filename, schema versioned
+function exportRoute(){
+    if(bufferLen<2){ alert('Tidak ada jalur untuk diekspor (minimal 2 titik)'); return; }
+    const pts=getAllPoints();
+    const route=[]; let cum=0;
+    for(let i=0;i<pts.length;i++){
+        const bearing=i>0?calcBearing(pts[i-1].lat,pts[i-1].lng,pts[i].lat,pts[i].lng):0;
+        if(i>0) cum+=haversineFast(pts[i-1].lat,pts[i-1].lng,pts[i].lat,pts[i].lng);
+        route.push({lat:pts[i].lat,lng:pts[i].lng,alt:Math.round(pts[i].alt||0),
+                    bearing:Math.round(bearing),timestamp:pts[i].timestamp,
+                    cumulativeDistance:Math.round(cum)});
+    }
+    const payload={version:'5.27',createdAt:new Date().toISOString(),vehicleMode:currentVehicle,
+                   totalPoints:pts.length,totalDistance:Math.round(cum),
+                   checkpointCount:checkpoints.length,route};
+    try{
+        const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;
+        a.download=`vms_route_${new Date().toISOString().replace(/[:.]/g,'-').slice(0,19)}.json`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(()=>URL.revokeObjectURL(url),2000);
+        const cpb=document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block';
+                 cpb.innerHTML=`📤 DIEKSPOR: ${pts.length} titik, ${Math.round(cum)}m`;
+                 setTimeout(()=>{ cpb.style.display='none'; },2500); }
+    } catch(e){ alert('Export gagal: '+e.message); }
+}
+
+// v5.27: Route Import — validates schema, loads into buffer, renders immediately
+// After import, RETURN navigation works instantly (tekan tombol RETURN)
+function importRoute(){
+    const inp=document.createElement('input');
+    inp.type='file'; inp.accept='.json,application/json';
+    inp.onchange=async(ev)=>{
+        const file=ev.target.files[0]; if(!file) return;
+        if(file.size>5*1024*1024){ alert('File terlalu besar (maks 5MB)'); return; }
+        try{
+            const text=await file.text();
+            const data=JSON.parse(text);
+            // Schema validation
+            if(!data.route||!Array.isArray(data.route)){
+                alert('Format tidak valid: field "route" tidak ditemukan'); return; }
+            if(data.route.length<2){
+                alert('Route harus memiliki minimal 2 titik'); return; }
+            const bad=data.route.find(p=>typeof p.lat!=='number'||typeof p.lng!=='number'
+                                       ||!Number.isFinite(p.lat)||!Number.isFinite(p.lng));
+            if(bad){ alert('Data route mengandung koordinat tidak valid'); return; }
+            if(!confirm(`Import route "${file.name}"?\n${data.route.length} titik | ${data.totalDistance||'?'}m\nDibuat: ${data.createdAt||'Tidak diketahui'}\n\nTekan RETURN setelah import untuk navigasi balik.`)) return;
+            clearBuffer(); resetMovementEngine(); resetGPSBearing();
+            const pts=data.route;
+            for(let i=0;i<pts.length;i++){
+                const p=pts[i];
+                const pt={lat:p.lat,lng:p.lng,alt:p.alt||0,accuracy:5,
+                           heading:p.bearing||0,speed:0,
+                           timestamp:p.timestamp||Date.now()};
+                pushPoint(pt);
+                if(i>0) cachedTotalDistance+=haversineFast(pts[i-1].lat,pts[i-1].lng,p.lat,p.lng);
+                addToSpatialIndex(pt,i);
+            }
+            // rebuild movement vectors from imported track
+            const allPts=getAllPoints();
+            for(let i=0;i<allPts.length;i++) addMovementVector(allPts[i],i>0?allPts[i-1]:null);
+            if(data.vehicleMode&&VEHICLE_PROFILES[data.vehicleMode]) setVehicle(data.vehicleMode);
+            rebuildTrail();
+            const last=getLastPoint();
+            if(last&&map) map.setView([last.lat,last.lng],16);
+            updateUI();
+            alert(`✅ Route diimpor!\n📍 ${pts.length} titik | 📏 ${Math.round(cachedTotalDistance)}m\nTekan RETURN untuk navigasi balik.`);
+        } catch(e){ alert('Gagal membaca file: '+(e.message||e)); }
+    };
+    inp.click();
+}
 function toggleHistory(){
     window.togglePanel('history');
 }
@@ -3590,8 +3753,9 @@ function toggleReturnMode(){ if(bufferLen===0){ alert('Tidak ada jalur untuk kem
 
 // =====================================================================
 // SECTION 36: PERIODIC MAINTENANCE
+// v5.27: all intervals stored in named vars for pagehide cleanup — no zombie timers
 // =====================================================================
-setInterval(()=>{
+let _maintIv1=setInterval(()=>{
     updateSystemPressure();
     if(isTracking){ checkStorageQuota(); }
 },60000);
@@ -3599,7 +3763,7 @@ setInterval(()=>{
 
 
 // v5.26: PERIODIC MEMORY SWEEP — runs every 2 minutes, aggressive on long sessions
-setInterval(()=>{
+let _maintIv2=setInterval(()=>{
     lastMemorySweep=Date.now();
     let memPct=0;
     if(performance&&performance.memory) memPct=performance.memory.usedJSHeapSize/performance.memory.jsHeapSizeLimit;
@@ -3646,7 +3810,7 @@ setInterval(()=>{
     }
 },120000); // every 2 minutes
 
-setInterval(()=>{ if(isTracking) capUnsyncedWAL(); },60000);
+let _maintIv3=setInterval(()=>{ if(isTracking) capUnsyncedWAL(); },60000);
 
 async function checkStorageQuota(){
     if(!navigator.storage?.estimate) return;
@@ -3696,6 +3860,10 @@ window.addEventListener('pagehide',()=>{
         trailFlushScheduled=false;
         if(syncWorker){ try{ syncWorker.terminate(); }catch(e){} syncWorker=null; }
         if(workerHeartbeatIv){ clearInterval(workerHeartbeatIv); workerHeartbeatIv=null; }
+        // v5.27: clear tracked maintenance intervals — no zombie timers on bfcache
+        if(typeof _maintIv1!=='undefined'&&_maintIv1){ clearInterval(_maintIv1); _maintIv1=null; }
+        if(typeof _maintIv2!=='undefined'&&_maintIv2){ clearInterval(_maintIv2); _maintIv2=null; }
+        if(typeof _maintIv3!=='undefined'&&_maintIv3){ clearInterval(_maintIv3); _maintIv3=null; }
         if(walQueue&&walQueue.length>0) flushWalQueue();
         if(simActive) stopSimulation();
     } catch(e){ console.error('[pagehide]',e); }
@@ -3727,6 +3895,8 @@ document.getElementById('saveBtn')?.addEventListener('click',saveCurrentTrack);
 // historyBtn handled by panel manager above
 document.getElementById('returnBtn')?.addEventListener('click',toggleReturnMode);
 document.getElementById('sheetBtn')?.addEventListener('click',openSheet);
+document.getElementById('exportRouteBtn')?.addEventListener('click',()=>{ window.closeSecondaryMenu(); exportRoute(); });
+document.getElementById('importRouteBtn')?.addEventListener('click',()=>{ window.closeSecondaryMenu(); importRoute(); });
 document.getElementById('btn2D')?.addEventListener('click',()=>switchTab('2D'));
 document.getElementById('btnSemantic')?.addEventListener('click',toggleSemanticPanel);
 // addPointBtn — open add-point modal
@@ -3976,7 +4146,7 @@ window.zoomToPoint = function(id){
 // SECTION 39: BOOTSTRAP
 // =====================================================================
 async function bootstrap(){
-    console.log('[VMS] v5.26 HARDENED — Booting...');
+    console.log('[VMS] v5.27 ACTIVE NAV — Booting...');
     // v5.26: force-unlock all panels on boot — prevents deadlock from crashed previous session
     ['historyPanel','simPanel','pointsPanel','addPointModal'].forEach(id=>{
         const el=document.getElementById(id);
@@ -3999,7 +4169,7 @@ async function bootstrap(){
     startRotationLoop();
     // Render saved tactical points on map
     setTimeout(()=>{ renderAllTacticalPointsOnMap(); renderPointsList(); updatePointCounter(); },500);
-    console.log('[VMS] v5.26 BOOT COMPLETE');
+    console.log('[VMS] v5.27 BOOT COMPLETE');
     console.log('[INFO] Klik START lalu SIM untuk test tanpa GPS fisik');
 }
 
