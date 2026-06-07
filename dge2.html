@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.34-GM · GOOGLE MAPS PARITY BUILD</title>
+    <title>VMS | v5.36-FIELD-HARDENED · ALL AUDIT FIXES</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -1295,7 +1295,7 @@ document.addEventListener('DOMContentLoaded', function(){
 //        visibility-safe RAF, Android memory, camera pan jitter,
 //        battery drain reduction, long-session stability
 // =====================================================================
-console.log('[VMS] v5.33 FIELD DEPLOYMENT READY — boot');
+console.log('[VMS] v5.36 FIELD-HARDENED — boot');
 
 // =====================================================================
 // SECTION 1: CONSTANTS & CONFIGURATION
@@ -1380,7 +1380,7 @@ let rotRAFRunning = false; // v5.20: guard against double-start
 let panPending = null;
 let lastPanTime = 0;
 const PAN_THROTTLE_MS = 400; // v5.30: was 600 — faster pan response
-const ROT_LERP = 0.16; // v5.30: was 0.10 — faster heading tracking
+const ROT_LERP = 0.25; // v5.35 FIX: was 0.16 — heading tertinggal saat ngebut
 const ROT_DEADZONE = 4;
 let rotEnabled = true;
 let rotMode = 'NORTH_UP';
@@ -1455,47 +1455,50 @@ let stationaryCounter = 0;
 // ╚══════════════════════════════════════════════════════════════╝
 
 // GM1: STATIONARY LOCK ─────────────────────────────────────────
-// Google Maps anchors marker+heading when user is truly stationary.
-// V5.33 jitters because Kalman + lerp still process small GPS drift.
-let _gmSlock = false;          // lock active?
-let _gmSlockFixCount = 0;      // consecutive "still" GPS fixes
+// FIX H-01 v5.36: anchor uses weighted centroid of valid fixes, not first fix
+let _gmSlock = false;
+let _gmSlockFixCount = 0;
 let _gmSlockLat = 0;
 let _gmSlockLng = 0;
 let _gmSlockHeading = 0;
 let _gmSlockExitCount = 0;
-const GM_SLOCK_ENTER = 5;      // fixes below threshold before locking
-const GM_SLOCK_EXIT  = 2;      // moving fixes needed to exit lock
+let _gmSlockAccumLat = 0; // FIX H-01: accumulate for centroid
+let _gmSlockAccumLng = 0;
+const GM_SLOCK_ENTER = 5;
+const GM_SLOCK_EXIT  = 2;
 
 function gmStationaryLockUpdate(lat, lng, speed, accuracy) {
     const spd = speed || 0;
     const acc = accuracy || 99;
-    // Moving threshold per vehicle — only lock when CLEARLY stationary
     const movThr = currentVehicle === 'WALKING' ? 0.4
                  : currentVehicle === 'MOTOR'   ? 0.8 : 1.2;
-    const isStill = (spd < movThr) && (acc < 35);
+    // FIX H-01: tighten accuracy threshold from 35 to 20m for anchor quality
+    const isStill = (spd < movThr) && (acc < 20);
 
     if (isStill) {
         _gmSlockExitCount = 0;
         if (!_gmSlock) {
             _gmSlockFixCount++;
+            _gmSlockAccumLat += lat; // FIX H-01: accumulate for centroid
+            _gmSlockAccumLng += lng;
             if (_gmSlockFixCount >= GM_SLOCK_ENTER) {
                 _gmSlock = true;
-                _gmSlockLat = lat;
-                _gmSlockLng = lng;
+                // FIX H-01: use centroid of all accumulated fixes, not first fix
+                _gmSlockLat = _gmSlockAccumLat / _gmSlockFixCount;
+                _gmSlockLng = _gmSlockAccumLng / _gmSlockFixCount;
                 _gmSlockHeading = _gpsBearLast || fusedHeading || _gmSlockHeading;
             }
         }
-        // While locked: freeze target to anchor — eliminates lerp drift
         if (_gmSlock) {
             _targetLat = _gmSlockLat;
             _targetLng = _gmSlockLng;
         }
     } else {
         _gmSlockFixCount = 0;
+        _gmSlockAccumLat = 0; _gmSlockAccumLng = 0; // FIX H-01: reset accumulator
         if (_gmSlock) {
             _gmSlockExitCount++;
             if (_gmSlockExitCount >= GM_SLOCK_EXIT) {
-                // Snap interp origin to anchor on exit — clean movement start
                 _interpLat = _gmSlockLat;
                 _interpLng = _gmSlockLng;
                 _gmSlock = false;
@@ -1620,8 +1623,8 @@ let camSmoothedLat = 0, camSmoothedLng = 0, camInitialized = false;
 let camLastPanTs = 0;
 let camVelocityLat = 0, camVelocityLng = 0;
 const CAM_LERP_WALK  = 0.22; // v5.30: was 0.18
-const CAM_LERP_MOTOR = 0.38; // v5.30: was 0.30
-const CAM_LERP_CAR   = 0.55; // v5.30: was 0.45
+const CAM_LERP_MOTOR = 0.65; // v5.35 FIX: was 0.38 — ngebut pointer ketinggalan
+const CAM_LERP_CAR   = 0.85; // v5.35 FIX: was 0.55 — ngebut pointer ketinggalan
 
 // --- GPS restart storm registry ---
 let gpsRestartHistory = [];   // timestamps of recent restarts
@@ -1784,6 +1787,8 @@ function updateMarkerHeading(heading){
 
 // Accelerometer state for dead reckoning assist
 let _accelX=0,_accelY=0,_accelMag=0,_accelTs=0;
+// FIX C-06: store listener ref for proper cleanup on pagehide
+let _accelListener=null;
 // Init accelerometer if available
 (function initAccelerometer(){
     if(typeof DeviceMotionEvent==='undefined') return;
@@ -1798,13 +1803,16 @@ let _accelX=0,_accelY=0,_accelMag=0,_accelTs=0;
         document.addEventListener('touchstart',_reqAccel,{once:true});
     } else { _attachAccel(); }
     function _attachAccel(){
-        window.addEventListener('devicemotion',(e)=>{
+        // FIX C-06: remove existing listener before adding new one — prevents duplicate on bfcache restore
+        if(_accelListener) window.removeEventListener('devicemotion',_accelListener);
+        _accelListener=(e)=>{
             const a=e.accelerationIncludingGravity||e.acceleration;
             if(!a) return;
             _accelX=a.x||0; _accelY=a.y||0;
             _accelMag=Math.sqrt(_accelX*_accelX+_accelY*_accelY);
             _accelTs=Date.now();
-        },{passive:true});
+        };
+        window.addEventListener('devicemotion',_accelListener,{passive:true});
     }
 })();
 
@@ -1818,16 +1826,16 @@ function setPredictionTarget(lat,lng,speed,bearing){
 }
 
 function startPositionInterpolation(){
-    // PATCH-1: cancel zombie RAF before starting — guard was "return" but never cancelled stale id
+    // FIX H-02: prefer unified RAF via rotation loop; own RAF as fallback
     if(_interpRAFId){ cancelAnimationFrame(_interpRAFId); _interpRAFId=null; }
     let _lastFrTs=performance.now();
+
     function frame(now){
-        _interpRAFId=requestAnimationFrame(frame);
         if(!isPageVisible||!_interpInitialized||!currentMarker) return;
         // PATCH-4: throttle ke 10fps saat stationary (baterai) — skip frame
         const _isStationary = stationaryCounter>=3 && (_interpSpeed<0.3);
         if(_isStationary && (now - _lastFrTs) < 100) return; // ~10fps saat diam
-        const dt=Math.min((now-_lastFrTs)/1000,0.08); // v5.30: cap 80ms
+        const dt=Math.min((now-_lastFrTs)/1000,0.10);
         _lastFrTs=now;
         const staleness=Date.now()-_lastGPSUpdateTs;
 
@@ -1837,27 +1845,33 @@ function startPositionInterpolation(){
             return;
         }
 
-        if(staleness<1000){ // v5.30: was 1500ms — tighter window
-            // Fresh GPS: exponential lerp — speed-adaptive
-            const k=currentVehicle==='CAR'?12:(currentVehicle==='MOTOR'?9:6); // v5.30: faster k
-            const alpha=1-Math.pow(Math.E,-k*dt);
+        if(staleness<1000){
+            const spd = _interpSpeed || 0;
+            let k;
+            if(currentVehicle==='CAR'){
+                k = spd > 20 ? 28 : (spd > 10 ? 22 : 14);
+            } else if(currentVehicle==='MOTOR'){
+                k = spd > 15 ? 24 : (spd > 7  ? 18 : 11);
+            } else {
+                k = 6;
+            }
+            const alpha=Math.min(0.85, 1-Math.pow(Math.E,-k*dt)); // FIX C-03: cap alpha
             _interpLat+=(_targetLat-_interpLat)*alpha;
             _interpLng+=(_targetLng-_interpLng)*alpha;
             if(_deadReckoningActive) _deadReckoningActive=false;
-        } else if(staleness<8000&&_interpSpeed>0.4&&isTracking){ // v5.30: extended to 8s, lower speed gate
-            // GPS delayed: dead reckoning from last position
+        } else if(staleness<8000&&_interpSpeed>0.4&&isTracking){
             _deadReckoningActive=true;
             const EARTH_R=111320;
-            const rad=_interpBearing*Math.PI/180;
+            // FIX H-08: update DR bearing from compass when GPS delayed
+            const drBearing = (fusedHeading && _interpSpeed>0.5) ? fusedHeading : _interpBearing;
+            const rad=drBearing*Math.PI/180;
             let effectiveSpeed=_interpSpeed;
-            // v5.30: accelerometer assist — if device appears stationary, reduce DR speed
             if(_accelTs>0&&(Date.now()-_accelTs)<2000){
-                if(_accelMag<1.5) effectiveSpeed*=0.3; // near-stationary
+                if(_accelMag<1.5) effectiveSpeed*=0.3;
                 else if(_accelMag<3.0) effectiveSpeed*=0.7;
             }
-            // GM4: DR fade — linear speed reduction as staleness grows (2s→8s = 100%→0%)
-            // Eliminates hard teleport on DR exit — marker smoothly decelerates to stop
-            const drFade = staleness < 2000 ? 1.0 : Math.max(0, 1.0 - (staleness - 2000) / 6000);
+            const drFadeStart = (currentVehicle==='CAR'||currentVehicle==='MOTOR') ? 3000 : 2000;
+            const drFade = staleness < drFadeStart ? 1.0 : Math.max(0, 1.0 - (staleness - drFadeStart) / 5000);
             effectiveSpeed *= drFade;
             const dDist=effectiveSpeed*dt;
             _interpLat+=(dDist/EARTH_R)*Math.cos(rad);
@@ -1865,13 +1879,24 @@ function startPositionInterpolation(){
         } else {
             _deadReckoningActive=false;
         }
-        // Smooth marker update — single authoritative position source
         if(currentMarker) currentMarker.setLatLng([_interpLat,_interpLng]);
     }
-    _interpRAFId=requestAnimationFrame(frame);
+
+    // FIX H-02: register as unified callback for rotation loop to call
+    _unifiedRenderCb = frame;
+
+    // Fallback: own RAF if rotation loop is not running (e.g. before bootstrap)
+    if(!rotRAFRunning){
+        function standaloneTick(now){
+            _interpRAFId=requestAnimationFrame(standaloneTick);
+            frame(now);
+        }
+        _interpRAFId=requestAnimationFrame(standaloneTick);
+    }
 }
 
 function stopPositionInterpolation(){
+    _unifiedRenderCb=null; // FIX H-02: unregister from unified loop
     if(_interpRAFId){ cancelAnimationFrame(_interpRAFId); _interpRAFId=null; }
 }
 
@@ -1937,16 +1962,22 @@ function snapToRoad(lat, lng, speed){
     _snapLastTs=now; _snapLastLat=lat; _snapLastLng=lng;
 
     const url=`https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+    const _snapCallLat=lat, _snapCallLng=lng, _snapCallTs=Date.now(); // FIX C-04: capture call-time state
     const _snapAC=new AbortController();
     const _snapTid=setTimeout(()=>_snapAC.abort(),2000);
     fetch(url,{signal:_snapAC.signal})
-        .then(r=>{ clearTimeout(_snapTid); return r.json(); }) // PATCH-2: clear on first then, before json() can throw
+        .then(r=>{ clearTimeout(_snapTid); return r.json(); })
         .then(data=>{
+            // FIX C-04: guard against stale async callback
+            if(!isTracking) return; // tracking stopped while fetch was in flight
+            if(Date.now()-_snapCallTs > 6000) return; // response too stale (>6s)
             if(!data||!data.waypoints||!data.waypoints[0]) return;
             const wp=data.waypoints[0];
             const [snapLng,snapLat]=wp.location;
             if(!Number.isFinite(snapLat)||!Number.isFinite(snapLng)) return;
-            const offset=haversine(lat,lng,snapLat,snapLng);
+            // FIX C-04: also verify we haven't moved far from snap request position
+            if(lastPosition&&haversine(lastPosition.lat,lastPosition.lng,_snapCallLat,_snapCallLng)>50) return;
+            const offset=haversine(_snapCallLat,_snapCallLng,snapLat,snapLng);
             if(offset>SNAP_MAX_OFFSET_M) return; // too far — bad snap, ignore
             // smoothly blend snapped position into target
             _targetLat=_targetLat*0.4+snapLat*0.6;
@@ -1990,6 +2021,8 @@ function transitionGPS(newState){
 }
 
 // v5.26: GPS RESTART STORM PROTECTION — fixed ordering and degraded mode expiry
+// FIX C-01 v5.36: emergency reasons bypass degraded mode to prevent GPS deadlock 4+ min
+const GPS_EMERGENCY_REASONS = new Set(['watchdog_stale_120s','watchdog_no_watchid','visibility_restore']);
 function scheduleGPSRestart(reason){
     if(!isTracking||gpsState===GPS_STATE.DISABLED||gpsState===GPS_STATE.FAILED
         ||gpsState===GPS_STATE.RESTARTING||gpsState===GPS_STATE.COOLDOWN) return; // BUG-017 FIX
@@ -2001,7 +2034,14 @@ function scheduleGPSRestart(reason){
         gpsRestartHistory=[]; // clear history after degraded mode exits
         console.log('[GPS] Degraded mode expired — normal restarts allowed');
     }
-    if(gpsDegradedMode){ console.log('[GPS] Degraded: restart suppressed for:', reason); return; }
+    // FIX C-01: emergency reasons bypass degraded mode — GPS must not stay dead 4+ min
+    if(gpsDegradedMode&&!GPS_EMERGENCY_REASONS.has(reason)){
+        console.log('[GPS] Degraded: restart suppressed for:', reason); return;
+    }
+    if(gpsDegradedMode&&GPS_EMERGENCY_REASONS.has(reason)){
+        console.warn('[GPS] EMERGENCY override degraded mode for:',reason);
+        gpsDegradedMode=false; gpsDegradedUntil=0; gpsRestartHistory=[];
+    }
 
     // --- cooldown guard ---
     if(now-gpsRestartTs < GPS_RESTART_COOLDOWN){ console.log('[GPS] Restart rate-limited:', reason); return; }
@@ -2037,15 +2077,25 @@ async function doGPSRestart(reason){
     // only re-check here if called directly (not via scheduler)
     const now=Date.now();
     if(gpsRestartTs>0&&(now-gpsRestartTs)>300&&(now-gpsRestartTs)<GPS_RESTART_COOLDOWN){ return; }
-    if(gpsStateLock){ return; }
+    if(gpsStateLock){
+        // FIX C-02: if lock has been held >15s, it's stuck — force release
+        if(now - gpsStateEnterTime > 15000){
+            console.warn('[GPS] stateLock stuck >15s — force releasing');
+            gpsStateLock=false;
+        } else { return; }
+    }
     if(!gpsRestartTs||(now-gpsRestartTs)>300) gpsRestartTs=now;
     gpsStateLock=true;
+    // FIX C-02: safety timeout — always release lock after 10s max
+    const lockSafetyTimer=setTimeout(()=>{ if(gpsStateLock){ console.warn('[GPS] Lock safety timeout — releasing'); gpsStateLock=false; }},10000);
     transitionGPS(GPS_STATE.RESTARTING);
     try{
         if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId=null; }
         await new Promise(r=>setTimeout(r,300));
         const gen=++gpsGeneration;
         const opts=GPS_OPTIONS[gpsProfile]||GPS_OPTIONS.WALKING;
+        // FIX C-07: reset Kalman on GPS restart — prevents bias from stale position
+        kalmanLat=null; kalmanLng=null; kalmanVariance=1;
         const id=navigator.geolocation.watchPosition(
             pos=>{ if(gen===gpsGeneration){ transitionGPS(GPS_STATE.ACTIVE); gpsLastFixTime=Date.now(); onGPSPosition(pos); }},
             err=>{ if(gen===gpsGeneration) onGPSError(err); },
@@ -2060,7 +2110,7 @@ async function doGPSRestart(reason){
         gpsRecoveryAttempts++;
         if(gpsRecoveryAttempts>=MAX_GPS_RECOVERY) transitionGPS(GPS_STATE.FAILED);
         else { transitionGPS(GPS_STATE.COOLDOWN); setTimeout(()=>scheduleGPSRestart('recovery'), 15000); }
-    } finally { gpsStateLock=false; }
+    } finally { clearTimeout(lockSafetyTimer); gpsStateLock=false; }
 }
 
 function startGPSStaleMonitor(){
@@ -2167,6 +2217,10 @@ function updateGPSProfile(speed){
 // v5.20 fixes: single RAF guard, visibility-safe start/stop,
 //              pan jitter reduction (only pan when truly out of bounds)
 // =====================================================================
+// FIX H-02 v5.36: unified render tick — both rotation and interpolation share one rAF source
+// rotationLoop drives the master tick; interpolation piggybacks via callback
+let _unifiedRenderCb = null; // set by startPositionInterpolation
+
 function startRotationLoop(){
     // v5.20: cancel any surviving RAF id before starting — prevents zombie if flag and id are out of sync
     if(rotRAFId){ cancelAnimationFrame(rotRAFId); rotRAFId=null; }
@@ -2181,6 +2235,10 @@ function startRotationLoop(){
 
         // v5.20: skip all work when tab is hidden — saves battery
         if(!isPageVisible) return;
+
+        // FIX H-02: call interpolation callback here — single unified RAF tick
+        // This replaces the separate _interpRAFId loop when rotation loop is running
+        if(_unifiedRenderCb) _unifiedRenderCb(now);
 
         // PATCH-5: throttle rotation loop ke ~15fps saat stationary / tidak tracking
         // Saves CPU+battery on 8-12hr patrol session
@@ -2338,6 +2396,8 @@ function adaptiveCameraFollow(lat,lng,speed){
 
     // GM5: stationary lock — freeze camera entirely, no micro-pans while standing
     if(_gmSlock){
+        // FIX H-03: reset velocity accumulation when locked — no rubber-band on unlock
+        camVelocityLat=0; camVelocityLng=0;
         // Only re-pan if camera has drifted far from anchor (e.g. user manually panned)
         const now_s=Date.now();
         if(now_s - camLastPanTs > 3000){
@@ -2360,7 +2420,7 @@ function adaptiveCameraFollow(lat,lng,speed){
 
     // deadzone check: only pan if smoothed position is outside inner viewport fraction
     const now=Date.now();
-    const minPanInterval=currentVehicle==='CAR'?200:(currentVehicle==='MOTOR'?300:500); // v5.30: faster pan
+    const minPanInterval=currentVehicle==='CAR'?80:(currentVehicle==='MOTOR'?120:500); // v5.35 FIX: was 200/300 — lebih responsif saat ngebut
     if(now-camLastPanTs<minPanInterval) return;
 
     try{
@@ -2437,6 +2497,10 @@ async function initCompass(){
         if(Math.abs(ch-lastCompassHeading)<=90) lastCompassHeading=ch;
         else return; // reject large jumps — compass wobble
 
+        // FIX H-04: pre-smooth compass with EMA before fusion — removes jitter from bumpy roads
+        // EMA factor 0.3 = responsive but filtered (was: raw compass directly into fusion)
+        lastCompassHeading = lastCompassHeading * 0.7 + ch * 0.3;
+
         // v5.30: GPS Bearing Dominant — compass only used when stopped or very slow
         const spd=lastPosition?.speed||0;
         // GM6: stationary lock active — do NOT update fusedHeading from compass noise
@@ -2504,7 +2568,7 @@ function setMovementBadge(){
 }
 
 function pushSemanticVector(v){
-    if(movementVectors.length>2000) movementVectors=movementVectors.slice(-1500);
+    if(movementVectors.length>500) movementVectors=movementVectors.slice(-400); // FIX C-05: was 2000→1500, now 500→400 — no OOM wait
     movementVectors.push(v);
 }
 
@@ -2939,6 +3003,7 @@ function startTracking(){
         opts
     );
     isTracking=true; gpsLastFixTime=Date.now();
+    kalmanLat=null; kalmanLng=null; kalmanVariance=1; // FIX C-07: ensure clean Kalman on every start
     startGPSWatchdog(); startGPSStaleMonitor();
     if(!rotRAFRunning) startRotationLoop();
     document.getElementById('startBtn').style.display='none';
@@ -4397,6 +4462,8 @@ document.addEventListener('visibilitychange',()=>{
 
 window.addEventListener('pagehide',()=>{
     try{
+        // FIX C-06: remove devicemotion listener to prevent duplicate on bfcache restore
+        if(_accelListener){ window.removeEventListener('devicemotion',_accelListener); _accelListener=null; }
         if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId=null; }
         if(gpsWatchdogIv){ clearInterval(gpsWatchdogIv); gpsWatchdogIv=null; }
         if(gpsStaleIv){ clearInterval(gpsStaleIv); gpsStaleIv=null; }
