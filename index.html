@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.33 · FIELD DEPLOYMENT READY</title>
+    <title>VMS | v5.40 · SURVIVAL NAV · REAL-TIME ARROW · INDOOR DR</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -425,20 +425,69 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 }
 
 /* ═══════════════════════════════════════════════
-   RETURN ARROW
+   RETURN ARROW — SURVIVAL GRADE (v5.38)
 ═══════════════════════════════════════════════ */
 .return-arrow{
     position:fixed;
     bottom:calc(var(--sab) + var(--tb-h) + 70px);right:14px;
-    width:52px;height:52px;
-    background:rgba(0,0,0,0.82);
+    width:72px;height:72px;
+    background:rgba(0,0,0,0.88);
     border-radius:50%;
     display:flex;align-items:center;justify-content:center;
     z-index:1170;
-    border:2px solid #fd7e2c;
+    border:3px solid #fd7e2c;
+    pointer-events:none;
+    box-shadow:0 0 18px rgba(253,126,44,0.45), 0 0 40px rgba(253,126,44,0.15);
+    transition:border-color 0.2s;
+}
+.return-arrow.offroute-mode{ border-color:#ff5a5f; box-shadow:0 0 18px rgba(255,90,95,.5), 0 0 40px rgba(255,90,95,.2); }
+#returnArrowCanvas{
+    width:64px;height:64px;
+    display:block;
+}
+
+/* Survival compass HUD — indoor/no-GPS mode */
+#survivalHUD{
+    position:fixed;
+    top:calc(var(--sat) + var(--sb-h) + 38px + 50px);
+    left:50%;transform:translateX(-50%);
+    z-index:1175;
+    display:none;
+    flex-direction:column;align-items:center;gap:6px;
     pointer-events:none;
 }
-.return-arrow span{font-size:26px;filter:drop-shadow(0 0 4px #fd7e2c);}
+#survivalHUD.show{display:flex;}
+#compassRing{
+    width:140px;height:140px;
+    border-radius:50%;
+    background:rgba(6,12,24,0.95);
+    border:2px solid rgba(253,126,44,0.5);
+    box-shadow:0 0 24px rgba(0,0,0,0.8);
+    position:relative;display:flex;align-items:center;justify-content:center;
+}
+#compassCanvas{ width:140px;height:140px;display:block; }
+.survival-badge{
+    background:rgba(6,10,20,0.95);
+    border:1px solid rgba(253,126,44,0.35);
+    border-radius:var(--pill);
+    padding:4px 14px;
+    font-size:10px;font-family:'SF Mono','Courier New',monospace;
+    font-weight:700;color:#fd7e2c;
+    white-space:nowrap;
+}
+#indoorModeBadge{
+    position:fixed;
+    top:calc(var(--sat) + var(--sb-h) + 38px + 4px);
+    left:50%;transform:translateX(-50%);
+    background:rgba(120,50,0,0.92);
+    border:1px solid #fd7e2c;
+    border-radius:var(--pill);
+    padding:3px 12px;
+    font-size:9px;font-family:'SF Mono','Courier New',monospace;
+    font-weight:700;color:#fd7e2c;
+    z-index:1176;display:none;white-space:nowrap;
+}
+#indoorModeBadge.show{display:block;}
 
 /* ═══════════════════════════════════════════════
    OFFROUTE / BACKTRACK / BREADCRUMB
@@ -970,10 +1019,68 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     <div style="font-size:8px;color:#404e58;margin-top:5px;">START → SIM untuk test tanpa GPS fisik</div>
 </div>
 
-<!-- Return arrow -->
-<div class="return-arrow" id="returnArrow" style="display:none;"><span id="returnArrowSpan">⬆️</span></div>
+<!-- Return arrow — survival grade canvas (v5.38) -->
+<div class="return-arrow" id="returnArrow" style="display:none;">
+    <canvas id="returnArrowCanvas" width="64" height="64"></canvas>
+</div>
+
+<!-- Indoor mode badge -->
+<div id="indoorModeBadge">🏠 INDOOR / DR MODE</div>
+
+<!-- Survival compass HUD — shown when GPS lost during backtrack -->
+<div id="survivalHUD">
+    <canvas id="compassCanvas" width="140" height="140"></canvas>
+    <div class="survival-badge" id="survivalBadgeTxt">DR AKTIF — IKUTI KOMPAS</div>
+</div>
+
 <div class="offroute-badge" id="offrouteBadge">⚠️ ANDA KELUAR DARI JALUR</div>
 <div class="backtrack-progress" id="backtrackProgress">Progress: 0%</div>
+
+<!-- ══════════════════════════════════════════
+     MAP UPLOAD MODAL (v5.37)
+══════════════════════════════════════════ -->
+<div id="mapUploadModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2100;background:rgba(0,0,0,0.82);align-items:center;justify-content:center;backdrop-filter:blur(4px);pointer-events:none;touch-action:none;">
+  <div style="background:#0c1424;border:1px solid rgba(30,136,229,0.35);border-radius:20px;padding:22px;width:min(380px,96vw);box-shadow:0 24px 60px rgba(0,0,0,0.9);">
+    <h3 style="color:#7ec8f7;font-size:13px;margin-bottom:14px;font-weight:800;">🗺️ UPLOAD PETA LOKAL</h3>
+    <div style="font-size:10px;color:#6888aa;margin-bottom:14px;line-height:1.55;">
+      Upload file peta untuk digunakan offline.<br>
+      <b style="color:#ffb347;">Format yang didukung:</b><br>
+      • <b>.geojson / .json</b> — GeoJSON (jalan, polygon, titik)<br>
+      • <b>.gpx</b> — GPS Exchange Format<br>
+      • <b>.kml</b> — Keyhole Markup Language<br>
+      • <b>Custom Tile URL</b> — URL tile XYZ (z/x/y)<br><br>
+      <span style="color:#ff9f7f;">ℹ️ File .osm.pbf (≥1.6 GB) perlu dikonversi dulu ke GeoJSON menggunakan osmium-tool atau overpass-turbo sebelum upload.</span>
+    </div>
+    <!-- Tab selector -->
+    <div style="display:flex;gap:6px;margin-bottom:14px;">
+      <button id="muTabFile" onclick="muSwitchTab('file')" style="flex:1;height:32px;background:#1e88e5;color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">📁 FILE</button>
+      <button id="muTabUrl" onclick="muSwitchTab('url')" style="flex:1;height:32px;background:rgba(20,34,58,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.1);border-radius:20px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">🌐 TILE URL</button>
+    </div>
+    <!-- File upload tab -->
+    <div id="muPaneFile">
+      <div style="border:2px dashed rgba(30,136,229,0.35);border-radius:12px;padding:18px;text-align:center;margin-bottom:12px;cursor:pointer;" onclick="document.getElementById('muFileInput').click()">
+        <div style="font-size:24px;margin-bottom:6px;">📂</div>
+        <div style="font-size:11px;color:#7ec8f7;">Tap untuk pilih file</div>
+        <div style="font-size:9px;color:#6888aa;margin-top:3px;">.geojson .json .gpx .kml</div>
+      </div>
+      <input id="muFileInput" type="file" accept=".geojson,.json,.gpx,.kml,application/json,application/gpx+xml,application/vnd.google-earth.kml+xml" style="display:none;" onchange="muHandleFile(this)"/>
+      <div id="muFileStatus" style="font-size:10px;color:#6888aa;text-align:center;min-height:20px;"></div>
+    </div>
+    <!-- Tile URL tab -->
+    <div id="muPaneUrl" style="display:none;">
+      <div style="font-size:9px;color:#6888aa;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;">URL Template Tile XYZ</div>
+      <input id="muTileUrl" type="url" placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png" style="width:100%;background:rgba(20,34,58,0.9);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#ddeeff;font-family:inherit;font-size:11px;padding:9px 12px;-webkit-appearance:none;" />
+      <div style="font-size:9px;color:#6888aa;margin-top:8px;margin-bottom:4px;letter-spacing:1px;text-transform:uppercase;">Attribution</div>
+      <input id="muTileAttr" type="text" placeholder="© OpenStreetMap contributors" style="width:100%;background:rgba(20,34,58,0.9);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#ddeeff;font-family:inherit;font-size:11px;padding:9px 12px;-webkit-appearance:none;" />
+      <div style="font-size:9px;color:#7ec8f7;margin-top:8px;">Contoh OSM: https://tile.openstreetmap.org/{z}/{x}/{y}.png<br>Contoh Carto: https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button onclick="muApply()" style="flex:1;height:42px;background:#005b65;color:#fff;border:1px solid #00b0b9;border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">✅ TERAPKAN</button>
+      <button onclick="muReset()" style="height:42px;padding:0 14px;background:rgba(180,40,50,0.7);color:#fff;border:1px solid #ff5a5f;border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">🗑 RESET</button>
+      <button onclick="muClose()" style="height:42px;padding:0 14px;background:rgba(40,50,70,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.08);border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">✕</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════════════════════════════
      POINTS / CHECKPOINT PANEL
@@ -1044,6 +1151,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     <div class="sec-row">
         <button id="exportRouteBtn" class="btn-sec btn-export">📤 EXPORT</button>
         <button id="importRouteBtn" class="btn-sec btn-import">📥 IMPORT</button>
+        <button id="uploadMapBtn" class="btn-sec" style="background:#1a2a4a;border:1px solid #4a90d9;color:#7ec8f7;">🗺️ UPLOAD MAP</button>
     </div>
     <div class="sec-label" style="margin-top:2px;">⚙️ Tools</div>
     <div class="sec-row">
@@ -1295,7 +1403,7 @@ document.addEventListener('DOMContentLoaded', function(){
 //        visibility-safe RAF, Android memory, camera pan jitter,
 //        battery drain reduction, long-session stability
 // =====================================================================
-console.log('[VMS] v5.33 FIELD DEPLOYMENT READY — boot');
+console.log('[VMS] v5.36 FIELD-HARDENED — boot');
 
 // =====================================================================
 // SECTION 1: CONSTANTS & CONFIGURATION
@@ -1380,7 +1488,7 @@ let rotRAFRunning = false; // v5.20: guard against double-start
 let panPending = null;
 let lastPanTime = 0;
 const PAN_THROTTLE_MS = 400; // v5.30: was 600 — faster pan response
-const ROT_LERP = 0.16; // v5.30: was 0.10 — faster heading tracking
+const ROT_LERP = 0.25; // v5.35 FIX: was 0.16 — heading tertinggal saat ngebut
 const ROT_DEADZONE = 4;
 let rotEnabled = true;
 let rotMode = 'NORTH_UP';
@@ -1398,6 +1506,7 @@ let gpsGeneration = 0;
 let gpsLastFixTime = 0;
 let gpsWatchdogIv = null;
 let gpsStaleIv = null;
+let gpsRestartPending = false;
 let gpsRestartScheduled = false;
 let gpsRestartTs = 0;
 const GPS_RESTART_COOLDOWN = 25000;
@@ -1444,6 +1553,134 @@ let headingStabilityCounter = 0;
 // --- drift / stationary ---
 let stationaryCounter = 0;
 
+// ─── SURVIVAL NAVIGATION STATE (v5.39) ─────────────────────────────────
+// TRUE 6-source heading fusion — all sources verified in formula
+let _survHeadingGPS    = 0;   // S1: from GPS bearing buffer
+let _survHeadingCompass= 0;   // S2: compass (EMA-smoothed, hysteresis-gated)
+let _survHeadingGyro   = 0;   // S3: gyro-integrated heading
+let _survHeadingAccel  = 0;   // S4: accelerometer horizontal vector bearing
+let _survHeadingDR     = 0;   // S5: dead reckoning propagated heading
+let _survHeadingLast   = 0;   // S6: last known good heading (frozen fallback)
+let _survFused         = 0;   // final fused heading — used for arrow
+let _survFusedTs       = 0;
+let _survFusedConf     = 0;   // 0..1 confidence of fused heading
+let _survGyroRate      = 0;   // deg/s from gyro (signed)
+let _survGyroTs        = 0;
+
+// Compass hysteresis gate
+let _compassRaw        = 0;   // latest raw compass reading
+let _compassEma        = 0;   // EMA-smoothed compass
+let _compassPrevTs     = 0;
+let _compassPrevVal    = 0;
+const COMPASS_JUMP_GATE = 45; // deg — reject jumps larger than this within 150ms
+const COMPASS_EMA_K    = 0.18;// EMA smoothing (lower = smoother but slower)
+
+// Accelerometer bearing (S4) — horizontal motion vector
+// When device flat+moving: accel X/Y = lateral force → infer direction change
+let _accelBearLast     = 0;
+let _accelBearConf     = 0;   // 0..1
+let _accelBearTs       = 0;
+// Step counter for DR distance
+let _stepCount         = 0;
+let _stepLastMag       = 0;
+let _stepPeak          = false;
+let _stepLastTs        = 0;
+const STEP_LENGTH_M    = 0.75; // avg step length in meters
+
+// Indoor / GPS-degraded dead reckoning
+let _drActive = false;
+let _drLat    = 0;
+let _drLng    = 0;
+let _drSpeed  = 0;           // m/s — from GPS or step count
+let _drDistThisCycle = 0;    // meters moved this DR cycle
+let _drTs     = 0;
+let _drActivatedTs = 0;
+const DR_GPS_TIMEOUT_MS = 4000;
+const DR_MAX_MS = 300000;
+
+// RAF-driven arrow state
+let _arrowRAFId = null;
+let _arrowRAFRunning = false;
+let _arrowTargetBearing = 0;
+let _arrowCurrentAngle = 0;
+let _arrowOffroute = false;
+// Anti-wild-spin: adaptive lerp
+let _arrowConfidence   = 1;   // 0..1 — reduces lerp when noisy
+
+// Gyroscope listener ref
+let _gyroListener = null;
+
+// ─────────────────────────────────────────────────────────────────────────
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  GM-PARITY ENGINE v1.0 — Google Maps Feeling Patches        ║
+// ║  GM1: Stationary Lock Engine                                ║
+// ║  GM2: Heading Hysteresis                                    ║
+// ║  GM3: Adaptive Kalman Confidence                            ║
+// ║  GM4: DR Fade Exit                                          ║
+// ║  GM5: Camera Stationary Freeze                              ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+// GM1: STATIONARY LOCK ─────────────────────────────────────────
+// FIX H-01 v5.36: anchor uses weighted centroid of valid fixes, not first fix
+let _gmSlock = false;
+let _gmSlockFixCount = 0;
+let _gmSlockLat = 0;
+let _gmSlockLng = 0;
+let _gmSlockHeading = 0;
+let _gmSlockExitCount = 0;
+let _gmSlockAccumLat = 0; // FIX H-01: accumulate for centroid
+let _gmSlockAccumLng = 0;
+const GM_SLOCK_ENTER = 5;
+const GM_SLOCK_EXIT  = 2;
+
+function gmStationaryLockUpdate(lat, lng, speed, accuracy) {
+    const spd = speed || 0;
+    const acc = accuracy || 99;
+    const movThr = currentVehicle === 'WALKING' ? 0.4
+                 : currentVehicle === 'MOTOR'   ? 0.8 : 1.2;
+    // FIX H-01: tighten accuracy threshold from 35 to 20m for anchor quality
+    const isStill = (spd < movThr) && (acc < 20);
+
+    if (isStill) {
+        _gmSlockExitCount = 0;
+        if (!_gmSlock) {
+            _gmSlockFixCount++;
+            _gmSlockAccumLat += lat; // FIX H-01: accumulate for centroid
+            _gmSlockAccumLng += lng;
+            if (_gmSlockFixCount >= GM_SLOCK_ENTER) {
+                _gmSlock = true;
+                // FIX H-01: use centroid of all accumulated fixes, not first fix
+                _gmSlockLat = _gmSlockAccumLat / _gmSlockFixCount;
+                _gmSlockLng = _gmSlockAccumLng / _gmSlockFixCount;
+                _gmSlockHeading = _gpsBearLast || fusedHeading || _gmSlockHeading;
+            }
+        }
+        if (_gmSlock) {
+            _targetLat = _gmSlockLat;
+            _targetLng = _gmSlockLng;
+        }
+    } else {
+        _gmSlockFixCount = 0;
+        _gmSlockAccumLat = 0; _gmSlockAccumLng = 0; // FIX H-01: reset accumulator
+        if (_gmSlock) {
+            _gmSlockExitCount++;
+            if (_gmSlockExitCount >= GM_SLOCK_EXIT) {
+                _interpLat = _gmSlockLat;
+                _interpLng = _gmSlockLng;
+                _gmSlock = false;
+                _gmSlockExitCount = 0;
+            }
+        }
+    }
+    return _gmSlock;
+}
+
+// GM2: HEADING HYSTERESIS ─────────────────────────────────────
+// Applied inside updateMarkerHeading — see patched function below.
+let _gmLastMarkerHeading = 0;
+// ─────────────────────────────────────────────────────────────
+
 // --- system pressure ---
 let systemPressure = 'NORMAL';
 let pressureLastCheck = 0;
@@ -1451,6 +1688,7 @@ let pressureLastCheck = 0;
 // --- WAL / sync ---
 let walQueue = [];
 let walBatchTimer = null;
+let walFlushLock = false;
 let db = null, dbOpeningPromise = null;
 let syncLock = false, activeSyncPromise = null, syncMutexToken = 0;
 let syncRetryCount = 0, syncBackoffMs = CONFIG.SYNC_RETRY_BASE_MS;
@@ -1552,8 +1790,8 @@ let camSmoothedLat = 0, camSmoothedLng = 0, camInitialized = false;
 let camLastPanTs = 0;
 let camVelocityLat = 0, camVelocityLng = 0;
 const CAM_LERP_WALK  = 0.22; // v5.30: was 0.18
-const CAM_LERP_MOTOR = 0.38; // v5.30: was 0.30
-const CAM_LERP_CAR   = 0.55; // v5.30: was 0.45
+const CAM_LERP_MOTOR = 0.82; // v5.37 FIX: was 0.65 — pointer ketinggalan saat ngebut
+const CAM_LERP_CAR   = 0.95; // v5.37 FIX: was 0.85 — pointer ketinggalan saat ngebut
 
 // --- GPS restart storm registry ---
 let gpsRestartHistory = [];   // timestamps of recent restarts
@@ -1681,10 +1919,24 @@ function createVehicleMarkerIcon(vehicle,heading){
 }
 
 // Update heading of existing marker — O(1), no setIcon() overhead
+// GM2: heading hysteresis + stationary lock freeze
 function updateMarkerHeading(heading){
     if(!currentMarker) return;
     const el=document.getElementById('vms-main-marker');
-    if(el) el.style.transform=`rotate(${(heading||0).toFixed(1)}deg)`;
+    if(!el) return;
+    // GM1: stationary — freeze heading completely (no compass wobble)
+    if(_gmSlock){
+        el.style.transform=`rotate(${(_gmSlockHeading||0).toFixed(1)}deg)`;
+        return;
+    }
+    // GM2: hysteresis dead-zone — speed-adaptive
+    // Walking: 5° dead-zone, Motor: 3°, Car: 1.5° — mirrors Google Maps tuning
+    const spd = lastPosition?.speed || 0;
+    const dz = spd > 10 ? 1.5 : (spd > 2 ? 3.0 : 5.0);
+    const diff = Math.abs(shortestAngleDiff(_gmLastMarkerHeading, heading || 0));
+    if(diff < dz) return; // below dead-zone — hold current heading
+    _gmLastMarkerHeading = heading || 0;
+    el.style.transform=`rotate(${(heading||0).toFixed(1)}deg)`;
 }
 
 // =====================================================================
@@ -1702,6 +1954,8 @@ function updateMarkerHeading(heading){
 
 // Accelerometer state for dead reckoning assist
 let _accelX=0,_accelY=0,_accelMag=0,_accelTs=0;
+// FIX C-06: store listener ref for proper cleanup on pagehide
+let _accelListener=null;
 // Init accelerometer if available
 (function initAccelerometer(){
     if(typeof DeviceMotionEvent==='undefined') return;
@@ -1716,13 +1970,66 @@ let _accelX=0,_accelY=0,_accelMag=0,_accelTs=0;
         document.addEventListener('touchstart',_reqAccel,{once:true});
     } else { _attachAccel(); }
     function _attachAccel(){
-        window.addEventListener('devicemotion',(e)=>{
+        // FIX C-06: remove existing listener before adding new one — prevents duplicate on bfcache restore
+        if(_accelListener) window.removeEventListener('devicemotion',_accelListener);
+        _accelListener=(e)=>{
             const a=e.accelerationIncludingGravity||e.acceleration;
             if(!a) return;
             _accelX=a.x||0; _accelY=a.y||0;
             _accelMag=Math.sqrt(_accelX*_accelX+_accelY*_accelY);
             _accelTs=Date.now();
-        },{passive:true});
+
+            // ── S4: Accelerometer bearing (v5.40 FIXED) ───────────────
+            // PHYSICS CORRECTION: raw accel X/Y ≠ compass bearing.
+            // Accelerometer measures forces (including gravity tilt), not direction.
+            // New approach: use compass as the bearing source, use accel ONLY to:
+            //   (a) confirm motion is happening (gating)
+            //   (b) detect gross stillness (zero out confidence when stationary)
+            // _survHeadingAccel = last confirmed compass bearing when motion was detected.
+            // Confidence decays when device is still or accel is out of valid range.
+            if(_accelMag > 2.5 && _accelMag < 16){
+                // Motion confirmed — anchor bearing to best available compass/GPS source
+                const anchor = _compassEma || lastCompassHeading || _survFused || 0;
+                if(anchor > 0){
+                    if(_accelBearTs === 0){
+                        _accelBearLast = anchor;
+                    } else {
+                        // Only update S4 when compass itself is stable (low gyro rate = not spinning)
+                        const gyroStable = Math.abs(_survGyroRate) < 30; // deg/s
+                        if(gyroStable){
+                            const diff = shortestAngleDiff(_accelBearLast, anchor);
+                            // Slow-track compass — S4 lags deliberately so it doesn't amplify jitter
+                            _accelBearLast = normalizeAngle(_accelBearLast + diff * 0.1);
+                        }
+                    }
+                    // Confidence: scales with motion magnitude, capped at 0.5
+                    // (S4 is supporting evidence, not primary — max weight 50%)
+                    _accelBearConf = Math.min(0.5, (_accelMag - 2.5) / 14);
+                    _accelBearTs = Date.now();
+                    _survHeadingAccel = _accelBearLast;
+                }
+            } else {
+                // Decay confidence when stationary or out of valid motion range
+                _accelBearConf = Math.max(0, _accelBearConf - 0.08);
+            }
+
+            // ── Step counter for DR distance ─────────────────────────
+            // Detect step peaks: accel mag crosses threshold rising then falling
+            const stepThresh = 10.5;
+            if(!_stepPeak && _accelMag > stepThresh && _stepLastMag <= stepThresh){
+                _stepPeak = true;
+                const now = Date.now();
+                if(now - _stepLastTs > 250){ // min 250ms between steps
+                    _stepCount++;
+                    _stepLastTs = now;
+                    _drDistThisCycle += STEP_LENGTH_M;
+                }
+            } else if(_accelMag < stepThresh - 1){
+                _stepPeak = false;
+            }
+            _stepLastMag = _accelMag;
+        };
+        window.addEventListener('devicemotion',_accelListener,{passive:true});
     }
 })();
 
@@ -1736,45 +2043,78 @@ function setPredictionTarget(lat,lng,speed,bearing){
 }
 
 function startPositionInterpolation(){
-    if(_interpRAFId) return; // BUG-004 FIX: hard guard — cancel any surviving id first
+    // FIX H-02: prefer unified RAF via rotation loop; own RAF as fallback
+    if(_interpRAFId){ cancelAnimationFrame(_interpRAFId); _interpRAFId=null; }
     let _lastFrTs=performance.now();
+
     function frame(now){
-        _interpRAFId=requestAnimationFrame(frame);
         if(!isPageVisible||!_interpInitialized||!currentMarker) return;
-        const dt=Math.min((now-_lastFrTs)/1000,0.08); // v5.30: cap 80ms
+        // PATCH-4: throttle ke 10fps saat stationary (baterai) — skip frame
+        const _isStationary = stationaryCounter>=3 && (_interpSpeed<0.3);
+        if(_isStationary && (now - _lastFrTs) < 100) return; // ~10fps saat diam
+        const dt=Math.min((now-_lastFrTs)/1000,0.10);
         _lastFrTs=now;
         const staleness=Date.now()-_lastGPSUpdateTs;
-        if(staleness<1000){ // v5.30: was 1500ms — tighter window
-            // Fresh GPS: exponential lerp — speed-adaptive
-            const k=currentVehicle==='CAR'?12:(currentVehicle==='MOTOR'?9:6); // v5.30: faster k
-            const alpha=1-Math.pow(Math.E,-k*dt);
+
+        // GM1: stationary lock — freeze marker completely, zero CPU waste
+        if(_gmSlock){
+            currentMarker.setLatLng([_gmSlockLat, _gmSlockLng]);
+            return;
+        }
+
+        if(staleness<1000){
+            const spd = _interpSpeed || 0;
+            let k;
+            // FIX v5.37-A: raised k values so pointer keeps up at highway speed
+            if(currentVehicle==='CAR'){
+                k = spd > 25 ? 60 : (spd > 15 ? 45 : (spd > 8 ? 32 : 18));
+            } else if(currentVehicle==='MOTOR'){
+                k = spd > 20 ? 50 : (spd > 12 ? 38 : (spd > 6 ? 26 : 14));
+            } else {
+                k = 8; // walking: slightly snappier
+            }
+            const alpha=Math.min(0.95, 1-Math.pow(Math.E,-k*dt)); // FIX v5.37-A: raise cap from 0.85→0.95
             _interpLat+=(_targetLat-_interpLat)*alpha;
             _interpLng+=(_targetLng-_interpLng)*alpha;
             if(_deadReckoningActive) _deadReckoningActive=false;
-        } else if(staleness<8000&&_interpSpeed>0.4&&isTracking){ // v5.30: extended to 8s, lower speed gate
-            // GPS delayed: dead reckoning from last position
+        } else if(staleness<8000&&_interpSpeed>0.4&&isTracking){
             _deadReckoningActive=true;
             const EARTH_R=111320;
-            const rad=_interpBearing*Math.PI/180;
+            // FIX H-08: update DR bearing from compass when GPS delayed
+            const drBearing = (fusedHeading && _interpSpeed>0.5) ? fusedHeading : _interpBearing;
+            const rad=drBearing*Math.PI/180;
             let effectiveSpeed=_interpSpeed;
-            // v5.30: accelerometer assist — if device appears stationary, reduce DR speed
             if(_accelTs>0&&(Date.now()-_accelTs)<2000){
-                if(_accelMag<1.5) effectiveSpeed*=0.3; // near-stationary
+                if(_accelMag<1.5) effectiveSpeed*=0.3;
                 else if(_accelMag<3.0) effectiveSpeed*=0.7;
             }
+            const drFadeStart = (currentVehicle==='CAR'||currentVehicle==='MOTOR') ? 3000 : 2000;
+            const drFade = staleness < drFadeStart ? 1.0 : Math.max(0, 1.0 - (staleness - drFadeStart) / 5000);
+            effectiveSpeed *= drFade;
             const dDist=effectiveSpeed*dt;
             _interpLat+=(dDist/EARTH_R)*Math.cos(rad);
             _interpLng+=(dDist/(EARTH_R*Math.cos(_interpLat*Math.PI/180)))*Math.sin(rad);
         } else {
             _deadReckoningActive=false;
         }
-        // Smooth marker update — single authoritative position source
         if(currentMarker) currentMarker.setLatLng([_interpLat,_interpLng]);
     }
-    _interpRAFId=requestAnimationFrame(frame);
+
+    // FIX H-02: register as unified callback for rotation loop to call
+    _unifiedRenderCb = frame;
+
+    // Fallback: own RAF if rotation loop is not running (e.g. before bootstrap)
+    if(!rotRAFRunning){
+        function standaloneTick(now){
+            _interpRAFId=requestAnimationFrame(standaloneTick);
+            frame(now);
+        }
+        _interpRAFId=requestAnimationFrame(standaloneTick);
+    }
 }
 
 function stopPositionInterpolation(){
+    _unifiedRenderCb=null; // FIX H-02: unregister from unified loop
     if(_interpRAFId){ cancelAnimationFrame(_interpRAFId); _interpRAFId=null; }
 }
 
@@ -1782,6 +2122,350 @@ function resetPositionInterpolation(){
     _interpLat=0; _interpLng=0; _targetLat=0; _targetLng=0;
     _interpBearing=0; _interpSpeed=0;
     _interpInitialized=false; _lastGPSUpdateTs=0; _deadReckoningActive=false;
+}
+
+// =====================================================================
+// SURVIVAL NAVIGATION ENGINE (v5.38)
+// Real-time RAF arrow + 6-source heading fusion + indoor dead reckoning
+// =====================================================================
+
+// ── 1. GYROSCOPE INIT ─────────────────────────────────────────────────
+function initGyroscope(){
+    if(typeof DeviceOrientationEvent==='undefined') return;
+    function _attach(){
+        if(_gyroListener) window.removeEventListener('deviceorientation', _gyroListener);
+        let _prevAlpha=null, _prevTs=0;
+        _gyroListener=(e)=>{
+            const alpha = e.webkitCompassHeading ? (360 - e.webkitCompassHeading) : (e.alpha||0);
+            const now=Date.now();
+            if(_prevAlpha!==null && (now-_prevTs)>0){
+                let da = alpha - _prevAlpha;
+                if(da>180) da-=360; if(da<-180) da+=360;
+                _survGyroRate = da / ((now-_prevTs)/1000); // deg/s
+                _survHeadingGyro = normalizeAngle(_survHeadingGyro + _survGyroRate * Math.min((now-_prevTs)/1000, 0.1));
+            }
+            _prevAlpha=alpha; _prevTs=now;
+        };
+        window.addEventListener('deviceorientation', _gyroListener, {passive:true});
+    }
+    if(typeof DeviceOrientationEvent.requestPermission==='function'){
+        document.addEventListener('touchstart',()=>{
+            DeviceOrientationEvent.requestPermission().then(r=>{ if(r==='granted') _attach(); }).catch(()=>{});
+        },{once:true});
+    } else { _attach(); }
+}
+
+// ── 2. 6-SOURCE HEADING FUSION ──────────────────────────────────────────
+// Priority: GPS bearing > Compass > Gyro integration > DR > lastGood
+function fuseSurvivalHeading(){
+    const spd = lastPosition?.speed || _drSpeed || 0;
+    const gpsAge = Date.now() - gpsLastFixTime;
+    const hasGPS = gpsAge < 3000 && gpsState === GPS_STATE.ACTIVE;
+
+    let h = _survFused || 0;
+
+    if(hasGPS && spd > 0.5 && _gpsBearLast > 0){
+        // GPS bearing dominant when moving with good fix
+        h = _gpsBearLast;
+        _survHeadingGPS = h;
+        // Blend in compass lightly
+        if(lastCompassHeading > 0) h = circularMean(h, lastCompassHeading, 0.88, 0.12);
+    } else if(hasGPS && spd <= 0.5 && lastCompassHeading > 0){
+        // Stationary with GPS — compass primary
+        h = lastCompassHeading;
+        _survHeadingCompass = h;
+    } else if(!hasGPS && lastCompassHeading > 0){
+        // No GPS — compass + gyro + accel (S4) integration
+        const gyroW = Math.min(0.6, Math.abs(_survGyroRate) * 0.05); // gyro weight by rotation speed
+        h = circularMean(lastCompassHeading, _survHeadingGyro, 1-gyroW, gyroW);
+        // v5.40: blend S4 (accel bearing) only when it has meaningful confidence
+        // Max accel weight capped at 0.15 — supporting evidence only, never dominant
+        if(_accelBearConf > 0.1 && _survHeadingAccel > 0){
+            const accelW = Math.min(0.15, _accelBearConf * 0.3);
+            h = circularMean(h, _survHeadingAccel, 1 - accelW, accelW);
+        }
+        _survHeadingCompass = lastCompassHeading;
+        _survHeadingDR = h;
+    } else if(lastGoodHeading > 0){
+        // Fallback: last known good heading + gyro drift
+        h = normalizeAngle(lastGoodHeading + (_survGyroRate * Math.min((Date.now()-_survFusedTs)/1000, 0.5)));
+        _survHeadingDR = h;
+    }
+
+    // Smooth the fused result with exponential moving average
+    const diff = shortestAngleDiff(_survFused, h);
+    _survFused = normalizeAngle(_survFused + diff * 0.35);
+    _survFusedTs = Date.now();
+    if(Math.abs(diff) < 90) lastGoodHeading = _survFused; // update lastGood only when stable
+    return _survFused;
+}
+
+// ── 3. INDOOR / DEAD RECKONING POSITION ────────────────────────────────
+function updateDRPosition(){
+    const gpsAge = Date.now() - gpsLastFixTime;
+    const drAge = Date.now() - _drTs;
+
+    if(gpsAge < DR_GPS_TIMEOUT_MS){
+        // GPS available — sync DR state
+        if(lastPosition){
+            _drLat = lastPosition.lat; _drLng = lastPosition.lng;
+            _drSpeed = lastPosition.speed || 0;
+            _drTs = Date.now();
+            _drActive = false;
+        }
+        const badge = document.getElementById('indoorModeBadge');
+        if(badge) badge.classList.remove('show');
+        const hud = document.getElementById('survivalHUD');
+        if(hud && backtrackActive) hud.classList.remove('show');
+        return;
+    }
+
+    // GPS lost — activate dead reckoning
+    if(!_drActive){
+        _drActive = true;
+        if(lastPosition){ _drLat=lastPosition.lat; _drLng=lastPosition.lng; _drSpeed=lastPosition.speed||0; }
+        _drTs = Date.now();
+        console.log('[SURVIVAL] DR activated — GPS timeout');
+    }
+
+    const badge = document.getElementById('indoorModeBadge');
+    if(badge) badge.classList.add('show');
+
+    if(drAge > DR_MAX_MS) return; // too long — uncertainty too high, don't move
+
+    // Propagate DR position using fused heading + accelerometer-gated speed
+    const dt = Math.min(0.5, (Date.now() - _drTs) / 1000);
+    _drTs = Date.now();
+
+    let effectiveSpeed = _drSpeed;
+    // Accelerometer-gate: reduce speed if little motion detected
+    if(_accelTs > 0 && (Date.now()-_accelTs) < 2000){
+        if(_accelMag < 1.2) effectiveSpeed = 0; // stationary
+        else if(_accelMag < 2.5) effectiveSpeed *= 0.4;
+    } else {
+        effectiveSpeed *= 0.3; // no accel data — conservative estimate
+    }
+
+    if(effectiveSpeed > 0.1){
+        const heading = fuseSurvivalHeading();
+        const rad = heading * Math.PI / 180;
+        const EARTH_R = 111320;
+        _drLat += (effectiveSpeed * dt / EARTH_R) * Math.cos(rad);
+        _drLng += (effectiveSpeed * dt / (EARTH_R * Math.cos(_drLat * Math.PI / 180))) * Math.sin(rad);
+    }
+
+    // Update marker and interpolation with DR position
+    if(currentMarker && _drLat !== 0){
+        currentMarker.setLatLng([_drLat, _drLng]);
+    }
+    if(_drLat !== 0){
+        setPredictionTarget(_drLat, _drLng, effectiveSpeed, fuseSurvivalHeading());
+    }
+
+    // Show survival compass HUD during backtrack with no GPS
+    if(backtrackActive){
+        const hud = document.getElementById('survivalHUD');
+        if(hud) hud.classList.add('show');
+        renderCompassCanvas();
+    }
+}
+
+// ── 4. CANVAS ARROW RENDERER ────────────────────────────────────────────
+function renderArrowCanvas(angleDeg, isOffroute){
+    const canvas = document.getElementById('returnArrowCanvas');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height, cx = W/2, cy = H/2;
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angleDeg * Math.PI / 180);
+
+    const color = isOffroute ? '#ff5a5f' : '#fd7e2c';
+    const glow = isOffroute ? 'rgba(255,90,95,0.6)' : 'rgba(253,126,44,0.6)';
+
+    // Glow
+    ctx.shadowColor = glow;
+    ctx.shadowBlur = 10;
+
+    // Arrow body
+    ctx.beginPath();
+    ctx.moveTo(0, -cy+6);         // tip (north)
+    ctx.lineTo(10, cy-10);        // bottom-right
+    ctx.lineTo(0, cy-18);         // inner-bottom notch
+    ctx.lineTo(-10, cy-10);       // bottom-left
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Center dot
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+
+    ctx.restore();
+}
+
+// ── 5. SURVIVAL COMPASS (shown in indoor mode) ──────────────────────────
+function renderCompassCanvas(){
+    const canvas = document.getElementById('compassCanvas');
+    if(!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const W=canvas.width, H=canvas.height, cx=W/2, cy=H/2, r=cx-4;
+    ctx.clearRect(0,0,W,H);
+
+    const hdg = _survFused;
+
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.strokeStyle='rgba(253,126,44,0.5)';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+
+    // Cardinal markers
+    const cardinals=['N','E','S','W'];
+    cardinals.forEach((c,i)=>{
+        const a=(i*90-hdg)*Math.PI/180;
+        const x=cx+Math.sin(a)*(r-10);
+        const y=cy-Math.cos(a)*(r-10);
+        ctx.font='bold 11px monospace';
+        ctx.fillStyle=c==='N'?'#ff5a5f':'rgba(200,200,200,0.7)';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(c,x,y);
+    });
+
+    // Heading to next breadcrumb (absolute bearing)
+    if(backtrackActive && _arrowTargetBearing !== null){
+        const relBearing = (_arrowTargetBearing - hdg + 360) % 360;
+        const a = relBearing * Math.PI / 180;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx+Math.sin(a)*(r-16), cy-Math.cos(a)*(r-16));
+        ctx.strokeStyle='#fd7e2c';
+        ctx.lineWidth=3;
+        ctx.lineCap='round';
+        ctx.stroke();
+
+        // Arrow tip
+        ctx.beginPath();
+        ctx.arc(cx+Math.sin(a)*(r-16), cy-Math.cos(a)*(r-16), 5, 0, Math.PI*2);
+        ctx.fillStyle='#fd7e2c';
+        ctx.fill();
+    }
+
+    // Compass needle (north indicator)
+    const nA = (-hdg) * Math.PI / 180;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx+Math.sin(nA)*(r-22), cy-Math.cos(nA)*(r-22));
+    ctx.strokeStyle='rgba(255,90,95,0.6)';
+    ctx.lineWidth=1.5;
+    ctx.stroke();
+
+    // Center
+    ctx.beginPath();
+    ctx.arc(cx,cy,3,0,Math.PI*2);
+    ctx.fillStyle='#fff';
+    ctx.fill();
+
+    // Heading text
+    ctx.font='bold 10px monospace';
+    ctx.fillStyle='rgba(253,126,44,0.9)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(`${Math.round(hdg)}°`, cx, cy+r-14);
+}
+
+// ── 6. RAF-DRIVEN REAL-TIME ARROW LOOP ─────────────────────────────────
+// Runs at 60fps during backtrack — arrow rotates continuously with user
+function startArrowRAF(){
+    if(_arrowRAFRunning) return;
+    _arrowRAFRunning = true;
+    function loop(now){
+        if(!_arrowRAFRunning){ _arrowRAFId=null; return; }
+        _arrowRAFId = requestAnimationFrame(loop);
+        if(!backtrackActive){ return; }
+
+        // Fuse all 6 heading sources
+        const currentFacing = fuseSurvivalHeading();
+
+        // Compute how many degrees to rotate arrow from screen-up
+        // Arrow at 0° = straight up = facing next breadcrumb
+        // Arrow angle = relative bearing from currentFacing to target
+        let relBearing = 0;
+        if(_arrowTargetBearing !== null && currentFacing !== null){
+            relBearing = shortestAngleDiff(currentFacing, _arrowTargetBearing);
+        }
+
+        // Smooth the display angle (lerp) — v5.40: _arrowConfidence now wired in
+        // High confidence (GPS/compass) → fast track (0.22)
+        // Low confidence (gyro-only/DR) → slow lerp (0.08) — anti-wild-spin
+        const headingAge = Date.now() - _survFusedTs;
+        const hasRecentCompass = (Date.now() - _compassPrevTs) < 3000 && lastCompassHeading > 0;
+        const hasRecentGPS = (Date.now() - gpsLastFixTime) < 3000 && _gpsBearLast > 0;
+        // Decay confidence when no fresh sensor data
+        if(hasRecentGPS) _arrowConfidence = Math.min(1, _arrowConfidence + 0.05);
+        else if(hasRecentCompass) _arrowConfidence = Math.min(0.8, _arrowConfidence + 0.02);
+        else _arrowConfidence = Math.max(0.15, _arrowConfidence - 0.01);
+        const lerpSpeed = 0.08 + _arrowConfidence * 0.18; // 0.08 (noisy) → 0.26 (confident)
+        const diff = shortestAngleDiff(_arrowCurrentAngle, relBearing);
+        // Gate: suppress micro-jitter when diff is tiny relative to confidence
+        if(Math.abs(diff) > (1.5 / _arrowConfidence)){
+            _arrowCurrentAngle += diff * lerpSpeed;
+        }
+        _arrowCurrentAngle = normalizeAngle(_arrowCurrentAngle);
+
+        // Render
+        renderArrowCanvas(_arrowCurrentAngle, _arrowOffroute);
+        const arrowEl = document.getElementById('returnArrow');
+        if(arrowEl){
+            if(_arrowOffroute) arrowEl.classList.add('offroute-mode');
+            else arrowEl.classList.remove('offroute-mode');
+        }
+
+        // Update DR position every frame (handles indoor)
+        updateDRPosition();
+    }
+    _arrowRAFId = requestAnimationFrame(loop);
+}
+
+function stopArrowRAF(){
+    _arrowRAFRunning = false;
+    if(_arrowRAFId){ cancelAnimationFrame(_arrowRAFId); _arrowRAFId = null; }
+}
+
+// ── 7. COMPUTE TARGET BEARING — called from backtrack update ────────────
+// Returns absolute compass bearing from current position to next breadcrumb
+// Uses look-ahead + DR fallback when GPS unavailable
+function computeArrowBearing(posLat, posLng, nearestIdx){
+    if(backtrackRoute.length === 0) return 0;
+
+    // Look-ahead: take average of next 3 points for smoother direction
+    const LOOK = 3;
+    const pts = [];
+    for(let i=1; i<=LOOK; i++){
+        const idx = Math.min(nearestIdx+i, backtrackRoute.length-1);
+        pts.push(backtrackRoute[idx]);
+    }
+    // Weight closer points more heavily
+    let sx=0, sy=0, totalW=0;
+    pts.forEach((pt,i)=>{
+        const w = LOOK - i;
+        const b = calcBearing(posLat, posLng, pt.lat, pt.lng);
+        sx += Math.cos(b*Math.PI/180) * w;
+        sy += Math.sin(b*Math.PI/180) * w;
+        totalW += w;
+    });
+    if(totalW === 0) return 0;
+    let bearing = Math.atan2(sy/totalW, sx/totalW) * 180 / Math.PI;
+    if(bearing < 0) bearing += 360;
+    return bearing;
 }
 
 // BUG-005 FIX: fixed pool of 8 Image objects — no unbounded allocation on long sessions
@@ -1840,17 +2524,22 @@ function snapToRoad(lat, lng, speed){
     _snapLastTs=now; _snapLastLat=lat; _snapLastLng=lng;
 
     const url=`https://router.project-osrm.org/nearest/v1/driving/${lng},${lat}?number=1`;
+    const _snapCallLat=lat, _snapCallLng=lng, _snapCallTs=Date.now(); // FIX C-04: capture call-time state
     const _snapAC=new AbortController();
-    const _snapTid=setTimeout(()=>_snapAC.abort(),2000); // BUG-018 FIX: manual timeout fallback
+    const _snapTid=setTimeout(()=>_snapAC.abort(),2000);
     fetch(url,{signal:_snapAC.signal})
-        .then(r=>r.json())
+        .then(r=>{ clearTimeout(_snapTid); return r.json(); })
         .then(data=>{
-            clearTimeout(_snapTid);
+            // FIX C-04: guard against stale async callback
+            if(!isTracking) return; // tracking stopped while fetch was in flight
+            if(Date.now()-_snapCallTs > 6000) return; // response too stale (>6s)
             if(!data||!data.waypoints||!data.waypoints[0]) return;
             const wp=data.waypoints[0];
             const [snapLng,snapLat]=wp.location;
             if(!Number.isFinite(snapLat)||!Number.isFinite(snapLng)) return;
-            const offset=haversine(lat,lng,snapLat,snapLng);
+            // FIX C-04: also verify we haven't moved far from snap request position
+            if(lastPosition&&haversine(lastPosition.lat,lastPosition.lng,_snapCallLat,_snapCallLng)>50) return;
+            const offset=haversine(_snapCallLat,_snapCallLng,snapLat,snapLng);
             if(offset>SNAP_MAX_OFFSET_M) return; // too far — bad snap, ignore
             // smoothly blend snapped position into target
             _targetLat=_targetLat*0.4+snapLat*0.6;
@@ -1894,6 +2583,8 @@ function transitionGPS(newState){
 }
 
 // v5.26: GPS RESTART STORM PROTECTION — fixed ordering and degraded mode expiry
+// FIX C-01 v5.36: emergency reasons bypass degraded mode to prevent GPS deadlock 4+ min
+const GPS_EMERGENCY_REASONS = new Set(['watchdog_stale_120s','watchdog_no_watchid','visibility_restore']);
 function scheduleGPSRestart(reason){
     if(!isTracking||gpsState===GPS_STATE.DISABLED||gpsState===GPS_STATE.FAILED
         ||gpsState===GPS_STATE.RESTARTING||gpsState===GPS_STATE.COOLDOWN) return; // BUG-017 FIX
@@ -1905,7 +2596,14 @@ function scheduleGPSRestart(reason){
         gpsRestartHistory=[]; // clear history after degraded mode exits
         console.log('[GPS] Degraded mode expired — normal restarts allowed');
     }
-    if(gpsDegradedMode){ console.log('[GPS] Degraded: restart suppressed for:', reason); return; }
+    // FIX C-01: emergency reasons bypass degraded mode — GPS must not stay dead 4+ min
+    if(gpsDegradedMode&&!GPS_EMERGENCY_REASONS.has(reason)){
+        console.log('[GPS] Degraded: restart suppressed for:', reason); return;
+    }
+    if(gpsDegradedMode&&GPS_EMERGENCY_REASONS.has(reason)){
+        console.warn('[GPS] EMERGENCY override degraded mode for:',reason);
+        gpsDegradedMode=false; gpsDegradedUntil=0; gpsRestartHistory=[];
+    }
 
     // --- cooldown guard ---
     if(now-gpsRestartTs < GPS_RESTART_COOLDOWN){ console.log('[GPS] Restart rate-limited:', reason); return; }
@@ -1935,25 +2633,31 @@ function scheduleGPSRestart(reason){
 }
 
 async function doGPSRestart(reason){
-    // All early-returns BEFORE acquiring lock (BUG-001 fix preserved)
+    // BUG-001 FIX: all early-returns must be BEFORE acquiring the lock
     if(!isTracking){ return; }
-    if(gpsStateLock){ return; }
-    // FIX-A: The v5.33 cooldown re-check was wrong — it blocked every scheduled restart
-    // because scheduleGPSRestart already sets gpsRestartTs, so (now-gpsRestartTs)>300
-    // was always true when called 300ms later, returning before any work was done.
-    // Correct approach: cooldown is fully owned by scheduleGPSRestart; doGPSRestart trusts it.
-    // Only update gpsRestartTs if this is a direct call (gpsRestartTs not recently set).
+    // BUG-002 FIX: cooldown already claimed by scheduleGPSRestart at schedule-time;
+    // only re-check here if called directly (not via scheduler)
     const now=Date.now();
-    if(!gpsRestartTs||(now-gpsRestartTs)>GPS_RESTART_COOLDOWN) gpsRestartTs=now;
+    if(gpsRestartTs>0&&(now-gpsRestartTs)>300&&(now-gpsRestartTs)<GPS_RESTART_COOLDOWN){ return; }
+    if(gpsStateLock){
+        // FIX C-02: if lock has been held >15s, it's stuck — force release
+        if(now - gpsStateEnterTime > 15000){
+            console.warn('[GPS] stateLock stuck >15s — force releasing');
+            gpsStateLock=false;
+        } else { return; }
+    }
+    if(!gpsRestartTs||(now-gpsRestartTs)>300) gpsRestartTs=now;
     gpsStateLock=true;
+    // FIX C-02: safety timeout — always release lock after 10s max
+    const lockSafetyTimer=setTimeout(()=>{ if(gpsStateLock){ console.warn('[GPS] Lock safety timeout — releasing'); gpsStateLock=false; }},10000);
     transitionGPS(GPS_STATE.RESTARTING);
     try{
         if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId=null; }
-        // FIX-C: reset validation state so first fix after restart is not rejected
-        lastValidCoord=null; consecutiveInvalidCount=0; gpsWarmupCount=0;
         await new Promise(r=>setTimeout(r,300));
         const gen=++gpsGeneration;
         const opts=GPS_OPTIONS[gpsProfile]||GPS_OPTIONS.WALKING;
+        // FIX C-07: reset Kalman on GPS restart — prevents bias from stale position
+        kalmanLat=null; kalmanLng=null; kalmanVariance=1;
         const id=navigator.geolocation.watchPosition(
             pos=>{ if(gen===gpsGeneration){ transitionGPS(GPS_STATE.ACTIVE); gpsLastFixTime=Date.now(); onGPSPosition(pos); }},
             err=>{ if(gen===gpsGeneration) onGPSError(err); },
@@ -1968,7 +2672,7 @@ async function doGPSRestart(reason){
         gpsRecoveryAttempts++;
         if(gpsRecoveryAttempts>=MAX_GPS_RECOVERY) transitionGPS(GPS_STATE.FAILED);
         else { transitionGPS(GPS_STATE.COOLDOWN); setTimeout(()=>scheduleGPSRestart('recovery'), 15000); }
-    } finally { gpsStateLock=false; }
+    } finally { clearTimeout(lockSafetyTimer); gpsStateLock=false; }
 }
 
 function startGPSStaleMonitor(){
@@ -2002,13 +2706,18 @@ function startGPSWatchdog(){
 
 // =====================================================================
 // SECTION 5: KALMAN FILTER
+// GM3: confidence-adaptive noise — high confidence = trust GPS more = less lag
+// Low confidence = more smoothing = outliers suppressed (like Google Maps)
 // =====================================================================
 function kalmanUpdate(mLat,mLng,accuracy,speed){
-    // v5.30: Lower noise = more responsive to real movement (less lag)
+    // GM3: scale noise by GPS confidence score
+    // High conf (>80): confFactor=0.6 → lower noise → follow GPS closely
+    // Low conf (<40) : confFactor=1.8 → higher noise → smooth outliers aggressively
+    const cf = gpsConfidenceScore > 80 ? 0.6 : (gpsConfidenceScore < 40 ? 1.8 : 1.0);
     let noise;
-    if(currentVehicle==='WALKING') noise=speed>1.5?0.04:(speed>0.5?0.08:0.15);
-    else if(currentVehicle==='MOTOR') noise=speed>12?0.15:(speed>5?0.10:0.20);
-    else noise=speed>25?0.20:(speed>10?0.12:0.30);
+    if(currentVehicle==='WALKING') noise=(speed>1.5?0.04:(speed>0.5?0.08:0.15))*cf;
+    else if(currentVehicle==='MOTOR') noise=(speed>12?0.15:(speed>5?0.10:0.20))*cf;
+    else noise=(speed>25?0.20:(speed>10?0.12:0.30))*cf;
     const n2=Math.max(accuracy*0.7,1); // reduce measurement noise weight
     if(kalmanLat===null){ kalmanLat=mLat; kalmanLng=mLng; kalmanVariance=n2*n2; return {lat:kalmanLat,lng:kalmanLng}; }
     kalmanVariance+=noise;
@@ -2070,6 +2779,10 @@ function updateGPSProfile(speed){
 // v5.20 fixes: single RAF guard, visibility-safe start/stop,
 //              pan jitter reduction (only pan when truly out of bounds)
 // =====================================================================
+// FIX H-02 v5.36: unified render tick — both rotation and interpolation share one rAF source
+// rotationLoop drives the master tick; interpolation piggybacks via callback
+let _unifiedRenderCb = null; // set by startPositionInterpolation
+
 function startRotationLoop(){
     // v5.20: cancel any surviving RAF id before starting — prevents zombie if flag and id are out of sync
     if(rotRAFId){ cancelAnimationFrame(rotRAFId); rotRAFId=null; }
@@ -2084,6 +2797,17 @@ function startRotationLoop(){
 
         // v5.20: skip all work when tab is hidden — saves battery
         if(!isPageVisible) return;
+
+        // FIX H-02: call interpolation callback here — single unified RAF tick
+        // This replaces the separate _interpRAFId loop when rotation loop is running
+        if(_unifiedRenderCb) _unifiedRenderCb(now);
+
+        // PATCH-5: throttle rotation loop ke ~15fps saat stationary / tidak tracking
+        // Saves CPU+battery on 8-12hr patrol session
+        if(!isTracking && !isReplaying){
+            // tidak tracking: hanya perlu update sesekali untuk pan residu
+            if(rotCurrentAngle===0 && !panPending) return; // skip completely if nothing to do
+        }
 
         // v5.28: update vehicle icon heading every frame — smooth rotation
         updateMarkerHeading(_gpsBearLast);
@@ -2215,20 +2939,39 @@ function adaptiveCameraFollow(lat,lng,speed){
 
     // lerp factor and deadzone depend on vehicle + speed
     let lerpFactor, panDeadzone;
+    // PATCH-8: expand deadzone saat accuracy buruk — kurangi jitter seperti Google Maps
+    const accFactor = currentAccuracy > 20 ? 1.5 : (currentAccuracy > 10 ? 1.2 : 1.0);
     if(currentVehicle==='CAR'){
         lerpFactor=CAM_LERP_CAR;
-        panDeadzone=0.08; // v5.30: 8% — tighter, more responsive
+        panDeadzone=0.08 * accFactor;
     } else if(currentVehicle==='MOTOR'){
         lerpFactor=CAM_LERP_MOTOR;
-        panDeadzone=0.12; // v5.30: 12% — was 15%
+        panDeadzone=0.12 * accFactor;
     } else {
         // walking — extra slow, wide deadzone to kill GPS jitter micro-pans
         lerpFactor=speed>1.5?CAM_LERP_WALK:CAM_LERP_WALK*0.5;
-        panDeadzone=0.18; // v5.30: 18% — was 20%
+        panDeadzone=0.18 * accFactor;
     }
 
     // initialize smoother on first call
     if(!camInitialized){ camSmoothedLat=lat; camSmoothedLng=lng; camInitialized=true; }
+
+    // GM5: stationary lock — freeze camera entirely, no micro-pans while standing
+    if(_gmSlock){
+        // FIX H-03: reset velocity accumulation when locked — no rubber-band on unlock
+        camVelocityLat=0; camVelocityLng=0;
+        // Only re-pan if camera has drifted far from anchor (e.g. user manually panned)
+        const now_s=Date.now();
+        if(now_s - camLastPanTs > 3000){
+            try{
+                if(map&&!map.getBounds().contains(L.latLng(_gmSlockLat,_gmSlockLng))){
+                    map.panTo([_gmSlockLat,_gmSlockLng],{animate:false,noMoveStart:true});
+                    camLastPanTs=now_s;
+                }
+            }catch(e){}
+        }
+        return;
+    }
 
     // exponential smoothing — velocity damped
     const dLat=lat-camSmoothedLat, dLng=lng-camSmoothedLng;
@@ -2239,7 +2982,7 @@ function adaptiveCameraFollow(lat,lng,speed){
 
     // deadzone check: only pan if smoothed position is outside inner viewport fraction
     const now=Date.now();
-    const minPanInterval=currentVehicle==='CAR'?200:(currentVehicle==='MOTOR'?300:500); // v5.30: faster pan
+    const minPanInterval=currentVehicle==='CAR'?80:(currentVehicle==='MOTOR'?120:500); // v5.35 FIX: was 200/300 — lebih responsif saat ngebut
     if(now-camLastPanTs<minPanInterval) return;
 
     try{
@@ -2316,9 +3059,18 @@ async function initCompass(){
         if(Math.abs(ch-lastCompassHeading)<=90) lastCompassHeading=ch;
         else return; // reject large jumps — compass wobble
 
+        // FIX H-04: pre-smooth compass with EMA before fusion — removes jitter from bumpy roads
+        // EMA factor 0.3 = responsive but filtered (was: raw compass directly into fusion)
+        lastCompassHeading = lastCompassHeading * 0.7 + ch * 0.3;
+        // FIX v5.40: populate _compassEma (was declared but never written — broken anchor for accel bearing)
+        _compassEma = (_compassEma === 0) ? lastCompassHeading : normalizeAngle(_compassEma + shortestAngleDiff(_compassEma, lastCompassHeading) * COMPASS_EMA_K);
+        // FIX v5.40: update _compassPrevTs so arrow RAF can check compass freshness
+        _compassPrevTs = Date.now();
+
         // v5.30: GPS Bearing Dominant — compass only used when stopped or very slow
-        // When moving >1.0 m/s GPS bearing is more reliable than compass
         const spd=lastPosition?.speed||0;
+        // GM6: stationary lock active — do NOT update fusedHeading from compass noise
+        if(_gmSlock) return;
         if(spd>1.0 && _gpsBearLast>0){
             // Sensor fusion: 90% GPS bearing + 10% compass when moving
             fusedHeading=circularMean(_gpsBearLast,lastCompassHeading,0.90,0.10);
@@ -2326,11 +3078,9 @@ async function initCompass(){
             // Slow movement: 70% GPS + 30% compass
             fusedHeading=circularMean(lastPosition?.heading||lastCompassHeading, lastCompassHeading, 0.70, 0.30);
         } else {
-            // Stationary: compass only (but only if confidence is high enough to avoid wobble)
-            if(conf>55) fusedHeading=lastCompassHeading;
-            // below conf threshold: hold last known heading — no wobble
+            // GM6: raise threshold 55→68 — prevents compass wobble while standing still
+            if(conf>68) fusedHeading=lastCompassHeading;
         }
-        // Only update map rotation via compass when GPS bearing is unavailable
         if(spd<0.5) setTargetRotation(fusedHeading);
     });
 }
@@ -2384,13 +3134,17 @@ function setMovementBadge(){
 }
 
 function pushSemanticVector(v){
-    if(movementVectors.length>2000) movementVectors=movementVectors.slice(-1500);
+    if(movementVectors.length>500) movementVectors=movementVectors.slice(-400); // FIX C-05: was 2000→1500, now 500→400 — no OOM wait
     movementVectors.push(v);
 }
 
+let _lastLostCheck = 0;
 function updateLostPattern(){
     const now=Date.now();
     if(now<lostCooldownUntil) return;
+    // PATCH-6: throttle lost pattern check — was called every GPS fix (O(n) filter)
+    if(now - _lastLostCheck < 5000) return;
+    _lastLostCheck = now;
     const recent=movementVectors.filter(v=>v&&(now-v.timestamp)<60000);
     if(recent.length<15) return;
     let minLat=Infinity,maxLat=-Infinity,minLng=Infinity,maxLng=-Infinity,totalTravel=0;
@@ -2605,9 +3359,12 @@ function updateTrail(){
         // update fusedHeading from GPS bearing so compass stays in sync
         if(_gpsBearLast>0) fusedHeading=_gpsBearLast;
         setTargetRotation(rotHead);
-        adaptiveCameraFollowOffset(last.lat,last.lng,lastPosition.speed||0,rotHead);
+        // FIX v5.37-B2: always drive camera here (backtrack mode was skipping this path)
+        if(!backtrackActive) // backtrack drives camera in updateBacktrackNavigation
+            adaptiveCameraFollowOffset(last.lat,last.lng,lastPosition.speed||0,rotHead);
     } else {
-        adaptiveCameraFollow(last.lat,last.lng,0);
+        if(!backtrackActive)
+            adaptiveCameraFollow(last.lat,last.lng,0);
     }
 
 }
@@ -2714,7 +3471,8 @@ function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
                      (currentVehicle==='MOTOR'?8.0:14.0);
         if((speed||0)<0.5&&rawDist<driftR){
             stationaryCounter++;
-            if(stationaryCounter>=4) return;
+            // GM7: stationary locked — skip point entirely, no zig-zag trail dots
+            if(stationaryCounter>=4 || _gmSlock) return;
         } else { stationaryCounter=0; }
 
         if(!Number.isFinite(rawDist)||rawDist<0) return;
@@ -2774,6 +3532,9 @@ function onGPSPosition(pos){
     if(accEl) accEl.innerHTML=`${Math.round(accuracy)}m`;
     updateGPSStatus('ACTIVE','green',accuracy);
 
+    // GM1: update stationary lock BEFORE addPoint
+    gmStationaryLockUpdate(filtered.lat, filtered.lng, speed||0, accuracy);
+
     // v5.20: during replay, GPS still runs but addPoint is gated here
     if(!isReplaying){
         addPoint(filtered.lat,filtered.lng,accuracy,heading,speed||0,altitude,ts);
@@ -2785,6 +3546,8 @@ function onGPSError(err){
     if(err.code===2) { transitionGPS(GPS_STATE.STALE); scheduleGPSRestart('error_nofix'); }
     if(err.code===1) { transitionGPS(GPS_STATE.DISABLED); alert('Izin lokasi ditolak.'); }
     updateGPSStatus(err.code===1?'DENIED':(err.code===2?'WEAK':'TIMEOUT'),'red',null);
+    // GM: GPS lost — release slock so dead reckoning can take over
+    if(_gmSlock){ _gmSlock=false; _gmSlockFixCount=0; _gmSlockExitCount=0; }
 }
 
 // =====================================================================
@@ -2796,9 +3559,9 @@ function startTracking(){
     // v5.26: reset GPS storm history on fresh start — prevent previous session's degraded mode blocking new session
     gpsRestartHistory=[]; gpsDegradedMode=false; gpsDegradedUntil=0; gpsRestartScheduled=false;
     gpsRecoveryAttempts=0; consecutiveInvalidCount=0; gpsConfidenceScore=100;
-    lastValidCoord=null; // FIX-B: reset so isPointValid doesn't reject fixes vs stale old position
-    gpsStateLock=false; // FIX-D: force-clear lock so transitionGPS(STARTING) never silently fails
     _profileSpeedBuf=[]; _profileSwitchDebounce=0;
+    // GM: reset parity engine state on fresh start
+    _gmSlock=false; _gmSlockFixCount=0; _gmSlockExitCount=0; _gmLastMarkerHeading=0;
     transitionGPS(GPS_STATE.STARTING);
     gpsWarmupCount=0; kalmanLat=null; kalmanLng=null; kalmanVariance=1;
     const gen=++gpsGeneration;
@@ -2809,6 +3572,7 @@ function startTracking(){
         opts
     );
     isTracking=true; gpsLastFixTime=Date.now();
+    kalmanLat=null; kalmanLng=null; kalmanVariance=1; // FIX C-07: ensure clean Kalman on every start
     startGPSWatchdog(); startGPSStaleMonitor();
     if(!rotRAFRunning) startRotationLoop();
     document.getElementById('startBtn').style.display='none';
@@ -2866,6 +3630,8 @@ function clearBuffer(){
     if(simActive) stopSimulation();
     rotCurrentAngle=0; rotTargetAngle=0; applyMapRotation(0);
     resetGPSBearing(); resetPositionInterpolation();
+    // GM: reset parity engine on buffer clear
+    _gmSlock=false; _gmSlockFixCount=0; _gmSlockExitCount=0; _gmLastMarkerHeading=0;
     updateUI(); resetMovementEngine();
 }
 
@@ -3540,20 +4306,43 @@ function findNearestBacktrack(){
 }
 
 function updateBacktrackNavigation(){
-    if(!backtrackActive||isReplaying||followMode||backtrackRoute.length===0||!lastPosition) return;
+    if(!backtrackActive||isReplaying||followMode||backtrackRoute.length===0) return;
+    // Allow running even without lastPosition (indoor DR mode)
     const now=Date.now();
     const throttle=systemPressure==='CRITICAL'?2000:(systemPressure==='HIGH'?1200:700);
     if(now-backtrackArrowTs<throttle) return;
     backtrackArrowTs=now;
 
-    const nearestIdx=findNearestBacktrack();
-    const totalDist=backtrackCumDist[backtrackCumDist.length-1]||1;
-    const remainingDist=totalDist-backtrackCumDist[nearestIdx];
-    const progressPct=((totalDist-remainingDist)/totalDist)*100;
+    // Use DR position when GPS unavailable
+    const hasGPS = (Date.now()-gpsLastFixTime) < DR_GPS_TIMEOUT_MS && lastPosition;
+    const posLat = hasGPS ? lastPosition.lat : _drLat;
+    const posLng = hasGPS ? lastPosition.lng : _drLng;
+    if(!posLat && !posLng) return;
 
-    // v5.27: snap position to nearest route segment for stable bearing calculation
-    const snapped=snapToBacktrack(lastPosition.lat,lastPosition.lng,nearestIdx);
-    const posLat=snapped.lat, posLng=snapped.lng;
+    // FIX v5.37-B: feed interpolation so marker moves
+    const curSpd = hasGPS ? (lastPosition.speed||0) : _drSpeed;
+    const curHdg = _survFused || _gpsBearLast || (hasGPS ? (lastPosition.heading||0) : fuseSurvivalHeading());
+    setPredictionTarget(posLat, posLng, curSpd, curHdg);
+    if(curSpd > 0.5){
+        adaptiveCameraFollowOffset(posLat, posLng, curSpd, curHdg);
+    } else {
+        adaptiveCameraFollow(posLat, posLng, curSpd);
+    }
+
+    // Find nearest breadcrumb (use actual GPS when available for accuracy)
+    const nearestIdx = findNearestBacktrack();
+    const totalDist = backtrackCumDist[backtrackCumDist.length-1]||1;
+    const remainingDist = totalDist - backtrackCumDist[nearestIdx];
+    const progressPct = ((totalDist-remainingDist)/totalDist)*100;
+
+    // Snap to route for stable bearing
+    const snapped = snapToBacktrack(posLat, posLng, nearestIdx);
+    const sLat = snapped.lat, sLng = snapped.lng;
+
+    // ── SET ARROW TARGET BEARING (absolute compass) ──────────────────────
+    // RAF loop reads this every frame for real-time rotation
+    _arrowTargetBearing = computeArrowBearing(sLat, sLng, nearestIdx);
+    _arrowOffroute = backtrackOffroute;
 
     const progEl=document.getElementById('backtrackProgress');
     if(progEl){ progEl.style.display='block'; progEl.innerHTML=`🏠 ${Math.round(remainingDist)}m | ${Math.round(progressPct)}%`; }
@@ -3563,52 +4352,51 @@ function updateBacktrackNavigation(){
     const navInst=document.getElementById('navInstruction');
     if(backtrackOffroute){
         if(navInst){ navInst.innerHTML='⚠️ KELUAR JALUR — KEMBALI KE GARIS ORANYE'; navInst.style.color='#ff5a5f'; }
-        // v5.27: arrow points toward nearest route point when off-route
-        if(backtrackRoute[nearestIdx]){
-            const bearBack=calcBearing(lastPosition.lat,lastPosition.lng,backtrackRoute[nearestIdx].lat,backtrackRoute[nearestIdx].lng);
-            const diffBack=shortestAngleDiff(_gpsBearLast||lastPosition.heading||0,bearBack);
-            const arrowEl=document.getElementById('returnArrow');
-            if(arrowEl){ arrowEl.style.display='flex'; arrowEl.style.transform=`rotate(${Math.round(diffBack)}deg)`; }
-        }
+        if(returnLine){ try{ returnLine.setStyle({color:'#ff5a5f',dashArray:'6,6',weight:3}); }catch(e){} }
+        if(navigator.vibrate) navigator.vibrate([60,40,60]);
         return;
-    } else { if(navInst) navInst.style.color='#00f2a0'; }
+    } else {
+        if(navInst) navInst.style.color='#00f2a0';
+        if(returnLine){ try{ returnLine.setStyle({color:'#fd7e2c',dashArray:null,weight:5}); }catch(e){} }
+    }
 
-    // Arrival check
     if(remainingDist<15){
         if(navInst) navInst.innerHTML='🏁 ANDA TELAH KEMBALI KE TITIK AWAL!';
         if(progEl) progEl.style.display='none';
         stopBacktrackMode(); return;
     }
 
-    // v5.27: look-ahead 2 segments for smoother turn anticipation
-    const lookahead=Math.min(nearestIdx+2,backtrackRoute.length-1);
-    const target=backtrackRoute[lookahead];
-    if(!target){ if(navInst) navInst.innerHTML=`⬆️ JALAN LURUS ${Math.round(remainingDist)}m`; return; }
+    // Instruction text — based on relative bearing diff
+    const currentFacing = fuseSurvivalHeading();
+    const diff = shortestAngleDiff(currentFacing, _arrowTargetBearing);
+    const distToNext = haversineFast(posLat, posLng, backtrackRoute[Math.min(nearestIdx+1,backtrackRoute.length-1)].lat, backtrackRoute[Math.min(nearestIdx+1,backtrackRoute.length-1)].lng);
 
-    // Compute bearing from snapped position to lookahead target
-    // Use smoothed GPS bearing (v5.27) for "current facing" — stable road direction
-    const bearingToTarget=calcBearing(posLat,posLng,target.lat,target.lng);
-    const currentFacing=_gpsBearLast||lastPosition.heading||fusedHeading||0;
-    const diff=shortestAngleDiff(currentFacing,bearingToTarget);
-    const distToNext=haversineFast(lastPosition.lat,lastPosition.lng,target.lat,target.lng);
+    let inst = '';
+    if(remainingDist < 30)       inst = '🏁 HAMPIR SAMPAI!';
+    else if(Math.abs(diff)<15)   inst = `⬆️ LURUS ${Math.round(remainingDist)}m`;
+    else if(diff>0 && diff<60)   inst = `↗️ KANAN SEDIKIT ${Math.round(distToNext)}m`;
+    else if(diff>0 && diff<120)  inst = `➡️ BELOK KANAN ${Math.round(distToNext)}m`;
+    else if(diff>0)              inst = '↩️ BALIK KANAN';
+    else if(diff>-60)            inst = `↖️ KIRI SEDIKIT ${Math.round(distToNext)}m`;
+    else if(diff>-120)           inst = `⬅️ BELOK KIRI ${Math.round(distToNext)}m`;
+    else                         inst = '↪️ BALIK KIRI';
 
-    let inst='',arrowRot=0,arrowEmoji='⬆️';
-    if(Math.abs(diff)<12){      inst='⬆️ LURUS';                                   arrowRot=0;    arrowEmoji='⬆️'; }
-    else if(diff>0&&diff<60){   inst=`↗️ KANAN SEDIKIT ${Math.round(distToNext)}m`; arrowRot=35;   arrowEmoji='↗️'; }
-    else if(diff>0&&diff<120){  inst=`➡️ BELOK KANAN ${Math.round(distToNext)}m`;   arrowRot=90;   arrowEmoji='➡️'; }
-    else if(diff>0){            inst='↩️ BALIK KANAN';                              arrowRot=150;  arrowEmoji='↩️'; }
-    else if(diff>-60){          inst=`↖️ KIRI SEDIKIT ${Math.round(distToNext)}m`;  arrowRot=-35;  arrowEmoji='↖️'; }
-    else if(diff>-120){         inst=`⬅️ BELOK KIRI ${Math.round(distToNext)}m`;    arrowRot=-90;  arrowEmoji='⬅️'; }
-    else{                       inst='↪️ BALIK KIRI';                               arrowRot=-150; arrowEmoji='↪️'; }
+    // Indoor mode indicator in instruction
+    if(_drActive) inst = '🏠 ' + inst;
 
-    if(remainingDist<30) inst='🏁 HAMPIR SAMPAI!';
-
-    if(navInst) navInst.innerHTML=inst;
-    const arrowEl=document.getElementById('returnArrow');
-    if(arrowEl){ arrowEl.style.display='flex'; arrowEl.style.transform=`rotate(${arrowRot}deg)`; }
-    const arrowSpan=document.getElementById('returnArrowSpan');
-    if(arrowSpan) arrowSpan.innerHTML=arrowEmoji;
+    if(navInst) navInst.innerHTML = inst;
     const rd=document.getElementById('returnDistance'); if(rd) rd.innerHTML=`${Math.round(remainingDist)}`;
+
+    // Update survival badge
+    const sb = document.getElementById('survivalBadgeTxt');
+    if(sb){
+        if(_drActive){
+            const drSec = Math.round((Date.now()-_drTs)/1000);
+            sb.innerText = `DR ${drSec}s — KOMPAS AKTIF`;
+        } else {
+            sb.innerText = `GPS OK — ${Math.round(gpsConfidenceScore)}% conf`;
+        }
+    }
 }
 
 function startBacktrackMode(){
@@ -3619,6 +4407,9 @@ function startBacktrackMode(){
     if(!buildBacktrackRoute()){ alert('Gagal memuat jalur backtrack'); return; }
     backtrackActive=true; backtrackOffroute=false; backtrackNearestIdx=0;
     backtrackUpdateTs=0; backtrackArrowTs=0;
+    // Reset survival state
+    _arrowCurrentAngle=0; _arrowTargetBearing=0; _arrowOffroute=false;
+    _drActive=false;
     const np=document.getElementById('navPanel');
     if(np){ np.classList.add('show'); np.style.borderLeftColor='#fd7e2c'; }
     const ni=document.getElementById('navInstruction'); if(ni) ni.innerHTML='🔄 MENGINISIALISASI BACKTRACK...';
@@ -3626,15 +4417,16 @@ function startBacktrackMode(){
     if(rb){ rb.innerHTML='📍 BACKTRACK ON'; rb.style.background='#2c6e2f'; }
     const ae=document.getElementById('returnArrow'); if(ae) ae.style.display='flex';
     const bi=document.getElementById('breadcrumbInfo'); if(bi) bi.classList.add('show');
+    // Start RAF arrow loop
+    startArrowRAF();
     if(backtrackIv) clearInterval(backtrackIv);
-    backtrackIv=setInterval(()=>{ if(!backtrackActive||isReplaying) return; updateBacktrackNavigation(); },800);
+    backtrackIv=setInterval(()=>{ if(!backtrackActive||isReplaying) return; updateBacktrackNavigation(); },700);
     if(returnLine) safeRemoveLayer(returnLine);
     if(backtrackRoute.length>0){
-        // v5.27: solid thick line — navigational, not decorative
         returnLine=L.polyline(backtrackRoute.map(p=>[p.lat,p.lng]),{color:'#fd7e2c',weight:5,opacity:0.9,dashArray:null,interactive:false}).addTo(map);
     }
     updateBacktrackNavigation();
-    alert(`🔄 BACKTRACK AKTIF\n📏 Total jalur pulang: ${Math.round(backtrackCumDist[backtrackCumDist.length-1])} meter`);
+    alert(`🔄 BACKTRACK AKTIF\n📏 Total jalur pulang: ${Math.round(backtrackCumDist[backtrackCumDist.length-1])} meter\n🧭 Panah berputar real-time\n🏠 Indoor/DR mode otomatis aktif jika GPS hilang`);
 }
 
 // v5.27: project GPS point P onto segment A→B — returns clamped nearest point on segment
@@ -3663,7 +4455,9 @@ function snapToBacktrack(lat,lng,nearestIdx){
 
 function stopBacktrackMode(){
     if(backtrackIv){ clearInterval(backtrackIv); backtrackIv=null; }
+    stopArrowRAF();
     backtrackActive=false; backtrackRoute=[]; backtrackCumDist=[]; backtrackOffroute=false;
+    _arrowTargetBearing=0; _arrowOffroute=false; _drActive=false;
     const np=document.getElementById('navPanel'); if(np) np.classList.remove('show');
     const rb=document.getElementById('returnBtn');
     if(rb){ rb.innerHTML='🏠 RETURN'; rb.style.background='#fd7e2c'; }
@@ -3671,6 +4465,8 @@ function stopBacktrackMode(){
     const pe=document.getElementById('backtrackProgress'); if(pe) pe.style.display='none';
     const ob=document.getElementById('offrouteBadge'); if(ob) ob.style.display='none';
     const bi=document.getElementById('breadcrumbInfo'); if(bi) bi.classList.remove('show');
+    const hud=document.getElementById('survivalHUD'); if(hud) hud.classList.remove('show');
+    const imb=document.getElementById('indoorModeBadge'); if(imb) imb.classList.remove('show');
     if(returnLine){ safeRemoveLayer(returnLine); returnLine=null; }
     // v5.20: rebuild spatial index from buffer using bulk load
     const items=[];
@@ -3916,7 +4712,7 @@ function stopSimulation(){
 }
 
 function simAddEvent(desc){
-    movementVectors.push({timestamp:Date.now(),isSignificant:true,state:desc,distance:0,slope:0,headingChange:0,speed:simCurrentSpeed,lat:simLat,lng:simLng,alt:simAlt});
+    movementVectors.push({timestamp:Date.now(),isSignificant:true,state:desc,distance:0,slope:0,headingChange:0,speed:simSpeed,lat:simLat,lng:simLng,alt:simAlt});
     if(movementVectors.length>2000) movementVectors=movementVectors.slice(-1500);
     updateSemanticBreadcrumb();
 }
@@ -4179,6 +4975,59 @@ let _maintIv2=setInterval(()=>{
 
 let _maintIv3=setInterval(()=>{ if(isTracking) capUnsyncedWAL(); },60000);
 
+// =====================================================================
+// PATCH-3: VMS WATCHDOG SYSTEM v5.33+
+// Deteksi + self-healing: RAF macet, GPS watcher mati, rotation loop mati
+// Interval: 30s — overhead sangat minimal
+// =====================================================================
+let _wdIv = null;
+(function startVMSWatchdog(){
+    if(_wdIv) clearInterval(_wdIv);
+    _wdIv = setInterval(()=>{
+        // --- 1. Interpolation RAF watchdog ---
+        if(!_interpRAFId && _interpInitialized && isPageVisible){
+            console.warn('[WD] Interpolation RAF hilang — restarting');
+            startPositionInterpolation();
+        }
+
+        // --- 2. Rotation RAF watchdog ---
+        if(rotRAFRunning && !rotRAFId){
+            console.warn('[WD] rotRAFRunning=true tapi rotRAFId=null — fixing flag + restarting');
+            rotRAFRunning = false;
+            startRotationLoop();
+        } else if(!rotRAFRunning && isPageVisible){
+            console.warn('[WD] Rotation RAF mati saat visible — restarting');
+            startRotationLoop();
+        }
+
+        // --- 3. GPS watcher watchdog ---
+        if(isTracking && !simActive){
+            if(!window.watchId){
+                console.warn('[WD] GPS watchId null saat tracking — scheduling restart');
+                scheduleGPSRestart('watchdog_no_watchid');
+            } else {
+                const fixAge = Date.now() - gpsLastFixTime;
+                if(fixAge > 120000
+                    && gpsState !== GPS_STATE.FAILED
+                    && gpsState !== GPS_STATE.DISABLED){
+                    console.warn('[WD] GPS fix stale '+Math.round(fixAge/1000)+'s — forcing restart');
+                    scheduleGPSRestart('watchdog_stale_120s');
+                }
+            }
+        }
+
+        // --- 4. Trail flush RAF zombie check ---
+        if(trailFlushScheduled && !trailFlushRAFId){
+            console.warn('[WD] trailFlushScheduled=true tapi RAFId=null — resetting flag');
+            trailFlushScheduled = false;
+        }
+
+    }, 30000);
+})();
+
+// pagehide cleanup untuk watchdog
+window.addEventListener('pagehide', ()=>{ if(_wdIv){ clearInterval(_wdIv); _wdIv=null; } }, {once:false});
+
 async function checkStorageQuota(){
     if(!navigator.storage?.estimate) return;
     try{
@@ -4212,6 +5061,8 @@ document.addEventListener('visibilitychange',()=>{
 
 window.addEventListener('pagehide',()=>{
     try{
+        // FIX C-06: remove devicemotion listener to prevent duplicate on bfcache restore
+        if(_accelListener){ window.removeEventListener('devicemotion',_accelListener); _accelListener=null; }
         if(window.watchId){ navigator.geolocation.clearWatch(window.watchId); window.watchId=null; }
         if(gpsWatchdogIv){ clearInterval(gpsWatchdogIv); gpsWatchdogIv=null; }
         if(gpsStaleIv){ clearInterval(gpsStaleIv); gpsStaleIv=null; }
@@ -4235,6 +5086,7 @@ window.addEventListener('pagehide',()=>{
         if(typeof _maintIv1!=='undefined'&&_maintIv1){ clearInterval(_maintIv1); _maintIv1=null; }
         if(typeof _maintIv2!=='undefined'&&_maintIv2){ clearInterval(_maintIv2); _maintIv2=null; }
         if(typeof _maintIv3!=='undefined'&&_maintIv3){ clearInterval(_maintIv3); _maintIv3=null; }
+        if(typeof _wdIv!=='undefined'&&_wdIv){ clearInterval(_wdIv); _wdIv=null; } // PATCH-7
         if(walQueue&&walQueue.length>0) flushWalQueue();
         if(simActive) stopSimulation();
     } catch(e){ console.error('[pagehide]',e); }
@@ -4514,10 +5366,229 @@ window.zoomToPoint = function(id){
 };
 
 // =====================================================================
-// SECTION 39: BOOTSTRAP
+// SECTION 39-B: MAP UPLOAD MODULE (v5.37)
+// Supports: GeoJSON, GPX, KML, Custom XYZ Tile URL
 // =====================================================================
+let _muCustomTileLayer = null;
+let _muGeoLayers = [];
+let _muCurrentTab = 'file';
+let _muPendingGeoData = null;
+
+function muOpen(){
+    const m = document.getElementById('mapUploadModal');
+    if(!m) return;
+    m.style.display = 'flex';
+    m.style.pointerEvents = 'auto';
+    m.style.touchAction = 'auto';
+    muSwitchTab('file');
+}
+function muClose(){
+    const m = document.getElementById('mapUploadModal');
+    if(!m) return;
+    m.style.display = 'none';
+    m.style.pointerEvents = 'none';
+    m.style.touchAction = 'none';
+}
+function muSwitchTab(tab){
+    _muCurrentTab = tab;
+    const fBtn = document.getElementById('muTabFile');
+    const uBtn = document.getElementById('muTabUrl');
+    const fPane = document.getElementById('muPaneFile');
+    const uPane = document.getElementById('muPaneUrl');
+    if(tab === 'file'){
+        if(fBtn){ fBtn.style.background='#1e88e5'; fBtn.style.color='#fff'; fBtn.style.border='none'; }
+        if(uBtn){ uBtn.style.background='rgba(20,34,58,0.9)'; uBtn.style.color='#6888aa'; uBtn.style.border='1px solid rgba(255,255,255,0.1)'; }
+        if(fPane) fPane.style.display='block';
+        if(uPane) uPane.style.display='none';
+    } else {
+        if(uBtn){ uBtn.style.background='#1e88e5'; uBtn.style.color='#fff'; uBtn.style.border='none'; }
+        if(fBtn){ fBtn.style.background='rgba(20,34,58,0.9)'; fBtn.style.color='#6888aa'; fBtn.style.border='1px solid rgba(255,255,255,0.1)'; }
+        if(uPane) uPane.style.display='block';
+        if(fPane) fPane.style.display='none';
+    }
+}
+function _muStatus(msg, color){
+    const el = document.getElementById('muFileStatus');
+    if(el){ el.innerText = msg; el.style.color = color || '#7ec8f7'; }
+}
+function muHandleFile(inp){
+    const file = inp.files[0];
+    if(!file) return;
+    const maxMB = 100;
+    if(file.size > maxMB * 1024 * 1024){ _muStatus(`❌ File terlalu besar (maks ${maxMB}MB). File .osm.pbf perlu dikonversi ke GeoJSON dulu.`, '#ff5a5f'); return; }
+    _muStatus(`⏳ Membaca ${file.name}...`, '#ffb347');
+    const ext = file.name.split('.').pop().toLowerCase();
+    const reader = new FileReader();
+    reader.onerror = () => _muStatus('❌ Gagal membaca file', '#ff5a5f');
+    reader.onload = (ev) => {
+        try{
+            const text = ev.target.result;
+            if(ext === 'geojson' || ext === 'json'){
+                const gj = JSON.parse(text);
+                if(!gj.type){ _muStatus('❌ Format GeoJSON tidak valid', '#ff5a5f'); return; }
+                _muPendingGeoData = {type:'geojson', data:gj, name:file.name};
+                const cnt = gj.features ? gj.features.length : 1;
+                _muStatus(`✅ GeoJSON: ${cnt} fitur siap. Tekan TERAPKAN.`, '#00f2a0');
+            } else if(ext === 'gpx'){
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(text, 'application/xml');
+                const gj = _gpxToGeoJSON(xml);
+                _muPendingGeoData = {type:'geojson', data:gj, name:file.name};
+                const cnt = gj.features ? gj.features.length : 0;
+                _muStatus(`✅ GPX: ${cnt} segmen siap. Tekan TERAPKAN.`, '#00f2a0');
+            } else if(ext === 'kml'){
+                const parser = new DOMParser();
+                const xml = parser.parseFromString(text, 'application/xml');
+                const gj = _kmlToGeoJSON(xml);
+                _muPendingGeoData = {type:'geojson', data:gj, name:file.name};
+                const cnt = gj.features ? gj.features.length : 0;
+                _muStatus(`✅ KML: ${cnt} fitur siap. Tekan TERAPKAN.`, '#00f2a0');
+            } else {
+                _muStatus(`❌ Format .${ext} tidak didukung langsung. Konversi ke GeoJSON terlebih dahulu.`, '#ff5a5f');
+            }
+        } catch(e){ _muStatus('❌ Error: ' + (e.message||e), '#ff5a5f'); }
+    };
+    reader.readAsText(file);
+}
+function muApply(){
+    if(_muCurrentTab === 'url'){
+        const url = (document.getElementById('muTileUrl')?.value||'').trim();
+        const attr = (document.getElementById('muTileAttr')?.value||'').trim() || '© Custom Tile';
+        if(!url){ alert('Masukkan URL tile terlebih dahulu'); return; }
+        if(!url.includes('{z}')){ alert('URL harus mengandung {z}, {x}, {y}'); return; }
+        if(_muCustomTileLayer && map){ try{ map.removeLayer(_muCustomTileLayer); }catch(e){} }
+        _muCustomTileLayer = L.tileLayer(url, {attribution: attr, maxZoom:19, detectRetina:false}).addTo(map);
+        muClose();
+        const cpb = document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML='🗺️ TILE KUSTOM AKTIF'; setTimeout(()=>{ cpb.style.display='none'; },2500); }
+    } else {
+        if(!_muPendingGeoData){ alert('Pilih file terlebih dahulu'); return; }
+        _muApplyGeoJSON(_muPendingGeoData.data, _muPendingGeoData.name);
+        _muPendingGeoData = null;
+        muClose();
+    }
+}
+function muReset(){
+    _muGeoLayers.forEach(l=>{ try{ if(map) map.removeLayer(l); }catch(e){} });
+    _muGeoLayers = [];
+    if(_muCustomTileLayer && map){ try{ map.removeLayer(_muCustomTileLayer); }catch(e){} _muCustomTileLayer=null; }
+    _muPendingGeoData = null;
+    _muStatus('🗑 Peta kustom dihapus.', '#6888aa');
+    const cpb = document.getElementById('checkpointBadge');
+    if(cpb){ cpb.style.display='block'; cpb.innerHTML='🗺️ PETA KUSTOM DIHAPUS'; setTimeout(()=>{ cpb.style.display='none'; },2000); }
+}
+function _muApplyGeoJSON(gj, name){
+    _muGeoLayers.forEach(l=>{ try{ if(map) map.removeLayer(l); }catch(e){} });
+    _muGeoLayers = [];
+    try{
+        const layer = L.geoJSON(gj, {
+            style: { color:'#4a90d9', weight:2, opacity:0.8, fillOpacity:0.15 },
+            pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5,color:'#4a90d9',fillColor:'#7ec8f7',fillOpacity:0.7,weight:1}),
+            onEachFeature:(f,l)=>{ if(f.properties&&Object.keys(f.properties).length){ const t=Object.entries(f.properties).slice(0,3).map(([k,v])=>`${k}: ${v}`).join('<br>'); l.bindTooltip(t,{sticky:true}); } }
+        }).addTo(map);
+        _muGeoLayers.push(layer);
+        if(layer.getBounds && layer.getBounds().isValid()) map.fitBounds(layer.getBounds(),{padding:[40,40]});
+        const cpb = document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML=`🗺️ PETA: ${name}`; setTimeout(()=>{ cpb.style.display='none'; },3000); }
+    } catch(e){ alert('Gagal render peta: ' + (e.message||e)); }
+}
+// Minimal GPX → GeoJSON converter
+function _gpxToGeoJSON(xml){
+    const features = [];
+    // Track segments
+    Array.from(xml.querySelectorAll('trkseg')).forEach(seg=>{
+        const coords = Array.from(seg.querySelectorAll('trkpt')).map(pt=>[parseFloat(pt.getAttribute('lon')),parseFloat(pt.getAttribute('lat'))]);
+        if(coords.length>=2) features.push({type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{type:'track'}});
+    });
+    // Waypoints
+    Array.from(xml.querySelectorAll('wpt')).forEach(wpt=>{
+        const name = wpt.querySelector('name')?.textContent||'';
+        features.push({type:'Feature',geometry:{type:'Point',coordinates:[parseFloat(wpt.getAttribute('lon')),parseFloat(wpt.getAttribute('lat'))]},properties:{name}});
+    });
+    // Routes
+    Array.from(xml.querySelectorAll('rte')).forEach(rte=>{
+        const coords = Array.from(rte.querySelectorAll('rtept')).map(pt=>[parseFloat(pt.getAttribute('lon')),parseFloat(pt.getAttribute('lat'))]);
+        if(coords.length>=2) features.push({type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{type:'route'}});
+    });
+    return {type:'FeatureCollection',features};
+}
+// Minimal KML → GeoJSON converter
+function _kmlToGeoJSON(xml){
+    const features = [];
+    function _coords(text){ return text.trim().split(/\s+/).map(t=>{ const p=t.split(','); return [parseFloat(p[0]),parseFloat(p[1])]; }).filter(c=>c.every(Number.isFinite)); }
+    xml.querySelectorAll('Placemark').forEach(pm=>{
+        const name = pm.querySelector('name')?.textContent||'';
+        const pt = pm.querySelector('Point');
+        const ls = pm.querySelector('LineString');
+        const poly = pm.querySelector('Polygon');
+        if(pt){ const c=_coords(pt.querySelector('coordinates')?.textContent||''); if(c.length) features.push({type:'Feature',geometry:{type:'Point',coordinates:c[0]},properties:{name}}); }
+        else if(ls){ const c=_coords(ls.querySelector('coordinates')?.textContent||''); if(c.length>=2) features.push({type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{name}}); }
+        else if(poly){ const c=_coords(poly.querySelector('coordinates')?.textContent||''); if(c.length>=3) features.push({type:'Feature',geometry:{type:'Polygon',coordinates:[c]},properties:{name}}); }
+    });
+    return {type:'FeatureCollection',features};
+}
+document.getElementById('uploadMapBtn')?.addEventListener('click', ()=>{ if(typeof toggleSecondaryMenu==='function') toggleSecondaryMenu(); muOpen(); });
+
+// =====================================================================
+// SECTION 39-C: VOICE NAVIGATION (v5.37)
+// Text-to-speech untuk instruksi navigasi (backtrack & follow mode)
+// =====================================================================
+let _voiceEnabled = true;
+let _voiceLastSpoken = '';
+let _voiceLastTs = 0;
+const _voiceCooldown = 6000; // ms antara dua instruksi yang sama
+
+function voiceSpeak(text){
+    if(!_voiceEnabled) return;
+    if(!('speechSynthesis' in window)) return;
+    if(!text||text.length<3) return;
+    const now = Date.now();
+    if(text === _voiceLastSpoken && (now - _voiceLastTs) < _voiceCooldown) return;
+    _voiceLastSpoken = text;
+    _voiceLastTs = now;
+    try{
+        window.speechSynthesis.cancel();
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.lang = 'id-ID';
+        utt.rate = 1.05;
+        utt.pitch = 1.0;
+        utt.volume = 1.0;
+        const voices = window.speechSynthesis.getVoices();
+        const idVoice = voices.find(v=>v.lang.startsWith('id'))||voices.find(v=>v.lang.startsWith('ms'))||null;
+        if(idVoice) utt.voice = idVoice;
+        window.speechSynthesis.speak(utt);
+    } catch(e){}
+}
+
+// Intercept navInstruction updates via MutationObserver
+// This avoids monkey-patching and works reliably across all call paths
+(function initVoiceObserver(){
+    // Wait for DOM + map init
+    setTimeout(()=>{
+        const ni = document.getElementById('navInstruction');
+        if(!ni) return;
+        const obs = new MutationObserver((muts)=>{
+            for(const m of muts){
+                if(m.type==='childList'||m.type==='characterData'){
+                    const raw = ni.innerText||'';
+                    // Extract direction text and distance
+                    const clean = raw.replace(/[⬆️↗️➡️↩️↖️⬅️↪️🔄⚠️🏁📍🚶🔄]/gu,'').trim();
+                    if(clean && (backtrackActive || followMode)){
+                        voiceSpeak(clean);
+                    }
+                }
+            }
+        });
+        obs.observe(ni, {childList:true, characterData:true, subtree:true});
+        console.log('[VOICE] Navigator TTS aktif — observer terpasang');
+    }, 1500);
+})();
+
+// Preload voices on first user gesture
+document.addEventListener('touchstart', ()=>{ try{ if('speechSynthesis' in window) window.speechSynthesis.getVoices(); }catch(e){} }, {once:true});
+document.addEventListener('click', ()=>{ try{ if('speechSynthesis' in window) window.speechSynthesis.getVoices(); }catch(e){} }, {once:true});
 async function bootstrap(){
-    console.log('[VMS] v5.33 FIELD DEPLOYMENT READY — Booting...');
+    console.log('[VMS] v5.38 BOOTING — SURVIVAL NAV · RAF ARROW · 6-SOURCE FUSION · INDOOR DR...');
     // v5.26: force-unlock all panels on boot — prevents deadlock from crashed previous session
     ['historyPanel','simPanel','pointsPanel','addPointModal'].forEach(id=>{
         const el=document.getElementById(id);
@@ -4530,6 +5601,7 @@ async function bootstrap(){
     await loadSavedTracks();
     initWorker();
     initCompass();
+    initGyroscope(); // v5.38: gyro for indoor heading fusion
     transitionGPS(GPS_STATE.IDLE);
     updateGPSStatus('READY','yellow',null);
     updateSyncStatus('STANDBY','yellow');
@@ -4541,7 +5613,7 @@ async function bootstrap(){
     startPositionInterpolation(); // v5.28: smooth marker + GPS dead reckoning
     // Render saved tactical points on map
     setTimeout(()=>{ renderAllTacticalPointsOnMap(); renderPointsList(); updatePointCounter(); },500);
-    console.log('[VMS] v5.33 BOOT COMPLETE');
+    console.log('[VMS] v5.38 BOOT COMPLETE — Survival Navigation System ONLINE');
     console.log('[INFO] Klik START lalu SIM untuk test tanpa GPS fisik');
 }
 
