@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.44 · COMPARE ENGINE · WATERMARK BURN · EVIDENCE NAV · SURVIVAL NAV</title>
+    <title>VMS | v5.45 · MAP MODULE STABLE · COMPARE ENGINE · WATERMARK BURN · SURVIVAL NAV</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -14,6 +14,8 @@
 ═══════════════════════════════════════════════ */
 *{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;}
 body{font-family:'SF Mono','Courier New',monospace;background:#080d18;overflow:hidden;position:fixed;width:100%;height:100%;}
+/* Allow text input in all form elements */
+input,textarea,select{user-select:text!important;-webkit-user-select:text!important;touch-action:auto!important;pointer-events:auto!important;}
 
 /* ═══════════════════════════════════════════════
    CSS DESIGN TOKENS
@@ -1248,7 +1250,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
      MAP UPLOAD MODAL (v5.37)
 ══════════════════════════════════════════ -->
 <div id="mapUploadModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2100;background:rgba(0,0,0,0.82);align-items:center;justify-content:center;backdrop-filter:blur(4px);pointer-events:none;touch-action:none;">
-  <div style="background:#0c1424;border:1px solid rgba(30,136,229,0.35);border-radius:20px;padding:22px;width:min(380px,96vw);box-shadow:0 24px 60px rgba(0,0,0,0.9);">
+  <div style="background:#0c1424;border:1px solid rgba(30,136,229,0.35);border-radius:20px;padding:22px;width:min(380px,96vw);box-shadow:0 24px 60px rgba(0,0,0,0.9);pointer-events:auto;touch-action:auto;max-height:90vh;overflow-y:auto;">
     <h3 style="color:#7ec8f7;font-size:13px;margin-bottom:14px;font-weight:800;">🗺️ UPLOAD PETA LOKAL</h3>
     <div style="font-size:10px;color:#6888aa;margin-bottom:14px;line-height:1.55;">
       Upload file peta untuk digunakan offline.<br>
@@ -1257,16 +1259,16 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
       • <b>.gpx</b> — GPS Exchange Format<br>
       • <b>.kml</b> — Keyhole Markup Language<br>
       • <b>Custom Tile URL</b> — URL tile XYZ (z/x/y)<br><br>
-      <span style="color:#ff9f7f;">ℹ️ File .osm.pbf (≥1.6 GB) perlu dikonversi dulu ke GeoJSON menggunakan osmium-tool atau overpass-turbo sebelum upload.</span>
+      <span style="color:#ff9f7f;">ℹ️ File .osm.pbf perlu dikonversi dulu ke GeoJSON menggunakan osmium-tool atau overpass-turbo sebelum upload.</span>
     </div>
     <!-- Tab selector -->
     <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <button id="muTabFile" onclick="muSwitchTab('file')" style="flex:1;height:32px;background:#1e88e5;color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">📁 FILE</button>
-      <button id="muTabUrl" onclick="muSwitchTab('url')" style="flex:1;height:32px;background:rgba(20,34,58,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.1);border-radius:20px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">🌐 TILE URL</button>
+      <button id="muTabFile" onclick="muSwitchTab('file')" style="flex:1;height:32px;background:#1e88e5;color:#fff;border:none;border-radius:20px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;">📁 FILE</button>
+      <button id="muTabUrl" onclick="muSwitchTab('url')" style="flex:1;height:32px;background:rgba(20,34,58,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.1);border-radius:20px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;">🌐 TILE URL</button>
     </div>
     <!-- File upload tab -->
     <div id="muPaneFile">
-      <div style="border:2px dashed rgba(30,136,229,0.35);border-radius:12px;padding:18px;text-align:center;margin-bottom:12px;cursor:pointer;" onclick="document.getElementById('muFileInput').click()">
+      <div style="border:2px dashed rgba(30,136,229,0.35);border-radius:12px;padding:18px;text-align:center;margin-bottom:12px;cursor:pointer;pointer-events:auto;" onclick="document.getElementById('muFileInput').click()">
         <div style="font-size:24px;margin-bottom:6px;">📂</div>
         <div style="font-size:11px;color:#7ec8f7;">Tap untuk pilih file</div>
         <div style="font-size:9px;color:#6888aa;margin-top:3px;">.geojson .json .gpx .kml</div>
@@ -1276,16 +1278,22 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     </div>
     <!-- Tile URL tab -->
     <div id="muPaneUrl" style="display:none;">
+      <div style="font-size:9px;color:#6888aa;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;">Preset Cepat</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+        <button onclick="muUseArcGIS()" style="flex:1;height:32px;background:#1a3a5a;color:#7ec8f7;border:1px solid #4a90d9;border-radius:20px;font-size:10px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;min-width:80px;">🛰 ArcGIS</button>
+        <button onclick="muUseOSM()" style="flex:1;height:32px;background:#1a3a1a;color:#00f2a0;border:1px solid #2c6e2f;border-radius:20px;font-size:10px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;min-width:80px;">🗺 OSM</button>
+        <button onclick="muUseCarto()" style="flex:1;height:32px;background:#1a1a3a;color:#c380f0;border:1px solid #6c3aad;border-radius:20px;font-size:10px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;min-width:80px;">🌑 Carto</button>
+      </div>
       <div style="font-size:9px;color:#6888aa;margin-bottom:6px;letter-spacing:1px;text-transform:uppercase;">URL Template Tile XYZ</div>
-      <input id="muTileUrl" type="url" placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png" style="width:100%;background:rgba(20,34,58,0.9);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#ddeeff;font-family:inherit;font-size:11px;padding:9px 12px;-webkit-appearance:none;" />
+      <input id="muTileUrl" type="url" placeholder="https://tile.openstreetmap.org/{z}/{x}/{y}.png" style="width:100%;background:rgba(20,34,58,0.9);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#ddeeff;font-family:inherit;font-size:11px;padding:9px 12px;-webkit-appearance:none;user-select:text;-webkit-user-select:text;pointer-events:auto;touch-action:auto;" />
       <div style="font-size:9px;color:#6888aa;margin-top:8px;margin-bottom:4px;letter-spacing:1px;text-transform:uppercase;">Attribution</div>
-      <input id="muTileAttr" type="text" placeholder="© OpenStreetMap contributors" style="width:100%;background:rgba(20,34,58,0.9);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#ddeeff;font-family:inherit;font-size:11px;padding:9px 12px;-webkit-appearance:none;" />
-      <div style="font-size:9px;color:#7ec8f7;margin-top:8px;">Contoh OSM: https://tile.openstreetmap.org/{z}/{x}/{y}.png<br>Contoh Carto: https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png</div>
+      <input id="muTileAttr" type="text" placeholder="© OpenStreetMap contributors" style="width:100%;background:rgba(20,34,58,0.9);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#ddeeff;font-family:inherit;font-size:11px;padding:9px 12px;-webkit-appearance:none;user-select:text;-webkit-user-select:text;pointer-events:auto;touch-action:auto;" />
+      <div id="muFileStatus" style="font-size:10px;color:#6888aa;margin-top:8px;min-height:16px;"></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:16px;">
-      <button onclick="muApply()" style="flex:1;height:42px;background:#005b65;color:#fff;border:1px solid #00b0b9;border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">✅ TERAPKAN</button>
-      <button onclick="muReset()" style="height:42px;padding:0 14px;background:rgba(180,40,50,0.7);color:#fff;border:1px solid #ff5a5f;border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">🗑 RESET</button>
-      <button onclick="muClose()" style="height:42px;padding:0 14px;background:rgba(40,50,70,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.08);border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;">✕</button>
+      <button onclick="muApply()" style="flex:1;height:42px;background:#005b65;color:#fff;border:1px solid #00b0b9;border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;">✅ TERAPKAN</button>
+      <button onclick="muReset()" style="height:42px;padding:0 14px;background:rgba(180,40,50,0.7);color:#fff;border:1px solid #ff5a5f;border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;">🗑 RESET</button>
+      <button onclick="muClose()" style="height:42px;padding:0 14px;background:rgba(40,50,70,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.08);border-radius:40px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;pointer-events:auto;">✕ TUTUP</button>
     </div>
   </div>
 </div>
@@ -6244,17 +6252,22 @@ let _muPendingGeoData = null;
 function muOpen(){
     const m = document.getElementById('mapUploadModal');
     if(!m) return;
-    m.style.display = 'flex';
-    m.style.pointerEvents = 'auto';
-    m.style.touchAction = 'auto';
+    m.style.display='flex';
+    m.style.pointerEvents='auto';
+    m.style.touchAction='auto';
+    document.body.style.overflow='hidden';
+    const st = document.getElementById('muFileStatus');
+    if(st){ st.innerText=''; st.style.color='#6888aa'; }
+    _muPendingGeoData = null;
     muSwitchTab('file');
 }
 function muClose(){
     const m = document.getElementById('mapUploadModal');
     if(!m) return;
-    m.style.display = 'none';
-    m.style.pointerEvents = 'none';
-    m.style.touchAction = 'none';
+    m.style.display='none';
+    m.style.pointerEvents='none';
+    m.style.touchAction='none';
+    document.body.style.overflow='';
 }
 function muSwitchTab(tab){
     _muCurrentTab = tab;
@@ -6278,11 +6291,24 @@ function _muStatus(msg, color){
     const el = document.getElementById('muFileStatus');
     if(el){ el.innerText = msg; el.style.color = color || '#7ec8f7'; }
 }
+// FIX 5 — Preset tile URLs
+window.muUseArcGIS = function(){
+    document.getElementById('muTileUrl').value='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+    document.getElementById('muTileAttr').value='Esri World Street Map';
+};
+window.muUseOSM = function(){
+    document.getElementById('muTileUrl').value='https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+    document.getElementById('muTileAttr').value='© OpenStreetMap contributors';
+};
+window.muUseCarto = function(){
+    document.getElementById('muTileUrl').value='https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
+    document.getElementById('muTileAttr').value='© Carto © OSM';
+};
 function muHandleFile(inp){
     const file = inp.files[0];
     if(!file) return;
     const maxMB = 100;
-    if(file.size > maxMB * 1024 * 1024){ _muStatus(`❌ File terlalu besar (maks ${maxMB}MB). File .osm.pbf perlu dikonversi ke GeoJSON dulu.`, '#ff5a5f'); return; }
+    if(file.size > maxMB * 1024 * 1024){ _muStatus(`❌ File terlalu besar (maks ${maxMB}MB).`, '#ff5a5f'); return; }
     _muStatus(`⏳ Membaca ${file.name}...`, '#ffb347');
     const ext = file.name.split('.').pop().toLowerCase();
     const reader = new FileReader();
@@ -6311,25 +6337,32 @@ function muHandleFile(inp){
                 const cnt = gj.features ? gj.features.length : 0;
                 _muStatus(`✅ KML: ${cnt} fitur siap. Tekan TERAPKAN.`, '#00f2a0');
             } else {
-                _muStatus(`❌ Format .${ext} tidak didukung langsung. Konversi ke GeoJSON terlebih dahulu.`, '#ff5a5f');
+                _muStatus(`❌ Format .${ext} tidak didukung. Gunakan GeoJSON, GPX, atau KML.`, '#ff5a5f');
             }
         } catch(e){ _muStatus('❌ Error: ' + (e.message||e), '#ff5a5f'); }
     };
     reader.readAsText(file);
+    inp.value='';
 }
 function muApply(){
     if(_muCurrentTab === 'url'){
         const url = (document.getElementById('muTileUrl')?.value||'').trim();
         const attr = (document.getElementById('muTileAttr')?.value||'').trim() || '© Custom Tile';
-        if(!url){ alert('Masukkan URL tile terlebih dahulu'); return; }
-        if(!url.includes('{z}')){ alert('URL harus mengandung {z}, {x}, {y}'); return; }
-        if(_muCustomTileLayer && map){ try{ map.removeLayer(_muCustomTileLayer); }catch(e){} }
-        _muCustomTileLayer = L.tileLayer(url, {attribution: attr, maxZoom:19, detectRetina:false}).addTo(map);
+        // FIX 6 — Full URL validation
+        if(!url){ _muStatus('❌ Masukkan URL tile terlebih dahulu','#ff5a5f'); return; }
+        if(!url.includes('{z}')||!url.includes('{x}')||!url.includes('{y}')){ _muStatus('❌ URL harus mengandung {z}, {x}, {y}','#ff5a5f'); return; }
+        // FIX 4 — Remove base layer before adding custom
+        if(window.baseLayer && map){ try{ map.removeLayer(window.baseLayer); }catch(e){} }
+        // FIX 3 — Remove previous custom tile layer
+        if(_muCustomTileLayer && map){ try{ map.removeLayer(_muCustomTileLayer); }catch(e){} _muCustomTileLayer=null; }
+        _muCustomTileLayer = L.tileLayer(url, {attribution:attr, maxZoom:22, detectRetina:false}).addTo(map);
+        window._muCustomTileLayer = _muCustomTileLayer;
+        _muStatus('✅ Tile aktif!','#00f2a0');
         muClose();
         const cpb = document.getElementById('checkpointBadge');
         if(cpb){ cpb.style.display='block'; cpb.innerHTML='🗺️ TILE KUSTOM AKTIF'; setTimeout(()=>{ cpb.style.display='none'; },2500); }
     } else {
-        if(!_muPendingGeoData){ alert('Pilih file terlebih dahulu'); return; }
+        if(!_muPendingGeoData){ _muStatus('❌ Pilih file terlebih dahulu','#ff5a5f'); return; }
         _muApplyGeoJSON(_muPendingGeoData.data, _muPendingGeoData.name);
         _muPendingGeoData = null;
         muClose();
@@ -6339,21 +6372,26 @@ function muReset(){
     _muGeoLayers.forEach(l=>{ try{ if(map) map.removeLayer(l); }catch(e){} });
     _muGeoLayers = [];
     if(_muCustomTileLayer && map){ try{ map.removeLayer(_muCustomTileLayer); }catch(e){} _muCustomTileLayer=null; }
+    if(window._muCustomTileLayer && map){ try{ map.removeLayer(window._muCustomTileLayer); }catch(e){} window._muCustomTileLayer=null; }
+    // Restore base layer if removed
+    if(window.baseLayer && map && !map.hasLayer(window.baseLayer)){ try{ window.baseLayer.addTo(map); }catch(e){} }
     _muPendingGeoData = null;
     _muStatus('🗑 Peta kustom dihapus.', '#6888aa');
     const cpb = document.getElementById('checkpointBadge');
     if(cpb){ cpb.style.display='block'; cpb.innerHTML='🗺️ PETA KUSTOM DIHAPUS'; setTimeout(()=>{ cpb.style.display='none'; },2000); }
 }
+// FIX 7 — GeoJSON langsung tampil dengan style cyan
 function _muApplyGeoJSON(gj, name){
     _muGeoLayers.forEach(l=>{ try{ if(map) map.removeLayer(l); }catch(e){} });
     _muGeoLayers = [];
     try{
         const layer = L.geoJSON(gj, {
-            style: { color:'#4a90d9', weight:2, opacity:0.8, fillOpacity:0.15 },
-            pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5,color:'#4a90d9',fillColor:'#7ec8f7',fillOpacity:0.7,weight:1}),
+            style:{ color:'#00f2ff', weight:3, opacity:0.85, fillOpacity:0.12 },
+            pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5,color:'#00f2ff',fillColor:'#7ee8ff',fillOpacity:0.8,weight:1.5}),
             onEachFeature:(f,l)=>{ if(f.properties&&Object.keys(f.properties).length){ const t=Object.entries(f.properties).slice(0,3).map(([k,v])=>`${k}: ${v}`).join('<br>'); l.bindTooltip(t,{sticky:true}); } }
         }).addTo(map);
         _muGeoLayers.push(layer);
+        window._muGeoLayer = layer;
         if(layer.getBounds && layer.getBounds().isValid()) map.fitBounds(layer.getBounds(),{padding:[40,40]});
         const cpb = document.getElementById('checkpointBadge');
         if(cpb){ cpb.style.display='block'; cpb.innerHTML=`🗺️ PETA: ${name}`; setTimeout(()=>{ cpb.style.display='none'; },3000); }
@@ -6362,17 +6400,14 @@ function _muApplyGeoJSON(gj, name){
 // Minimal GPX → GeoJSON converter
 function _gpxToGeoJSON(xml){
     const features = [];
-    // Track segments
     Array.from(xml.querySelectorAll('trkseg')).forEach(seg=>{
         const coords = Array.from(seg.querySelectorAll('trkpt')).map(pt=>[parseFloat(pt.getAttribute('lon')),parseFloat(pt.getAttribute('lat'))]);
         if(coords.length>=2) features.push({type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{type:'track'}});
     });
-    // Waypoints
     Array.from(xml.querySelectorAll('wpt')).forEach(wpt=>{
         const name = wpt.querySelector('name')?.textContent||'';
         features.push({type:'Feature',geometry:{type:'Point',coordinates:[parseFloat(wpt.getAttribute('lon')),parseFloat(wpt.getAttribute('lat'))]},properties:{name}});
     });
-    // Routes
     Array.from(xml.querySelectorAll('rte')).forEach(rte=>{
         const coords = Array.from(rte.querySelectorAll('rtept')).map(pt=>[parseFloat(pt.getAttribute('lon')),parseFloat(pt.getAttribute('lat'))]);
         if(coords.length>=2) features.push({type:'Feature',geometry:{type:'LineString',coordinates:coords},properties:{type:'route'}});
@@ -6394,6 +6429,12 @@ function _kmlToGeoJSON(xml){
     });
     return {type:'FeatureCollection',features};
 }
+// FIX 1 — Backdrop click to close
+document.getElementById('mapUploadModal')?.addEventListener('click',(e)=>{ if(e.target.id==='mapUploadModal') muClose(); });
+// FIX 2 — ESC key to close
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') muClose(); });
+// FIX 8 — Android JS error debug (remove after stable)
+window.onerror=function(msg,src,line){ console.error('[VMS ERR]',msg,'@',src,':',line); };
 document.getElementById('uploadMapBtn')?.addEventListener('click', ()=>{ if(typeof toggleSecondaryMenu==='function') toggleSecondaryMenu(); muOpen(); });
 
 // =====================================================================
