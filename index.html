@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.40 · SURVIVAL NAV · REAL-TIME ARROW · INDOOR DR</title>
+    <title>VMS | v5.44 · COMPARE ENGINE · WATERMARK BURN · EVIDENCE NAV · SURVIVAL NAV</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -873,6 +873,214 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     padding:3px 8px;border-radius:var(--pill);
     white-space:nowrap;
 }
+
+/* ═══════════════════════════════════════════════
+   v5.42 EVIDENCE SYSTEM CSS
+═══════════════════════════════════════════════ */
+/* Evidence thumbnails in point list */
+.evidence-strip{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px;}
+.evidence-thumb{
+    width:52px;height:52px;object-fit:cover;
+    border-radius:7px;border:1px solid rgba(0,180,216,0.4);
+    cursor:pointer;background:#0a1830;flex-shrink:0;
+}
+.evidence-thumb-video{
+    width:52px;height:52px;border-radius:7px;
+    border:2px solid rgba(255,179,71,0.5);
+    background:#0f1828;display:flex;align-items:center;justify-content:center;
+    font-size:20px;cursor:pointer;flex-shrink:0;
+}
+.evidence-count{
+    font-size:8px;color:#00b4d8;font-weight:700;
+    background:rgba(0,180,216,0.1);border:1px solid rgba(0,180,216,0.2);
+    border-radius:var(--pill);padding:2px 7px;
+    display:inline-block;margin-top:4px;
+}
+/* Camera capture buttons row in modal */
+.ap-media-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+.ap-media-btn{
+    flex:1;min-width:80px;height:38px;
+    background:rgba(0,91,101,0.7);
+    border:1px solid #00b0b9;color:#00f2c0;
+    border-radius:var(--pill);font-size:10px;font-weight:700;
+    font-family:'SF Mono','Courier New',monospace;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:4px;
+}
+.ap-media-btn:active{transform:scale(0.93);}
+.ap-media-btn.video-btn{
+    background:rgba(100,50,0,0.7);border-color:#ffb347;color:#ffb347;
+}
+.ap-media-btn.gallery-btn{
+    background:rgba(40,20,80,0.7);border-color:#9b59b6;color:#c380f0;
+}
+/* Preview strip inside modal */
+#apEvidencePreview{
+    display:flex;gap:5px;flex-wrap:wrap;
+    min-height:0;margin-top:6px;
+}
+.ap-preview-thumb{
+    position:relative;width:58px;height:58px;border-radius:8px;
+    border:1px solid rgba(0,242,192,0.3);overflow:hidden;flex-shrink:0;
+}
+.ap-preview-thumb img,.ap-preview-thumb video{width:100%;height:100%;object-fit:cover;}
+.ap-preview-del{
+    position:absolute;top:1px;right:1px;
+    background:rgba(200,30,40,0.85);color:#fff;
+    border:none;border-radius:50%;width:16px;height:16px;
+    font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    padding:0;font-family:sans-serif;font-weight:700;
+}
+/* Evidence full-screen viewer modal */
+#evidenceModal{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    z-index:3000;background:rgba(0,0,0,0.96);
+    display:none;align-items:center;justify-content:center;
+    flex-direction:column;gap:10px;
+    pointer-events:none;touch-action:none;
+}
+#evidenceModal.show{display:flex;pointer-events:auto;touch-action:auto;}
+#evidenceModalContent{
+    max-width:100vw;max-height:75vh;object-fit:contain;
+    border-radius:10px;
+}
+#evidenceModalVideo{
+    max-width:100vw;max-height:75vh;border-radius:10px;
+    background:#000;
+}
+#evidenceModalCaption{
+    color:#ddeeff;font-size:11px;text-align:center;padding:0 20px;
+    font-family:'SF Mono','Courier New',monospace;
+}
+/* Point Verification HUD — shows during RETURN near a point */
+#pointVerifyHUD{
+    position:fixed;
+    bottom:calc(var(--sab) + var(--tb-h) + 74px);
+    left:8px;right:8px;
+    z-index:1190;
+    background:rgba(4,20,36,0.97);
+    border:1px solid rgba(0,180,216,0.5);
+    border-radius:16px;
+    padding:12px;
+    display:none;
+    pointer-events:auto;
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:0 8px 30px rgba(0,180,216,0.25);
+}
+#pointVerifyHUD.show{display:block;}
+.pv-header{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.pv-name{font-size:13px;font-weight:800;color:#00f2ff;flex:1;}
+.pv-dist{font-size:10px;color:#ffb347;font-weight:700;white-space:nowrap;}
+.pv-close{background:rgba(180,40,50,0.6);border:1px solid #ff5a5f;color:#fff;
+    border-radius:50%;width:22px;height:22px;font-size:11px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;}
+.pv-meta{font-size:9px;color:#ffb347;margin-bottom:7px;}
+.pv-notes{font-size:10px;color:#aaccdd;margin-bottom:8px;line-height:1.4;font-style:italic;}
+.pv-evidence{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;}
+.pv-evidence-img{width:60px;height:60px;object-fit:cover;border-radius:7px;
+    border:1px solid rgba(0,242,255,0.3);cursor:pointer;}
+.pv-evidence-vid{width:60px;height:60px;border-radius:7px;
+    border:1px solid rgba(255,179,71,0.4);background:#0f1828;
+    display:flex;align-items:center;justify-content:center;font-size:24px;cursor:pointer;}
+.pv-nav-row{display:flex;gap:7px;margin-top:4px;}
+.pv-btn{flex:1;height:34px;border-radius:var(--pill);font-size:10px;font-weight:700;
+    font-family:'SF Mono','Courier New',monospace;cursor:pointer;border:none;}
+.pv-btn-confirm{background:#003d2a;border:1px solid #00f2a0!important;color:#00f2a0;}
+.pv-btn-skip{background:#1a1a30;border:1px solid rgba(255,255,255,0.1)!important;color:#6888aa;}
+
+/* ═══════════════════════════════════════════════
+   v5.43 EVIDENCE VALIDATION CSS
+═══════════════════════════════════════════════ */
+/* Evidence viewer nav arrows */
+#evidenceModal .ev-nav{
+    display:flex;gap:12px;align-items:center;margin-top:6px;
+}
+.ev-nav-btn{
+    background:rgba(30,40,60,0.9);border:1px solid rgba(255,255,255,0.15);
+    color:#ddeeff;border-radius:50%;width:38px;height:38px;
+    font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    padding:0;flex-shrink:0;
+}
+.ev-nav-btn:active{transform:scale(0.9);}
+.ev-nav-count{font-size:10px;color:#6888aa;font-family:'SF Mono','Courier New',monospace;}
+
+/* Watermark overlay on preview thumbs */
+.ap-preview-thumb .wm-badge{
+    position:absolute;bottom:2px;left:2px;right:2px;
+    background:rgba(0,0,0,0.7);color:#7ee8ff;font-size:6px;
+    font-family:'SF Mono','Courier New',monospace;font-weight:700;
+    border-radius:3px;padding:1px 3px;line-height:1.3;
+    pointer-events:none;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
+
+/* Compare modal — reference vs live camera */
+#compareModal{
+    position:fixed;top:0;left:0;right:0;bottom:0;
+    z-index:3100;background:rgba(0,0,0,0.98);
+    display:none;flex-direction:column;
+    align-items:stretch;justify-content:flex-start;
+    pointer-events:none;touch-action:none;
+}
+#compareModal.show{display:flex;pointer-events:auto;touch-action:auto;}
+#compareModal .cm-header{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:10px 14px 6px;
+    background:rgba(4,12,28,0.98);border-bottom:1px solid rgba(0,180,216,0.3);
+    flex-shrink:0;
+}
+#compareModal .cm-title{color:#7ee8ff;font-size:12px;font-weight:800;font-family:'SF Mono','Courier New',monospace;}
+#compareModal .cm-close{
+    background:rgba(180,40,50,0.8);border:1px solid #ff5a5f;color:#fff;
+    border-radius:40px;padding:5px 14px;font-size:11px;font-weight:700;
+    font-family:'SF Mono','Courier New',monospace;cursor:pointer;
+}
+.cm-panels{display:flex;flex:1;gap:0;overflow:hidden;}
+.cm-panel{flex:1;display:flex;flex-direction:column;align-items:stretch;position:relative;overflow:hidden;}
+.cm-panel-label{
+    text-align:center;font-size:9px;font-weight:800;letter-spacing:1px;
+    padding:5px 8px;font-family:'SF Mono','Courier New',monospace;
+    flex-shrink:0;
+}
+.cm-panel-ref .cm-panel-label{background:rgba(0,60,80,0.9);color:#7ee8ff;border-bottom:1px solid rgba(0,180,216,0.3);}
+.cm-panel-live .cm-panel-label{background:rgba(0,60,30,0.9);color:#00f2a0;border-bottom:1px solid rgba(0,242,160,0.3);}
+.cm-divider{width:2px;background:rgba(255,255,255,0.1);flex-shrink:0;}
+.cm-panel img,.cm-panel canvas{
+    width:100%;flex:1;object-fit:cover;display:block;
+}
+#compareLiveVideo{
+    width:100%;flex:1;object-fit:cover;display:block;background:#000;
+}
+.cm-panel-ref img{object-fit:contain;background:#060f1e;}
+.cm-match-bar{
+    flex-shrink:0;padding:8px 14px;
+    background:rgba(4,12,28,0.98);
+    border-top:1px solid rgba(255,255,255,0.06);
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+.cm-match-instruction{
+    font-size:10px;color:#ddeeff;font-family:'SF Mono','Courier New',monospace;
+    flex:1;line-height:1.4;
+}
+.cm-confirm-btn{
+    height:38px;padding:0 18px;background:#003d2a;border:1px solid #00f2a0;
+    color:#00f2a0;border-radius:40px;font-size:11px;font-weight:700;
+    font-family:'SF Mono','Courier New',monospace;cursor:pointer;white-space:nowrap;
+}
+.cm-confirm-btn:active{transform:scale(0.93);}
+
+/* Battery badge in watermark info */
+#apBatteryInfo{font-size:8px;color:#506878;margin-top:3px;}
+
+/* Metadata strip under photo in evidence viewer */
+#evidenceMetaStrip{
+    display:flex;flex-wrap:wrap;gap:6px;padding:6px 16px;
+    background:rgba(4,12,24,0.95);justify-content:center;
+}
+.ev-meta-chip{
+    font-size:9px;font-family:'SF Mono','Courier New',monospace;
+    color:#7ee8ff;background:rgba(0,180,216,0.1);
+    border:1px solid rgba(0,180,216,0.2);border-radius:var(--pill);
+    padding:3px 9px;white-space:nowrap;
+}
     </style>
 </head>
 <body>
@@ -1097,38 +1305,127 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 </div>
 
 <!-- ══════════════════════════════════════════
-     ADD POINT MODAL
+     ADD POINT MODAL v5.42 — with Evidence Capture
 ══════════════════════════════════════════ -->
 <div id="addPointModal" onclick="if(event.target===this)window.closeAddPointModal();">
-    <div id="addPointModalBox" onclick="event.stopPropagation()">
+    <div id="addPointModalBox" onclick="event.stopPropagation()" style="max-height:90vh;overflow-y:auto;">
         <h3>📍 TAMBAH TACTICAL POINT</h3>
         <div class="modal-field">
             <label class="modal-label" for="apName">Nama Point</label>
-            <input class="modal-input" id="apName" type="text" placeholder="POS 2 SECURITY" autocomplete="off" />
+            <input class="modal-input" id="apName" type="text" placeholder="POS 2 SECURITY / TRAFO 01 / GATE A" autocomplete="off" />
         </div>
         <div class="modal-field">
             <label class="modal-label" for="apCategory">Kategori</label>
             <select class="modal-select" id="apCategory">
                 <option value="🛡️ Security Post">🛡️ Security Post</option>
-                <option value="⚡ Electrical Panel">⚡ Electrical Panel</option>
+                <option value="⚡ Trafo / Panel">⚡ Trafo / Panel</option>
+                <option value="🔌 Switchyard">🔌 Switchyard</option>
+                <option value="🗼 Tower 150kV">🗼 Tower 150kV</option>
                 <option value="📷 CCTV">📷 CCTV</option>
-                <option value="🚪 Gate">🚪 Gate</option>
+                <option value="🚪 Gate / Pintu">🚪 Gate / Pintu</option>
                 <option value="🔥 Fire Safety">🔥 Fire Safety</option>
                 <option value="⚠️ Hazard Area">⚠️ Hazard Area</option>
                 <option value="🏢 Building">🏢 Building</option>
+                <option value="💻 Server Room">💻 Server Room</option>
+                <option value="🔋 UPS / Genset">🔋 UPS / Genset</option>
+                <option value="🌲 Forest Trail">🌲 Forest Trail</option>
+                <option value="🆘 SAR Lokasi">🆘 SAR Lokasi</option>
+                <option value="🏥 Medical">🏥 Medical</option>
                 <option value="🚨 Incident">🚨 Incident</option>
                 <option value="📌 Custom">📌 Custom</option>
             </select>
         </div>
         <div class="modal-field">
-            <label class="modal-label" for="apNotes">Catatan (opsional)</label>
-            <input class="modal-input" id="apNotes" type="text" placeholder="Catatan tambahan..." autocomplete="off" />
+            <label class="modal-label" for="apNotes">Catatan Lapangan</label>
+            <input class="modal-input" id="apNotes" type="text" placeholder="Kondisi, catatan penting, instruksi..." autocomplete="off" />
+        </div>
+        <!-- Evidence Capture Section -->
+        <div class="modal-field">
+            <label class="modal-label">📷 Bukti Visual (Foto / Video)</label>
+            <div class="ap-media-row">
+                <button class="ap-media-btn" onclick="apCapturePhoto()">📷 Foto</button>
+                <button class="ap-media-btn video-btn" onclick="apCaptureVideo()">🎥 Video</button>
+                <button class="ap-media-btn gallery-btn" onclick="apPickGallery()">🖼 Galeri</button>
+            </div>
+            <!-- hidden inputs -->
+            <input id="apPhotoInput" type="file" accept="image/*" capture="environment" style="display:none" multiple onchange="apHandleMedia(this,'photo')"/>
+            <input id="apVideoInput" type="file" accept="video/*" capture="environment" style="display:none" onchange="apHandleMedia(this,'video')"/>
+            <input id="apGalleryInput" type="file" accept="image/*,video/*" style="display:none" multiple onchange="apHandleMedia(this,'gallery')"/>
+            <!-- preview strip -->
+            <div id="apEvidencePreview"></div>
+            <div id="apEvidenceCount" style="font-size:8px;color:#506878;margin-top:4px;"></div>
         </div>
         <div style="font-size:9px;color:var(--c-muted);margin-bottom:4px;" id="apCoordDisplay">📍 Koordinat: menunggu GPS...</div>
         <div class="modal-btns">
             <button class="modal-btn-cancel" onclick="window.closeAddPointModal()">BATAL</button>
             <button class="modal-btn-save" onclick="window.saveAddPoint()">💾 SIMPAN POINT</button>
         </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     EVIDENCE FULL-SCREEN VIEWER (v5.43 — nav + metadata)
+══════════════════════════════════════════ -->
+<div id="evidenceModal" onclick="evidenceModalClose()">
+    <img id="evidenceModalContent" src="" alt="" style="display:none;max-width:100vw;max-height:65vh;object-fit:contain;border-radius:10px;" onclick="event.stopPropagation()"/>
+    <video id="evidenceModalVideo" controls style="display:none;max-width:100vw;max-height:65vh;border-radius:10px;background:#000;" onclick="event.stopPropagation()"></video>
+    <!-- Metadata chips -->
+    <div id="evidenceMetaStrip" onclick="event.stopPropagation()"></div>
+    <div id="evidenceModalCaption" style="color:#ddeeff;font-size:11px;text-align:center;padding:0 20px;font-family:'SF Mono','Courier New',monospace;"></div>
+    <!-- Navigation row -->
+    <div class="ev-nav" onclick="event.stopPropagation()">
+        <button class="ev-nav-btn" onclick="evidenceNavPrev()">‹</button>
+        <span class="ev-nav-count" id="evNavCount">1 / 1</span>
+        <button class="ev-nav-btn" onclick="evidenceNavNext()">›</button>
+        <button onclick="pvOpenCompareFromEvidence()" style="background:rgba(0,60,80,0.9);border:1px solid #00b4d8;color:#7ee8ff;border-radius:40px;padding:7px 14px;font-size:11px;font-weight:700;font-family:'SF Mono','Courier New',monospace;cursor:pointer;">🔍 COMPARE</button>
+        <button onclick="evidenceModalClose()" style="background:rgba(180,40,50,0.8);border:1px solid #ff5a5f;color:#fff;border-radius:40px;padding:7px 20px;font-size:11px;font-weight:700;font-family:'SF Mono','Courier New',monospace;cursor:pointer;">✕ TUTUP</button>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     COMPARE MODAL (v5.43)
+     Foto Referensi vs Kamera Live side-by-side
+══════════════════════════════════════════ -->
+<div id="compareModal">
+    <div class="cm-header">
+        <span class="cm-title">🔍 BANDINGKAN LOKASI</span>
+        <button class="cm-close" onclick="compareClose()">✕ TUTUP</button>
+    </div>
+    <div class="cm-panels">
+        <div class="cm-panel cm-panel-ref">
+            <div class="cm-panel-label">📷 FOTO REFERENSI</div>
+            <img id="compareRefImg" src="" style="object-fit:contain;background:#060f1e;flex:1;width:100%;display:block;">
+        </div>
+        <div class="cm-divider"></div>
+        <div class="cm-panel cm-panel-live">
+            <div class="cm-panel-label">📡 KAMERA SEKARANG</div>
+            <video id="compareLiveVideo" autoplay muted playsinline></video>
+        </div>
+    </div>
+    <div class="cm-match-bar">
+        <div class="cm-match-instruction" id="compareInstruction">Cocokkan pemandangan kamera dengan foto referensi. Jika sama → tekan KONFIRMASI.</div>
+        <button class="cm-confirm-btn" onclick="compareConfirm()">✅ SAMA</button>
+    </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     POINT VERIFICATION HUD (v5.43)
+     Shows during RETURN when near a point
+══════════════════════════════════════════ -->
+<div id="pointVerifyHUD">
+    <div class="pv-header">
+        <span style="font-size:18px;">📍</span>
+        <span class="pv-name" id="pvName">—</span>
+        <span class="pv-dist" id="pvDist">—</span>
+        <button class="pv-close" onclick="pvDismiss()">✕</button>
+    </div>
+    <div class="pv-meta" id="pvMeta">—</div>
+    <div class="pv-notes" id="pvNotes"></div>
+    <div class="pv-evidence" id="pvEvidence"></div>
+    <div class="pv-nav-row">
+        <button class="pv-btn pv-btn-confirm" onclick="pvConfirm()">✅ KONFIRMASI</button>
+        <button class="pv-btn" style="background:#003050;border:1px solid #00b4d8!important;color:#7ee8ff;flex:1;" onclick="pvOpenCompare()">🔍 BANDINGKAN</button>
+        <button class="pv-btn pv-btn-skip" onclick="pvDismiss()" style="flex:0.6;">⏭ SKIP</button>
     </div>
 </div>
 
@@ -1163,7 +1460,50 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
         <button id="sheetBtn" class="btn-sec btn-sheet">📊 SHEET</button>
         <button id="playbackToggleBtn" class="btn-sec btn-replay">🎬 REPLAY</button>
         <button id="simToggleBtn" class="btn-sec btn-sim">🎮 SIM</button>
+        <button id="mapMatchBtn" class="btn-sec" style="background:#0a2a3a;border:1px solid #00b4d8;color:#7ee8ff;">🛣️ MAP MATCH</button>
     </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MAP MATCH MODAL (v5.41)
+══════════════════════════════════════════ -->
+<div id="mapMatchModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2200;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;backdrop-filter:blur(4px);pointer-events:none;touch-action:none;">
+  <div style="background:#080f1e;border:1px solid rgba(0,180,216,0.4);border-radius:20px;padding:20px;width:min(390px,96vw);box-shadow:0 24px 60px rgba(0,0,0,0.95);max-height:90vh;overflow-y:auto;">
+    <h3 style="color:#7ee8ff;font-size:13px;margin-bottom:4px;font-weight:800;">🛣️ OFFLINE MAP MATCHING v5.41</h3>
+    <div style="font-size:9px;color:#506878;margin-bottom:14px;">Snap breadcrumb ke jalan OSM · Offline · No Internet Required</div>
+    <div style="font-size:10px;color:#6888aa;margin-bottom:12px;line-height:1.6;">
+      Upload file <b style="color:#7ee8ff;">road-network.geojson</b> / <b style="color:#7ee8ff;">.osm</b> / <b style="color:#7ee8ff;">road-network.json</b> berisi highway OSM.<br>
+      VMS akan membangun graph jalan lokal dan snap breadcrumb ke jalan terdekat saat RETURN aktif.
+    </div>
+    <!-- Status chip -->
+    <div id="mmStatus" style="font-size:10px;color:#7ee8ff;background:rgba(0,180,216,0.08);border:1px solid rgba(0,180,216,0.2);border-radius:10px;padding:8px 12px;margin-bottom:12px;min-height:28px;">⏳ Belum ada road graph. Upload file untuk memulai.</div>
+    <!-- Road graph upload -->
+    <div style="border:2px dashed rgba(0,180,216,0.3);border-radius:12px;padding:14px;text-align:center;margin-bottom:10px;cursor:pointer;" onclick="document.getElementById('mmFileInput').click()">
+      <div style="font-size:20px;margin-bottom:4px;">📂</div>
+      <div style="font-size:10px;color:#7ee8ff;">Tap untuk upload Road Graph</div>
+      <div style="font-size:9px;color:#506878;margin-top:2px;">.geojson · .json · .osm (XML)</div>
+    </div>
+    <input id="mmFileInput" type="file" accept=".geojson,.json,.osm,application/json,application/xml,text/xml" style="display:none;" onchange="mmHandleFile(this)"/>
+    <!-- Settings -->
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center;">
+      <label style="font-size:9px;color:#6888aa;text-transform:uppercase;letter-spacing:1px;">Snap Radius (m)</label>
+      <input id="mmSnapRadius" type="range" min="5" max="80" value="25" style="flex:1;accent-color:#00b4d8;" oninput="document.getElementById('mmSnapRadiusVal').innerText=this.value">
+      <span id="mmSnapRadiusVal" style="font-size:10px;color:#7ee8ff;min-width:24px;">25</span>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center;">
+      <label style="font-size:9px;color:#6888aa;text-transform:uppercase;letter-spacing:1px;">Min Confidence</label>
+      <input id="mmMinConf" type="range" min="10" max="90" value="40" style="flex:1;accent-color:#00b4d8;" oninput="document.getElementById('mmMinConfVal').innerText=this.value+'%'">
+      <span id="mmMinConfVal" style="font-size:10px;color:#7ee8ff;min-width:32px;">40%</span>
+    </div>
+    <!-- Action buttons -->
+    <div style="display:flex;gap:7px;margin-top:4px;flex-wrap:wrap;">
+      <button onclick="mmApplyToTrack()" style="flex:1;height:40px;background:#004a5a;color:#7ee8ff;border:1px solid #00b4d8;border-radius:40px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;min-width:100px;">🛣️ SNAP TRACK</button>
+      <button onclick="mmToggleLive()" id="mmLiveBtn" style="flex:1;height:40px;background:#0a2030;color:#7ee8ff;border:1px solid #00b4d8;border-radius:40px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;min-width:100px;">📡 LIVE: OFF</button>
+      <button onclick="mmClear()" style="height:40px;padding:0 14px;background:rgba(180,40,50,0.6);color:#fff;border:1px solid #ff5a5f;border-radius:40px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">🗑 HAPUS</button>
+      <button onclick="mmClose()" style="height:40px;padding:0 14px;background:rgba(40,50,70,0.9);color:#6888aa;border:1px solid rgba(255,255,255,0.08);border-radius:40px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;">✕</button>
+    </div>
+    <div id="mmStats" style="font-size:9px;color:#506878;margin-top:10px;line-height:1.6;"></div>
+  </div>
 </div>
 
 <!-- ══════════════════════════════════════════
@@ -4335,6 +4675,11 @@ function updateBacktrackNavigation(){
     const remainingDist = totalDist - backtrackCumDist[nearestIdx];
     const progressPct = ((totalDist-remainingDist)/totalDist)*100;
 
+    // v5.42: Check proximity to tactical points for verification HUD
+    if(typeof pvCheckProximity === 'function' && tacticalPoints && tacticalPoints.length>0){
+        pvCheckProximity(posLat, posLng);
+    }
+
     // Snap to route for stable bearing
     const snapped = snapToBacktrack(posLat, posLng, nearestIdx);
     const sLat = snapped.lat, sLng = snapped.lng;
@@ -5219,13 +5564,24 @@ let tacticalPointMarkers = {};  // id → Leaflet marker
 // Load from localStorage on boot
 (function loadTacticalPoints(){
     try{
-        const raw=localStorage.getItem('vms_tactical_points');
+        const raw=localStorage.getItem('vms_tactical_points_v2');
         if(raw){ tacticalPoints=JSON.parse(raw)||[]; }
+        else {
+            // Migrate from v1 storage (no evidence fields)
+            const old=localStorage.getItem('vms_tactical_points');
+            if(old){
+                const pts=JSON.parse(old)||[];
+                pts.forEach(p=>{ p.photoEvidence=p.photoEvidence||[]; p.videoEvidence=p.videoEvidence||[]; });
+                tacticalPoints=pts;
+            }
+        }
     }catch(e){ tacticalPoints=[]; }
 })();
 
 function saveTacticalPointsToStorage(){
-    try{ localStorage.setItem('vms_tactical_points',JSON.stringify(tacticalPoints)); }catch(e){}
+    try{ localStorage.setItem('vms_tactical_points_v2',JSON.stringify(tacticalPoints)); }catch(e){
+        console.warn('[POINTS] localStorage full — evidence data may be large. Consider exporting.');
+    }
 }
 
 function getTacticalPointCount(){ return tacticalPoints.length; }
@@ -5237,28 +5593,37 @@ function updatePointCounter(){
     if(cb) cb.innerText=tacticalPoints.length+' points';
 }
 
+// ── Map marker — shows evidence indicator ─────────────────────────────
 function renderTacticalPointOnMap(pt){
     if(!map) return;
-    // Remove old marker if exists
     if(tacticalPointMarkers[pt.id]){ try{ map.removeLayer(tacticalPointMarkers[pt.id]); }catch(e){} }
+    const hasEvidence=(pt.photoEvidence?.length||0)+(pt.videoEvidence?.length||0)>0;
     const icon=L.divIcon({
         className:'',
-        html:`<div style="background:#005b65;border:2px solid #00b0b9;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;box-shadow:0 0 6px rgba(0,242,192,.5);">📍</div>`,
-        iconSize:[18,18],iconAnchor:[9,9]
+        html:`<div style="position:relative;background:#005b65;border:2px solid ${hasEvidence?'#00f2ff':'#00b0b9'};border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 0 ${hasEvidence?'10':'6'}px rgba(0,242,${hasEvidence?'255':'192'},.6);">${hasEvidence?'📸':'📍'}${hasEvidence?`<span style="position:absolute;top:-5px;right:-5px;background:#00b4d8;color:#fff;font-size:7px;font-weight:700;border-radius:50%;width:12px;height:12px;display:flex;align-items:center;justify-content:center;">${(pt.photoEvidence?.length||0)+(pt.videoEvidence?.length||0)}</span>`:''}
+        </div>`,
+        iconSize:[22,22],iconAnchor:[11,11]
     });
+    const photos=pt.photoEvidence||[];
+    const videos=pt.videoEvidence||[];
+    let tooltipHtml=`<b>${escapeHtml(pt.name)}</b><br>${escapeHtml(pt.category)}`;
+    if(pt.notes) tooltipHtml+=`<br><i>${escapeHtml(pt.notes)}</i>`;
+    if(hasEvidence) tooltipHtml+=`<br>📸 ${photos.length} foto · 🎥 ${videos.length} video`;
+
     const marker=L.marker([pt.lat,pt.lng],{icon,interactive:true,zIndexOffset:200})
         .addTo(map)
-        .bindTooltip(`<b>${escapeHtml(pt.name)}</b><br>${escapeHtml(pt.category)}<br>${escapeHtml(pt.notes||'')}`,{permanent:false,direction:'top'});
+        .bindTooltip(tooltipHtml,{permanent:false,direction:'top'})
+        .on('click',()=>{ pvShowPoint(pt); });
     tacticalPointMarkers[pt.id]=marker;
 }
 
 function renderAllTacticalPointsOnMap(){
-    // Clear all existing markers
     Object.values(tacticalPointMarkers).forEach(m=>{ try{ map.removeLayer(m); }catch(e){} });
     tacticalPointMarkers={};
     tacticalPoints.forEach(pt=>renderTacticalPointOnMap(pt));
 }
 
+// ── Point list renderer — full evidence thumbnails ────────────────────
 function renderPointsList(){
     const list=document.getElementById('pointsList');
     if(!list) return;
@@ -5266,58 +5631,196 @@ function renderPointsList(){
         list.innerHTML='<div class="points-empty">📭 Belum ada point tersimpan.<br>Tekan 📍+ saat tracking untuk menambahkan.</div>';
         return;
     }
-    list.innerHTML=tacticalPoints.map((pt,idx)=>`
+    list.innerHTML=tacticalPoints.map((pt)=>{
+        const photos=pt.photoEvidence||[];
+        const videos=pt.videoEvidence||[];
+        const totalEvidence=photos.length+videos.length;
+        let evidenceHtml='';
+        if(totalEvidence>0){
+            evidenceHtml='<div class="evidence-strip">';
+            photos.slice(0,4).forEach((src,i)=>{
+                evidenceHtml+=`<img class="evidence-thumb" src="${src}" loading="lazy" onclick="evidenceOpen('${pt.id}','photo',${i})" title="Foto bukti ${i+1}">`;
+            });
+            videos.forEach((src,i)=>{
+                evidenceHtml+=`<div class="evidence-thumb-video" onclick="evidenceOpen('${pt.id}','video',${i})" title="Video bukti ${i+1}">🎥</div>`;
+            });
+            if(photos.length>4) evidenceHtml+=`<div style="font-size:9px;color:#00b4d8;display:flex;align-items:center;">+${photos.length-4}</div>`;
+            evidenceHtml+='</div>';
+            evidenceHtml+=`<div class="evidence-count">📸 ${photos.length} foto · 🎥 ${videos.length} video</div>`;
+        }
+        return `
         <div class="point-item" id="pitem_${pt.id}">
             <div class="point-item-header">
-                <span class="point-item-icon">📍</span>
+                <span class="point-item-icon">${totalEvidence>0?'📸':'📍'}</span>
                 <span class="point-item-name">${escapeHtml(pt.name)}</span>
                 <span class="point-item-time">${pt.timeStr||''}</span>
             </div>
             <div class="point-item-category">${escapeHtml(pt.category)}</div>
             ${pt.notes?`<div class="point-item-notes">${escapeHtml(pt.notes)}</div>`:''}
-            <div class="point-item-coords">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)} | ${Math.round(pt.alt||0)}m</div>
+            ${evidenceHtml}
+            <div class="point-item-coords">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)} | Alt: ${Math.round(pt.alt||0)}m | Acc: ${Math.round(pt.accuracy||0)}m</div>
             <div class="point-item-btns">
                 <button onclick="window.zoomToPoint('${pt.id}')">🗺️ PETA</button>
+                <button onclick="pvShowPoint(tacticalPoints.find(p=>p.id==='${pt.id}'))" style="background:rgba(0,60,80,0.8);border-color:#00b4d8;color:#7ee8ff;">👁 DETAIL</button>
                 <button onclick="window.deletePoint('${pt.id}')" style="background:rgba(180,40,50,0.7);border-color:#ff5a5f;">🗑 HAPUS</button>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
 }
+
+// ── Modal open / close ────────────────────────────────────────────────
+// Pending evidence for current modal session
+let _apPendingPhotos=[];  // base64 data URLs
+let _apPendingVideos=[];  // base64 data URLs
 
 window.openAddPointModal = function(){
     const modal=document.getElementById('addPointModal');
     if(!modal) return;
-    // Reset fields
-    const nameEl=document.getElementById('apName');
-    const notesEl=document.getElementById('apNotes');
-    const catEl=document.getElementById('apCategory');
-    if(nameEl) nameEl.value='';
-    if(notesEl) notesEl.value='';
-    if(catEl) catEl.selectedIndex=0;
-    // Show current coordinates
+    _apPendingPhotos=[];
+    _apPendingVideos=[];
+    ['apName','apNotes'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    const catEl=document.getElementById('apCategory'); if(catEl) catEl.selectedIndex=0;
+    _apRenderPreview();
     const coordEl=document.getElementById('apCoordDisplay');
     if(coordEl){
         if(lastPosition)
-            coordEl.innerHTML=`📍 ${lastPosition.lat.toFixed(6)}, ${lastPosition.lng.toFixed(6)} | Alt: ${Math.round(lastPosition.alt||0)}m`;
+            coordEl.innerHTML=`📍 ${lastPosition.lat.toFixed(6)}, ${lastPosition.lng.toFixed(6)} | Alt: ${Math.round(lastPosition.alt||0)}m | Acc: ${Math.round(lastPosition.accuracy||0)}m`;
         else
             coordEl.innerHTML='📍 Koordinat: menunggu GPS atau simulator...';
     }
-    // ensure clean state before showing — clear inline lock then add class in next frame
     modal.style.cssText='display:flex;pointer-events:auto;touch-action:auto;';
     modal.classList.add('show');
-    // Focus name field after paint
-    setTimeout(()=>{ if(nameEl) nameEl.focus(); }, 80);
+    setTimeout(()=>{ document.getElementById('apName')?.focus(); },80);
 };
 
 window.closeAddPointModal = function(){
     const modal=document.getElementById('addPointModal');
     if(!modal) return;
+    _apPendingPhotos=[];
+    _apPendingVideos=[];
     modal.classList.remove('show');
-    // BUG-009 FIX: must include display:none to fully remove overlay from hit-testing
     modal.style.cssText='display:none;pointer-events:none;touch-action:none;';
 };
 
-window.saveAddPoint = function(){
+// ── Camera / file trigger helpers ─────────────────────────────────────
+window.apCapturePhoto = function(){
+    const el=document.getElementById('apPhotoInput');
+    if(el){ el.removeAttribute('multiple'); el.setAttribute('capture','environment'); el.click(); }
+};
+window.apCaptureVideo = function(){
+    const el=document.getElementById('apVideoInput');
+    if(el){ el.setAttribute('capture','environment'); el.click(); }
+};
+window.apPickGallery = function(){
+    const el=document.getElementById('apGalleryInput');
+    if(el){ el.setAttribute('multiple',''); el.click(); }
+};
+
+// ── File ingestion → base64 ───────────────────────────────────────────
+window.apHandleMedia = function(inp, mode){
+    const files=Array.from(inp.files||[]);
+    if(!files.length) return;
+    let processed=0;
+    files.forEach(file=>{
+        if(file.size > 20*1024*1024){
+            alert(`File ${file.name} terlalu besar (maks 20MB per file).`); processed++; return;
+        }
+        const reader=new FileReader();
+        reader.onload=(ev)=>{
+            const data=ev.target.result;
+            if(file.type.startsWith('video/')){
+                _apPendingVideos.push(data);
+            } else {
+                _apPendingPhotos.push(data);
+            }
+            processed++;
+            if(processed===files.length) _apRenderPreview();
+        };
+        reader.readAsDataURL(file);
+    });
+    inp.value='';
+};
+
+function _apRenderPreview(){
+    const container=document.getElementById('apEvidencePreview');
+    const countEl=document.getElementById('apEvidenceCount');
+    if(!container) return;
+    const total=_apPendingPhotos.length+_apPendingVideos.length;
+    container.innerHTML=[
+        ..._apPendingPhotos.map((src,i)=>`
+            <div class="ap-preview-thumb">
+                <img src="${src}" loading="lazy">
+                <div class="wm-badge">🌐GPS·🔋BATT·VMS</div>
+                <button class="ap-preview-del" onclick="_apRemoveMedia('photo',${i})">✕</button>
+            </div>`),
+        ..._apPendingVideos.map((src,i)=>`
+            <div class="ap-preview-thumb" style="background:#0f1828;display:flex;align-items:center;justify-content:center;font-size:22px;">
+                🎥
+                <button class="ap-preview-del" onclick="_apRemoveMedia('video',${i})">✕</button>
+            </div>`)
+    ].join('');
+    if(countEl) countEl.innerText=total>0?`${_apPendingPhotos.length} foto · ${_apPendingVideos.length} video · ✅ Watermark akan dibakar saat simpan`:'';
+}
+window._apRenderPreview=_apRenderPreview;
+
+window._apRemoveMedia=function(type,idx){
+    if(type==='photo') _apPendingPhotos.splice(idx,1);
+    else _apPendingVideos.splice(idx,1);
+    _apRenderPreview();
+};
+
+// ── Watermark burn helper — called before saving photos ───────────────
+function _burnWatermarkOnPhoto(src, meta){
+    return new Promise((resolve)=>{
+        const img=new Image();
+        img.onload=function(){
+            try{
+                const canvas=document.createElement('canvas');
+                canvas.width=img.naturalWidth;
+                canvas.height=img.naturalHeight;
+                const ctx=canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                const W=canvas.width, H=canvas.height;
+                const fontSize=Math.max(14, Math.round(W/50));
+                const pad=Math.round(fontSize*0.55);
+                const lineH=Math.round(fontSize*1.4);
+                const ts=new Date(meta.timestamp||Date.now()).toLocaleString('id-ID');
+                const lines=[
+                    `VMS v5.44 · ${ts}`,
+                    `${meta.name||'—'} · ${meta.category||''}`,
+                    `GPS: ${(meta.lat||0).toFixed(6)}, ${(meta.lng||0).toFixed(6)}`,
+                    `Alt: ${Math.round(meta.alt||0)}m · Acc: ${Math.round(meta.accuracy||0)}m`,
+                ];
+                if(batteryPercent) lines.push(`🔋 ${batteryPercent}%`);
+                const blockH=lines.length*lineH+pad*2;
+                ctx.fillStyle='rgba(0,0,0,0.58)';
+                ctx.fillRect(0, H-blockH-pad, W, blockH+pad*2);
+                ctx.textBaseline='top';
+                ctx.font=`700 ${fontSize}px 'Courier New',monospace`;
+                lines.forEach((line,i)=>{
+                    ctx.fillStyle='rgba(0,0,0,0.75)';
+                    ctx.fillText(line, pad+1, H-blockH-pad+pad+i*lineH+1);
+                    ctx.fillStyle=i===0?'#00f2ff':(i===1?'#00f2a0':'#c0e0ff');
+                    ctx.fillText(line, pad, H-blockH-pad+pad+i*lineH);
+                });
+                // Badge top-right
+                const badge='VMS';
+                ctx.font=`700 ${Math.max(11,Math.round(fontSize*0.7))}px 'Courier New',monospace`;
+                const bw=ctx.measureText(badge).width+10;
+                ctx.fillStyle='rgba(30,136,229,0.82)';
+                ctx.fillRect(W-bw-pad, pad, bw, fontSize+8);
+                ctx.fillStyle='#fff';
+                ctx.fillText(badge, W-bw-pad+5, pad+4);
+                resolve(canvas.toDataURL('image/jpeg', 0.88));
+            } catch(e){ resolve(src); } // fallback: keep original if canvas fails
+        };
+        img.onerror=()=>resolve(src);
+        img.src=src;
+    });
+}
+
+// ── Save point with evidence + watermark burn ─────────────────────────
+window.saveAddPoint = async function(){
     const nameEl=document.getElementById('apName');
     const catEl=document.getElementById('apCategory');
     const notesEl=document.getElementById('apNotes');
@@ -5328,29 +5831,47 @@ window.saveAddPoint = function(){
     const lat=lastPosition?.lat||simLat;
     const lng=lastPosition?.lng||simLng;
     const alt=lastPosition?.alt||simAlt||0;
+    const accuracy=lastPosition?.accuracy||0;
+    const heading=lastPosition?.heading||fusedHeading||0;
 
     const pt={
         id: Date.now()+'_'+Math.random().toString(36).slice(2,7),
         name,
         category: catEl?.value||'📌 Custom',
         notes: notesEl?.value?.trim()||'',
-        lat, lng, alt,
+        lat, lng, alt, accuracy, heading,
         timestamp: Date.now(),
-        timeStr: new Date().toLocaleTimeString()
+        timeStr: new Date().toLocaleTimeString(),
+        photoEvidence: [..._apPendingPhotos],
+        videoEvidence: [..._apPendingVideos]
     };
+
+    // Close modal immediately for UX responsiveness
+    window.closeAddPointModal();
+
+    // Show saving badge
+    const cpb=document.getElementById('checkpointBadge');
+    if(_apPendingPhotos.length>0){
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML=`🔥 Burning watermark ke ${_apPendingPhotos.length} foto...`; }
+        // Burn watermark into all photos
+        const meta={name:pt.name, category:pt.category, lat:pt.lat, lng:pt.lng, alt:pt.alt, accuracy:pt.accuracy, timestamp:pt.timestamp};
+        const burnedPhotos=await Promise.all(_apPendingPhotos.map(src=>_burnWatermarkOnPhoto(src, meta)));
+        pt.photoEvidence=burnedPhotos;
+    }
+
     tacticalPoints.push(pt);
     saveTacticalPointsToStorage();
     renderTacticalPointOnMap(pt);
     renderPointsList();
     updatePointCounter();
-    window.closeAddPointModal();
-    // Brief confirmation badge
-    const cpb=document.getElementById('checkpointBadge');
-    if(cpb){ cpb.style.display='block'; cpb.innerHTML=`📍 POINT DISIMPAN: ${name}`; setTimeout(()=>{ cpb.style.display='none'; },2500); }
+
+    const totalEvidence=pt.photoEvidence.length+pt.videoEvidence.length;
+    if(cpb){ cpb.style.display='block'; cpb.innerHTML=`📍 POINT: ${name}${totalEvidence>0?` · ${totalEvidence} bukti · ✅WM`:''}`;
+        setTimeout(()=>{ cpb.style.display='none'; },3000); }
 };
 
 window.deletePoint = function(id){
-    if(!confirm('Hapus point ini?')) return;
+    if(!confirm('Hapus point ini? Semua bukti foto/video akan hilang.')) return;
     tacticalPoints=tacticalPoints.filter(pt=>pt.id!==id);
     if(tacticalPointMarkers[id]){ try{ map.removeLayer(tacticalPointMarkers[id]); }catch(e){} delete tacticalPointMarkers[id]; }
     saveTacticalPointsToStorage();
@@ -5362,8 +5883,354 @@ window.zoomToPoint = function(id){
     const pt=tacticalPoints.find(p=>p.id===id);
     if(!pt||!map) return;
     map.setView([pt.lat,pt.lng],18);
-    window.togglePanel('points'); // close panel to reveal map
+    window.togglePanel('points');
 };
+
+// ── Evidence viewer v5.44 — nav + metadata + watermark export ─────────
+let _evCurrentPtId=null;
+let _evAllItems=[];   // [{type:'photo'|'video', src, index}]
+let _evCurrentIdx=0;
+
+function _evBuildItems(pt){
+    const items=[];
+    (pt.photoEvidence||[]).forEach((src,i)=>items.push({type:'photo',src,index:i}));
+    (pt.videoEvidence||[]).forEach((src,i)=>items.push({type:'video',src,index:i}));
+    return items;
+}
+
+function _evRenderMetaStrip(pt, itemIdx){
+    const strip=document.getElementById('evidenceMetaStrip');
+    if(!strip) return;
+    const item=_evAllItems[itemIdx];
+    const chips=[];
+    chips.push(`<span class="ev-meta-chip">📍 ${pt.name}</span>`);
+    chips.push(`<span class="ev-meta-chip">${pt.category}</span>`);
+    if(pt.timeStr) chips.push(`<span class="ev-meta-chip">🕐 ${pt.timeStr}</span>`);
+    chips.push(`<span class="ev-meta-chip">🌐 ${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</span>`);
+    chips.push(`<span class="ev-meta-chip">⬆️ ${Math.round(pt.alt||0)}m</span>`);
+    chips.push(`<span class="ev-meta-chip">🎯 Acc: ${Math.round(pt.accuracy||0)}m</span>`);
+    if(item&&item.type==='photo') chips.push(`<span class="ev-meta-chip" style="cursor:pointer;border-color:rgba(0,242,160,.5);color:#00f2a0;" onclick="evExportWatermarked()">💾 EXPORT+WM</span>`);
+    strip.innerHTML=chips.join('');
+}
+
+function _evShow(itemIdx){
+    if(itemIdx<0||itemIdx>=_evAllItems.length) return;
+    _evCurrentIdx=itemIdx;
+    const item=_evAllItems[itemIdx];
+    const pt=tacticalPoints.find(p=>p.id===_evCurrentPtId);
+    if(!pt) return;
+    const imgEl=document.getElementById('evidenceModalContent');
+    const vidEl=document.getElementById('evidenceModalVideo');
+    const cap=document.getElementById('evidenceModalCaption');
+    const navCount=document.getElementById('evNavCount');
+    if(item.type==='photo'){
+        if(imgEl){ imgEl.src=item.src; imgEl.style.display='block'; }
+        if(vidEl){ vidEl.style.display='none'; vidEl.src=''; try{vidEl.pause();}catch(e){} }
+        if(cap) cap.innerText=`📷 Foto ${item.index+1}/${pt.photoEvidence.length} — ${pt.name}`;
+    } else {
+        if(vidEl){ vidEl.src=item.src; vidEl.style.display='block'; }
+        if(imgEl){ imgEl.style.display='none'; imgEl.src=''; }
+        if(cap) cap.innerText=`🎥 Video ${item.index+1}/${pt.videoEvidence.length} — ${pt.name}`;
+    }
+    if(navCount) navCount.innerText=`${itemIdx+1} / ${_evAllItems.length}`;
+    _evRenderMetaStrip(pt, itemIdx);
+}
+
+window.evidenceOpen=function(ptId, type, idx){
+    const pt=tacticalPoints.find(p=>p.id===ptId);
+    if(!pt) return;
+    _evCurrentPtId=ptId;
+    _evAllItems=_evBuildItems(pt);
+    // Find the correct flat index
+    let flatIdx=0;
+    if(type==='photo') flatIdx=idx;
+    else flatIdx=(pt.photoEvidence||[]).length + idx;
+    const modal=document.getElementById('evidenceModal');
+    if(!modal) return;
+    modal.classList.add('show');
+    _evShow(flatIdx);
+};
+
+window.evidenceNavPrev=function(){
+    if(_evCurrentIdx>0) _evShow(_evCurrentIdx-1);
+};
+window.evidenceNavNext=function(){
+    if(_evCurrentIdx<_evAllItems.length-1) _evShow(_evCurrentIdx+1);
+};
+
+window.evidenceModalClose=function(){
+    const modal=document.getElementById('evidenceModal');
+    const vidEl=document.getElementById('evidenceModalVideo');
+    if(vidEl){ try{vidEl.pause();}catch(e){} vidEl.src=''; }
+    if(modal) modal.classList.remove('show');
+    _evCurrentPtId=null; _evAllItems=[]; _evCurrentIdx=0;
+};
+
+// ── Watermark Canvas Burn — burns metadata onto photo and exports ──────
+window.evExportWatermarked=function(){
+    const item=_evAllItems[_evCurrentIdx];
+    if(!item||item.type!=='photo'){ alert('Pilih foto terlebih dahulu.'); return; }
+    const pt=tacticalPoints.find(p=>p.id===_evCurrentPtId);
+    if(!pt) return;
+
+    const img=new Image();
+    img.onload=function(){
+        const canvas=document.createElement('canvas');
+        canvas.width=img.naturalWidth;
+        canvas.height=img.naturalHeight;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        // Watermark params
+        const W=canvas.width, H=canvas.height;
+        const fontSize=Math.max(16, Math.round(W/40));
+        const pad=Math.round(fontSize*0.6);
+        const lineH=Math.round(fontSize*1.45);
+
+        const lines=[
+            `VMS v5.44 · ${new Date(pt.timestamp||Date.now()).toLocaleString('id-ID')}`,
+            `📍 ${pt.name} · ${pt.category}`,
+            `GPS: ${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}`,
+            `Alt: ${Math.round(pt.alt||0)}m · Acc: ${Math.round(pt.accuracy||0)}m`,
+        ];
+        if(batteryPercent) lines.push(`🔋 ${batteryPercent}%`);
+
+        const blockH=lines.length*lineH + pad*2;
+        const blockY=H - blockH - pad;
+
+        // Semi-transparent backdrop
+        ctx.fillStyle='rgba(0,0,0,0.62)';
+        ctx.fillRect(0, blockY-pad, W, blockH+pad*2);
+
+        // Text
+        ctx.font=`700 ${fontSize}px 'Courier New', monospace`;
+        ctx.textBaseline='top';
+        lines.forEach((line,i)=>{
+            // Shadow
+            ctx.fillStyle='rgba(0,0,0,0.8)';
+            ctx.fillText(line, pad+1, blockY+i*lineH+1);
+            // Main text — alternating colors
+            ctx.fillStyle=i===0?'#00f2ff':(i===1?'#00f2a0':'#ddeeff');
+            ctx.fillText(line, pad, blockY+i*lineH);
+        });
+
+        // Small VMS badge top-right
+        const badge='■ VMS';
+        ctx.font=`700 ${Math.max(12,Math.round(fontSize*0.75))}px 'Courier New', monospace`;
+        const bw=ctx.measureText(badge).width+12;
+        ctx.fillStyle='rgba(30,136,229,0.85)';
+        ctx.fillRect(W-bw-pad, pad, bw, fontSize+10);
+        ctx.fillStyle='#fff';
+        ctx.fillText(badge, W-bw-pad+6, pad+5);
+
+        // Export
+        const a=document.createElement('a');
+        a.download=`VMS_${pt.name.replace(/[^a-z0-9]/gi,'_')}_${Date.now()}.jpg`;
+        a.href=canvas.toDataURL('image/jpeg', 0.92);
+        a.click();
+    };
+    img.onerror=function(){ alert('Gagal load gambar untuk watermark.'); };
+    img.src=item.src;
+    img.crossOrigin='anonymous';
+};
+
+// ══════════════════════════════════════════════════════════════════════
+// COMPARE ENGINE v5.44 — getUserMedia live camera vs reference photo
+// ══════════════════════════════════════════════════════════════════════
+let _compareStream=null;
+let _compareCurrentPt=null;
+let _compareRefSrc=null;
+
+window.pvOpenCompare=function(){
+    const pt=_pvCurrentPt;
+    if(!pt){ alert('Tidak ada point aktif.'); return; }
+    const photos=pt.photoEvidence||[];
+    if(photos.length===0){
+        alert('Point ini tidak punya foto referensi.\nTambahkan foto saat membuat point.');
+        return;
+    }
+    _compareCurrentPt=pt;
+    _compareRefSrc=photos[0];  // use first photo as reference
+    openCompareModal(pt, _compareRefSrc);
+};
+
+// Also allow opening compare from evidence viewer
+window.pvOpenCompareFromEvidence=function(){
+    const item=_evAllItems[_evCurrentIdx];
+    const pt=tacticalPoints.find(p=>p.id===_evCurrentPtId);
+    if(!item||item.type!=='photo'||!pt) return;
+    _compareCurrentPt=pt;
+    _compareRefSrc=item.src;
+    window.evidenceModalClose();
+    openCompareModal(pt, _compareRefSrc);
+};
+
+function openCompareModal(pt, refSrc){
+    const modal=document.getElementById('compareModal');
+    if(!modal) return;
+    const refImg=document.getElementById('compareRefImg');
+    if(refImg) refImg.src=refSrc;
+    const instr=document.getElementById('compareInstruction');
+    if(instr) instr.innerText=`Cocokkan kamera dengan foto referensi dari "${pt.name}". Jika lokasi sama → tekan ✅ SAMA.`;
+    modal.style.display='flex';
+    modal.classList.add('show');
+    _compareStartCamera();
+}
+
+async function _compareStartCamera(){
+    const videoEl=document.getElementById('compareLiveVideo');
+    if(!videoEl) return;
+
+    // Stop previous stream if any
+    _compareStopCamera();
+
+    try{
+        const constraints={
+            video:{
+                facingMode:{ideal:'environment'},
+                width:{ideal:1280},
+                height:{ideal:720}
+            },
+            audio:false
+        };
+        const stream=await navigator.mediaDevices.getUserMedia(constraints);
+        _compareStream=stream;
+        videoEl.srcObject=stream;
+        videoEl.onloadedmetadata=()=>{ videoEl.play().catch(()=>{}); };
+    } catch(err){
+        console.error('[COMPARE] Camera error:',err);
+        const fallback=document.getElementById('compareInstruction');
+        if(fallback) fallback.innerHTML=`⚠️ Kamera tidak tersedia: ${err.message||err.name}<br>Bandingkan secara visual menggunakan foto referensi.`;
+        if(videoEl){
+            videoEl.style.background='#0a1424';
+            videoEl.style.display='flex';
+        }
+    }
+}
+
+function _compareStopCamera(){
+    if(_compareStream){
+        _compareStream.getTracks().forEach(t=>{ try{t.stop();}catch(e){} });
+        _compareStream=null;
+    }
+    const videoEl=document.getElementById('compareLiveVideo');
+    if(videoEl){ videoEl.srcObject=null; videoEl.src=''; }
+}
+
+window.compareClose=function(){
+    _compareStopCamera();
+    const modal=document.getElementById('compareModal');
+    if(modal){ modal.classList.remove('show'); modal.style.display='none'; }
+    _compareCurrentPt=null;
+    _compareRefSrc=null;
+};
+
+window.compareConfirm=function(){
+    const pt=_compareCurrentPt;
+    if(pt){
+        const cpb=document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML=`✅ LOKASI TERKONFIRMASI: ${pt.name}`; setTimeout(()=>{ cpb.style.display='none'; },3000); }
+        if(navigator.vibrate) navigator.vibrate([60,40,120,40,200]);
+    }
+    window.compareClose();
+    // Also confirm on HUD
+    if(_pvCurrentPt&&pt&&_pvCurrentPt.id===pt.id) window.pvConfirm();
+};
+
+// ── Point Verification HUD ─────────────────────────────────────────────
+// Shows when RETURN active and user is within 40m of a tactical point
+let _pvDismissedIds=new Set();
+let _pvCurrentPt=null;
+
+function pvShowPoint(pt){
+    if(!pt) return;
+    _pvCurrentPt=pt;
+    const hud=document.getElementById('pointVerifyHUD');
+    if(!hud) return;
+    document.getElementById('pvName').innerText=pt.name;
+    document.getElementById('pvMeta').innerText=`${pt.category} · ${pt.timeStr||''}`;
+    const notesEl=document.getElementById('pvNotes');
+    if(notesEl) notesEl.innerText=pt.notes||'';
+
+    const evDiv=document.getElementById('pvEvidence');
+    if(evDiv){
+        const photos=pt.photoEvidence||[];
+        const videos=pt.videoEvidence||[];
+        if(photos.length+videos.length===0){
+            evDiv.innerHTML='<div style="font-size:9px;color:#506878;">Tidak ada bukti foto/video.</div>';
+        } else {
+            evDiv.innerHTML=[
+                ...photos.slice(0,5).map((src,i)=>`<img class="pv-evidence-img" src="${src}" loading="lazy" onclick="evidenceOpen('${pt.id}','photo',${i})">`),
+                ...videos.map((src,i)=>`<div class="pv-evidence-vid" onclick="evidenceOpen('${pt.id}','video',${i})">🎥</div>`)
+            ].join('');
+        }
+    }
+    hud.classList.add('show');
+    if(navigator.vibrate) navigator.vibrate([40,30,40]);
+}
+window.pvShowPoint=pvShowPoint;
+
+function pvUpdateDist(dist){
+    const el=document.getElementById('pvDist');
+    if(el) el.innerText=`${Math.round(dist)}m`;
+}
+
+window.pvDismiss=function(){
+    if(_pvCurrentPt) _pvDismissedIds.add(_pvCurrentPt.id);
+    _pvCurrentPt=null;
+    const hud=document.getElementById('pointVerifyHUD');
+    if(hud) hud.classList.remove('show');
+};
+
+window.pvConfirm=function(){
+    if(_pvCurrentPt){
+        _pvDismissedIds.add(_pvCurrentPt.id);
+        const cpb=document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML=`✅ CHECKPOINT: ${_pvCurrentPt.name}`; setTimeout(()=>{ cpb.style.display='none'; },2500); }
+        if(navigator.vibrate) navigator.vibrate([60,40,120]);
+    }
+    _pvCurrentPt=null;
+    const hud=document.getElementById('pointVerifyHUD');
+    if(hud) hud.classList.remove('show');
+};
+
+// ── Proximity checker — called during backtrack navigation ─────────────
+const PV_TRIGGER_DIST=40;   // meters — show HUD within this distance
+const PV_CLEAR_DIST=80;     // meters — auto-clear dismissed state when far enough
+let _pvCheckTs=0;
+
+function pvCheckProximity(posLat,posLng){
+    const now=Date.now();
+    if(now-_pvCheckTs<2000) return; // throttle 2s
+    _pvCheckTs=now;
+    // Auto-clear dismissed IDs when user is >80m from all dismissed points
+    _pvDismissedIds.forEach(id=>{
+        const pt=tacticalPoints.find(p=>p.id===id);
+        if(!pt) { _pvDismissedIds.delete(id); return; }
+        const d=haversineFast(posLat,posLng,pt.lat,pt.lng);
+        if(d>PV_CLEAR_DIST) _pvDismissedIds.delete(id);
+    });
+    // Find nearest non-dismissed point within trigger radius
+    let nearest=null, nearestDist=Infinity;
+    tacticalPoints.forEach(pt=>{
+        if(_pvDismissedIds.has(pt.id)) return;
+        const d=haversineFast(posLat,posLng,pt.lat,pt.lng);
+        if(d<PV_TRIGGER_DIST && d<nearestDist){ nearestDist=d; nearest=pt; }
+    });
+    if(nearest){
+        if(_pvCurrentPt?.id===nearest.id){
+            pvUpdateDist(nearestDist); // just update distance
+        } else {
+            pvShowPoint(nearest);
+            pvUpdateDist(nearestDist);
+        }
+    } else if(_pvCurrentPt){
+        const d=haversineFast(posLat,posLng,_pvCurrentPt.lat,_pvCurrentPt.lng);
+        if(d>PV_CLEAR_DIST) window.pvDismiss();
+        else pvUpdateDist(d);
+    }
+}
+window.pvCheckProximity=pvCheckProximity;
 
 // =====================================================================
 // SECTION 39-B: MAP UPLOAD MODULE (v5.37)
@@ -5587,8 +6454,455 @@ function voiceSpeak(text){
 // Preload voices on first user gesture
 document.addEventListener('touchstart', ()=>{ try{ if('speechSynthesis' in window) window.speechSynthesis.getVoices(); }catch(e){} }, {once:true});
 document.addEventListener('click', ()=>{ try{ if('speechSynthesis' in window) window.speechSynthesis.getVoices(); }catch(e){} }, {once:true});
+// =====================================================================
+// SECTION 41: OFFLINE MAP MATCHING ENGINE v5.41
+// Snap breadcrumb ke road graph OSM lokal — 100% offline
+// Features:
+//   • Load .geojson / .osm / road-network.json
+//   • Build R-tree spatial index dari road segments
+//   • Perpendicular projection snap dengan heading similarity
+//   • Confidence score gating (jangan snap jika ragu)
+//   • Apply to saved track / live RETURN mode
+//   • Indoor DR mode bypass (tidak snap saat indoor)
+// =====================================================================
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────
+let _mmGraph         = null;  // Array of {from:[lat,lng], to:[lat,lng], type, id}
+let _mmIndex         = null;  // RBush spatial index dari segments
+let _mmLiveActive    = false; // Live snap saat RETURN aktif
+let _mmSnapRadius    = 25;    // meters — configurable via slider
+let _mmMinConf       = 0.40;  // 0..1 confidence threshold
+let _mmSnappedLayer  = null;  // Leaflet polyline untuk snap preview
+let _mmLastLiveSnap  = 0;     // timestamp last live snap
+
+// Highway types yang di-snap (dari OSM)
+const MM_HIGHWAY_TYPES = new Set([
+    'motorway','motorway_link','trunk','trunk_link','primary','primary_link',
+    'secondary','secondary_link','tertiary','tertiary_link','unclassified',
+    'residential','service','living_street','pedestrian','track','path',
+    'footway','cycleway','steps','road'
+]);
+
+// ── UI helpers ────────────────────────────────────────────────────────
+function mmOpen(){
+    const m=document.getElementById('mapMatchModal');
+    if(!m) return;
+    m.style.display='flex'; m.style.pointerEvents='auto'; m.style.touchAction='auto';
+    window.closeSecondaryMenu();
+}
+window.mmOpen=mmOpen;
+function mmClose(){
+    const m=document.getElementById('mapMatchModal');
+    if(!m) return;
+    m.style.display='none'; m.style.pointerEvents='none'; m.style.touchAction='none';
+}
+window.mmClose=mmClose;
+
+function mmStatus(msg, color){
+    const el=document.getElementById('mmStatus');
+    if(el){ el.innerText=msg; el.style.color=color||'#7ee8ff'; }
+}
+
+function mmStats(msg){
+    const el=document.getElementById('mmStats');
+    if(el) el.innerText=msg;
+}
+
+// ── File ingestion ─────────────────────────────────────────────────────
+window.mmHandleFile = function(inp){
+    const file=inp.files[0]; if(!file) return;
+    if(file.size > 150*1024*1024){ mmStatus('❌ File terlalu besar (maks 150MB). Crop area dulu.','#ff5a5f'); return; }
+    mmStatus(`⏳ Membaca ${file.name}…`,'#ffb347');
+    const ext=file.name.split('.').pop().toLowerCase();
+    const reader=new FileReader();
+    reader.onerror=()=>mmStatus('❌ Gagal membaca file','#ff5a5f');
+    reader.onload=(ev)=>{
+        try{
+            if(ext==='osm'){
+                const parser=new DOMParser();
+                const xml=parser.parseFromString(ev.target.result,'application/xml');
+                _mmBuildGraphFromOSM(xml, file.name);
+            } else {
+                const gj=JSON.parse(ev.target.result);
+                _mmBuildGraphFromGeoJSON(gj, file.name);
+            }
+        } catch(e){ mmStatus('❌ Error: '+(e.message||e),'#ff5a5f'); }
+    };
+    reader.readAsText(file);
+    inp.value=''; // reset for re-upload
+};
+
+// ── Build graph from GeoJSON ───────────────────────────────────────────
+function _mmBuildGraphFromGeoJSON(gj, name){
+    mmStatus('⚙️ Membangun road graph dari GeoJSON…','#ffb347');
+    setTimeout(()=>{
+        const segs=[];
+        const features=(gj.type==='FeatureCollection')?gj.features:(gj.features||[gj]);
+        let skipped=0;
+        features.forEach(f=>{
+            if(!f||!f.geometry) return;
+            const hw=(f.properties||{}).highway;
+            if(hw && !MM_HIGHWAY_TYPES.has(hw)){ skipped++; return; }
+            const geomType=f.geometry.type;
+            const coords=f.geometry.coordinates||[];
+            if(geomType==='LineString'){
+                _mmSegmentsFromCoords(coords, hw||'road', segs);
+            } else if(geomType==='MultiLineString'){
+                coords.forEach(line=>_mmSegmentsFromCoords(line, hw||'road', segs));
+            }
+        });
+        _mmFinalizeGraph(segs, name, skipped);
+    },50);
+}
+
+function _mmSegmentsFromCoords(coords, type, segs){
+    for(let i=0;i<coords.length-1;i++){
+        const a=coords[i], b=coords[i+1];
+        if(!a||!b||a.length<2||b.length<2) continue;
+        if(!isFinite(a[0])||!isFinite(a[1])||!isFinite(b[0])||!isFinite(b[1])) continue;
+        // GeoJSON coords are [lng, lat]
+        segs.push({ fromLat:a[1], fromLng:a[0], toLat:b[1], toLng:b[0], type });
+    }
+}
+
+// ── Build graph from OSM XML ───────────────────────────────────────────
+function _mmBuildGraphFromOSM(xml, name){
+    mmStatus('⚙️ Parsing OSM XML…','#ffb347');
+    setTimeout(()=>{
+        const nodeMap={};
+        xml.querySelectorAll('node').forEach(n=>{
+            const id=n.getAttribute('id');
+            const lat=parseFloat(n.getAttribute('lat'));
+            const lng=parseFloat(n.getAttribute('lon'));
+            if(isFinite(lat)&&isFinite(lng)) nodeMap[id]={lat,lng};
+        });
+
+        const segs=[];
+        let skipped=0;
+        xml.querySelectorAll('way').forEach(way=>{
+            let hw='';
+            way.querySelectorAll('tag').forEach(t=>{ if(t.getAttribute('k')==='highway') hw=t.getAttribute('v'); });
+            if(!hw){ skipped++; return; }
+            if(!MM_HIGHWAY_TYPES.has(hw)){ skipped++; return; }
+            const nds=Array.from(way.querySelectorAll('nd')).map(nd=>nodeMap[nd.getAttribute('ref')]).filter(Boolean);
+            for(let i=0;i<nds.length-1;i++){
+                segs.push({ fromLat:nds[i].lat, fromLng:nds[i].lng, toLat:nds[i+1].lat, toLng:nds[i+1].lng, type:hw });
+            }
+        });
+        _mmFinalizeGraph(segs, name, skipped);
+    },100);
+}
+
+// ── Finalize: store graph + build R-tree index ─────────────────────────
+function _mmFinalizeGraph(segs, name, skipped){
+    if(segs.length===0){ mmStatus('❌ Tidak ada segmen jalan ditemukan. Cek format file.','#ff5a5f'); return; }
+    _mmGraph=segs;
+
+    // Build RBush index — bounding box setiap segment
+    if(typeof RBush !== 'undefined'){
+        _mmIndex = new RBush();
+        const items=segs.map((s,i)=>({
+            minX:Math.min(s.fromLng,s.toLng), minY:Math.min(s.fromLat,s.toLat),
+            maxX:Math.max(s.fromLng,s.toLng), maxY:Math.max(s.fromLat,s.toLat),
+            idx:i
+        }));
+        _mmIndex.load(items);
+    } else {
+        _mmIndex=null; // fallback: linear scan
+    }
+
+    const roadTypes=[...new Set(segs.map(s=>s.type))].slice(0,8).join(', ');
+    mmStatus(`✅ Road graph: ${segs.length.toLocaleString()} segmen · ${name}`,'#00f2a0');
+    mmStats(`Jenis jalan: ${roadTypes}\nSkipped non-highway: ${skipped}\nIndex: ${_mmIndex?'RBush':'linear scan'}`);
+
+    // Show on map as thin grey overlay (max 2000 segs to avoid GPU overload)
+    _mmDrawRoadOverlay();
+
+    console.log(`[MM] Graph built: ${segs.length} segs from "${name}"`);
+}
+
+// ── Draw road overlay on map ───────────────────────────────────────────
+function _mmDrawRoadOverlay(){
+    if(!map||!_mmGraph) return;
+    if(_mmSnappedLayer){ try{ map.removeLayer(_mmSnappedLayer); }catch(e){} _mmSnappedLayer=null; }
+    const maxDraw=2000;
+    const step=Math.max(1,Math.ceil(_mmGraph.length/maxDraw));
+    const lines=[];
+    for(let i=0;i<_mmGraph.length;i+=step){
+        const s=_mmGraph[i];
+        lines.push([[s.fromLat,s.fromLng],[s.toLat,s.toLng]]);
+    }
+    if(lines.length>0){
+        _mmSnappedLayer=L.polyline(lines,{color:'#00b4d8',weight:1,opacity:0.35,interactive:false}).addTo(map);
+    }
+}
+
+// ── Core geometry: perpendicular snap ─────────────────────────────────
+// Returns {lat, lng, dist, t} — closest point on segment A→B to point P
+function _mmProjectPointOnSegment(pLat,pLng, aLat,aLng, bLat,bLng){
+    // Work in local flat approximation (accurate for <2km segments)
+    const cosLat=Math.cos(pLat*Math.PI/180);
+    const ax=(aLng-pLng)*111320*cosLat, ay=(aLat-pLat)*111320;
+    const bx=(bLng-pLng)*111320*cosLat, by=(bLat-pLat)*111320;
+    const dx=bx-ax, dy=by-ay;
+    const lenSq=dx*dx+dy*dy;
+    if(lenSq<0.01) return {lat:aLat,lng:aLng,dist:Math.sqrt(ax*ax+ay*ay),t:0};
+    const t=Math.max(0,Math.min(1,((-ax)*dx+(-ay)*dy)/lenSq));
+    const cx=ax+t*dx, cy=ay+t*dy;
+    const dist=Math.sqrt(cx*cx+cy*cy);
+    const snapLat=pLat+cy/111320;
+    const snapLng=pLng+cx/(111320*cosLat);
+    return {lat:snapLat,lng:snapLng,dist,t};
+}
+
+// ── Find candidate segments via R-tree ────────────────────────────────
+function _mmQueryCandidates(lat, lng, radiusM){
+    const dLat=radiusM/111320;
+    const dLng=radiusM/(111320*Math.cos(lat*Math.PI/180));
+    if(_mmIndex){
+        return _mmIndex.search({minX:lng-dLng,minY:lat-dLat,maxX:lng+dLng,maxY:lat+dLat}).map(item=>_mmGraph[item.idx]);
+    }
+    // Fallback linear
+    return _mmGraph.filter(s=>{
+        const mLat=(s.fromLat+s.toLat)/2, mLng=(s.fromLng+s.toLng)/2;
+        const d=Math.abs(mLat-lat)*111320+Math.abs(mLng-lng)*111320*Math.cos(lat*Math.PI/180);
+        return d < radiusM*3;
+    });
+}
+
+// ── Compute heading of a segment ──────────────────────────────────────
+function _mmSegmentHeading(s){
+    return Math.atan2((s.toLng-s.fromLng)*Math.cos(s.fromLat*Math.PI/180),(s.toLat-s.fromLat))*180/Math.PI;
+}
+
+// ── Main snap function ─────────────────────────────────────────────────
+// Returns {lat, lng, confidence, snapped} or null
+function _mmSnapPoint(lat, lng, headingDeg, radiusM, minConf){
+    if(!_mmGraph||_mmGraph.length===0) return null;
+    const candidates=_mmQueryCandidates(lat, lng, radiusM);
+    if(candidates.length===0) return null;
+
+    let bestDist=Infinity, bestProj=null, bestConf=0;
+
+    candidates.forEach(seg=>{
+        const proj=_mmProjectPointOnSegment(lat,lng, seg.fromLat,seg.fromLng, seg.toLat,seg.toLng);
+        if(proj.dist > radiusM) return;
+
+        // Confidence: distance component (0..1, closer=better)
+        const distConf=Math.max(0,1-proj.dist/radiusM);
+
+        // Confidence: heading similarity — compare user heading to segment bearing
+        let headingConf=0.5; // neutral if no heading available
+        if(isFinite(headingDeg)){
+            const segH=_mmSegmentHeading(seg);
+            const diff=Math.abs(((headingDeg-segH)+540)%360-180);
+            // Also check reverse direction
+            const diffRev=Math.abs(((headingDeg-segH-180)+540)%360-180);
+            const bestDiff=Math.min(diff,diffRev);
+            headingConf=Math.max(0,1-bestDiff/90); // 90deg diff = 0 confidence
+        }
+
+        const conf=distConf*0.65 + headingConf*0.35;
+
+        if(proj.dist < bestDist && conf > minConf){
+            bestDist=proj.dist;
+            bestProj=proj;
+            bestConf=conf;
+        }
+    });
+
+    if(!bestProj||bestConf<minConf) return null;
+    return { lat:bestProj.lat, lng:bestProj.lng, confidence:bestConf, dist:bestDist, snapped:true };
+}
+
+// ── Apply snap to current loaded track (breadcrumb buffer) ─────────────
+window.mmApplyToTrack = function(){
+    if(!_mmGraph){ mmStatus('❌ Upload road graph dulu.','#ff5a5f'); return; }
+    if(bufferLen<2){ mmStatus('❌ Tidak ada breadcrumb. START tracking atau IMPORT track.','#ff5a5f'); return; }
+
+    const radius=parseInt(document.getElementById('mmSnapRadius')?.value||25);
+    const minConf=parseInt(document.getElementById('mmMinConf')?.value||40)/100;
+
+    mmStatus(`⚙️ Snapping ${bufferLen} titik ke road graph…`,'#ffb347');
+
+    setTimeout(()=>{
+        let snappedCount=0, skippedCount=0;
+        const snappedLine=[];
+
+        for(let i=0;i<bufferLen;i++){
+            const p=getPoint(i);
+            if(!p) continue;
+            const hdg=(p.heading||NaN);
+            const result=_mmSnapPoint(p.lat, p.lng, hdg, radius, minConf);
+            if(result){
+                // Mutate the buffer point lat/lng in-place
+                const realIdx=(bufferStart+i)%CONFIG.CIRCULAR_BUFFER_SIZE;
+                const raw=trackBuffer[realIdx];
+                if(raw){
+                    raw[P_LAT]=result.lat;
+                    raw[P_LNG]=result.lng;
+                }
+                snappedLine.push([result.lat, result.lng]);
+                snappedCount++;
+            } else {
+                snappedLine.push([p.lat, p.lng]);
+                skippedCount++;
+            }
+        }
+
+        // Rebuild trail with snapped points
+        rebuildTrail();
+
+        // Show snapped line overlay in bright cyan
+        if(_mmSnappedLayer){ try{ map.removeLayer(_mmSnappedLayer); }catch(e){} }
+        if(snappedLine.length>1){
+            _mmSnappedLayer=L.polyline(snappedLine,{color:'#00f2ff',weight:4,opacity:0.75,interactive:false}).addTo(map);
+        }
+
+        const pct=Math.round(snappedCount/(bufferLen)*100);
+        mmStatus(`✅ Snap selesai: ${snappedCount} titik di-snap (${pct}%), ${skippedCount} dilewati (conf rendah)`,'#00f2a0');
+        mmStats(`Radius: ${radius}m · Min confidence: ${Math.round(minConf*100)}%\nTotal titik: ${bufferLen} · Di-snap: ${snappedCount}`);
+
+        const cpb=document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML=`🛣️ MAP MATCH: ${snappedCount} titik di-snap`; setTimeout(()=>{ cpb.style.display='none'; },3000); }
+
+        // Invalidate backtrack route so RETURN will use snapped positions
+        if(backtrackActive){ stopBacktrackMode(); }
+
+        console.log(`[MM] Applied snap: ${snappedCount}/${bufferLen} points`);
+    },50);
+};
+
+// ── Toggle live map matching during RETURN ─────────────────────────────
+window.mmToggleLive = function(){
+    if(!_mmGraph){ mmStatus('❌ Upload road graph dulu.','#ff5a5f'); return; }
+    _mmLiveActive=!_mmLiveActive;
+    const btn=document.getElementById('mmLiveBtn');
+    if(btn){
+        btn.innerText=_mmLiveActive ? '📡 LIVE: ON' : '📡 LIVE: OFF';
+        btn.style.background=_mmLiveActive ? '#004a30' : '#0a2030';
+        btn.style.borderColor=_mmLiveActive ? '#00f2a0' : '#00b4d8';
+        btn.style.color=_mmLiveActive ? '#00f2a0' : '#7ee8ff';
+    }
+    mmStatus(_mmLiveActive ? '✅ Live map matching AKTIF — posisi real-time di-snap ke jalan' : '⏹ Live map matching OFF','#00f2a0');
+};
+
+// ── Clear road graph ───────────────────────────────────────────────────
+window.mmClear = function(){
+    _mmGraph=null; _mmIndex=null; _mmLiveActive=false;
+    if(_mmSnappedLayer){ try{ if(map) map.removeLayer(_mmSnappedLayer); }catch(e){} _mmSnappedLayer=null; }
+    const btn=document.getElementById('mmLiveBtn');
+    if(btn){ btn.innerText='📡 LIVE: OFF'; btn.style.background='#0a2030'; btn.style.borderColor='#00b4d8'; btn.style.color='#7ee8ff'; }
+    mmStatus('🗑 Road graph dihapus.','#6888aa');
+    mmStats('');
+};
+
+// ── Live snap hook — called from updateBacktrackNavigation ─────────────
+// Returns snapped {lat,lng} or null if no graph / low confidence / indoor
+function mmLiveSnap(lat, lng, headingDeg){
+    if(!_mmLiveActive||!_mmGraph) return null;
+    // Don't snap in indoor DR mode — position from dead reckoning
+    if(_drActive) return null;
+    const now=Date.now();
+    if(now-_mmLastLiveSnap<600) return null; // throttle 600ms
+    _mmLastLiveSnap=now;
+    const radius=parseInt(document.getElementById('mmSnapRadius')?.value||25);
+    const minConf=parseInt(document.getElementById('mmMinConf')?.value||40)/100;
+    return _mmSnapPoint(lat, lng, headingDeg, radius, minConf);
+}
+window.mmLiveSnap=mmLiveSnap;
+
+// ── Map Match button wiring ────────────────────────────────────────────
+document.getElementById('mapMatchBtn')?.addEventListener('click',()=>{ mmOpen(); });
+
+// ── Patch buildBacktrackRoute to prefer map-matched positions ──────────
+// We wrap the original — if live is ON when RETURN starts,
+// we snap the entire route one more time for best quality
+const _origBuildBacktrackRoute = buildBacktrackRoute;
+window._mmPatchedBuildBacktrack = function(){
+    const result=_origBuildBacktrackRoute();
+    if(!result||!_mmGraph||backtrackRoute.length<2) return result;
+    // Map-match the reversed breadcrumb route
+    const radius=parseInt(document.getElementById('mmSnapRadius')?.value||25);
+    const minConf=parseInt(document.getElementById('mmMinConf')?.value||40)/100;
+    let snapCount=0;
+    backtrackRoute.forEach(pt=>{
+        const snap=_mmSnapPoint(pt.lat, pt.lng, pt.heading||NaN, radius, minConf);
+        if(snap){ pt.lat=snap.lat; pt.lng=snap.lng; snapCount++; }
+    });
+    // Rebuild cumulative distance with snapped positions
+    backtrackCumDist=[0];
+    for(let i=1;i<backtrackRoute.length;i++)
+        backtrackCumDist.push(backtrackCumDist[i-1]+haversineFast(backtrackRoute[i-1].lat,backtrackRoute[i-1].lng,backtrackRoute[i].lat,backtrackRoute[i].lng));
+    if(snapCount>0){
+        const cpb=document.getElementById('checkpointBadge');
+        if(cpb){ cpb.style.display='block'; cpb.innerHTML=`🛣️ RETURN: ${snapCount} titik di-snap ke jalan`; setTimeout(()=>{ cpb.style.display='none'; },3000); }
+        console.log(`[MM] RETURN route snap: ${snapCount}/${backtrackRoute.length}`);
+    }
+    return result;
+};
+
+// ── Patch startBacktrackMode to call map-matched build ─────────────────
+const _origStartBacktrack = (typeof startBacktrackMode !== 'undefined') ? startBacktrackMode : null;
+// Hook applied at runtime (see bootstrap patch below)
+
+// ── Patch onGPSPosition for live snap injection ────────────────────────
+// We intercept after Kalman/validation — add snap BEFORE adaptiveCameraFollow
+const _origAdaptiveCameraFollow = adaptiveCameraFollow;
+window.adaptiveCameraFollow = function(lat, lng, speed){
+    // If live snap active: override lat/lng before camera follows
+    if(_mmLiveActive && _mmGraph && !_drActive){
+        const fhdg=_survFused||_gpsBearLast||NaN;
+        const snap=mmLiveSnap(lat, lng, fhdg);
+        if(snap){ lat=snap.lat; lng=snap.lng; }
+    }
+    return _origAdaptiveCameraFollow.call(this, lat, lng, speed);
+};
+
+// ── Status badge for map matching ─────────────────────────────────────
+function _mmUpdateBadge(){
+    const cb=document.getElementById('confidenceBadge');
+    if(!cb) return;
+    if(_mmGraph && _mmLiveActive){
+        cb.innerHTML=`🛣️ MAP MATCH: LIVE (${(_mmGraph.length/1000).toFixed(1)}k seg)`;
+        cb.style.color='#00f2ff';
+    } else if(_mmGraph){
+        cb.innerHTML=`🛣️ MAP MATCH: READY (${(_mmGraph.length/1000).toFixed(1)}k seg)`;
+        cb.style.color='#7ee8ff';
+    }
+}
+setInterval(_mmUpdateBadge, 5000);
+
+console.log('[VMS] v5.44 Offline Map Matching Engine loaded');
+
+// ── Bootstrap patch: hook startBacktrackMode ───────────────────────────
+setTimeout(()=>{
+    const origStart=window.startBacktrackMode;
+    if(typeof origStart === 'function'){
+        window.startBacktrackMode = function(){
+            origStart.apply(this, arguments);
+            // After building route, apply map match if graph available
+            if(_mmGraph && backtrackRoute && backtrackRoute.length > 1){
+                window._mmPatchedBuildBacktrack();
+                // Rebuild spatial index for snapped route
+                clearSpatialIndex();
+                for(let i=0;i<backtrackRoute.length;i++) addToSpatialIndex(backtrackRoute[i],i);
+                // Redraw return line with snapped route
+                if(returnLine){ try{ map.removeLayer(returnLine); }catch(e){} returnLine=null; }
+                if(backtrackRoute.length>1){
+                    returnLine=L.polyline(backtrackRoute.map(p=>[p.lat,p.lng]),
+                        {color:'#fd7e2c',weight:5,opacity:0.8,interactive:false}).addTo(map);
+                }
+            }
+        };
+        console.log('[MM] startBacktrackMode patched for map matching');
+    }
+}, 2000);
+
+
 async function bootstrap(){
-    console.log('[VMS] v5.38 BOOTING — SURVIVAL NAV · RAF ARROW · 6-SOURCE FUSION · INDOOR DR...');
+    console.log('[VMS] v5.44 BOOTING — COMPARE ENGINE · WATERMARK BURN · EVIDENCE NAV · TACTICAL POINTS · SURVIVAL RETURN ENGINE...');
     // v5.26: force-unlock all panels on boot — prevents deadlock from crashed previous session
     ['historyPanel','simPanel','pointsPanel','addPointModal'].forEach(id=>{
         const el=document.getElementById(id);
@@ -5613,7 +6927,7 @@ async function bootstrap(){
     startPositionInterpolation(); // v5.28: smooth marker + GPS dead reckoning
     // Render saved tactical points on map
     setTimeout(()=>{ renderAllTacticalPointsOnMap(); renderPointsList(); updatePointCounter(); },500);
-    console.log('[VMS] v5.38 BOOT COMPLETE — Survival Navigation System ONLINE');
+    console.log('[VMS] v5.44 BOOT COMPLETE — Compare Engine + Watermark Burn + Evidence Nav + Map Matching + Survival Nav ONLINE');
     console.log('[INFO] Klik START lalu SIM untuk test tanpa GPS fisik');
 }
 
