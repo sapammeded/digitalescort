@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.45 · MAP MODULE STABLE · COMPARE ENGINE · WATERMARK BURN · SURVIVAL NAV</title>
+    <title>VMS | v5.49 · DRIFT GUARD v2 · NET ROTATION · CONFIRM WINDOW · PATROL SAFE</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -449,16 +449,17 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 }
 
 /* Survival compass HUD — indoor/no-GPS mode */
+/* v5.47: survivalHUD DISABLED — compass occupies full screen, removed from default flow */
 #survivalHUD{
     position:fixed;
     top:calc(var(--sat) + var(--sb-h) + 38px + 50px);
     left:50%;transform:translateX(-50%);
     z-index:1175;
-    display:none;
+    display:none !important;  /* v5.47: permanently hidden unless debug mode */
     flex-direction:column;align-items:center;gap:6px;
     pointer-events:none;
 }
-#survivalHUD.show{display:flex;}
+#survivalHUD.show{display:none !important;} /* v5.47: blocked */
 #compassRing{
     width:140px;height:140px;
     border-radius:50%;
@@ -479,15 +480,15 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 }
 #indoorModeBadge{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 4px);
-    left:50%;transform:translateX(-50%);
-    background:rgba(120,50,0,0.92);
+    bottom:calc(var(--sab) + var(--tb-h) + 38px);
+    right:10px;
+    background:rgba(120,50,0,0.82);
     border:1px solid #fd7e2c;
     border-radius:var(--pill);
-    padding:3px 12px;
-    font-size:9px;font-family:'SF Mono','Courier New',monospace;
+    padding:3px 10px;
+    font-size:8px;font-family:'SF Mono','Courier New',monospace;
     font-weight:700;color:#fd7e2c;
-    z-index:1176;display:none;white-space:nowrap;
+    z-index:1060;display:none;white-space:nowrap;
 }
 #indoorModeBadge.show{display:block;}
 
@@ -1236,6 +1237,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 
 <!-- Indoor mode badge -->
 <div id="indoorModeBadge">🏠 INDOOR / DR MODE</div>
+<div id="driftBadge" style="position:fixed;bottom:calc(var(--sab) + var(--tb-h) + 56px);right:10px;background:rgba(180,40,0,0.88);border:1px solid #ff5a5f;border-radius:var(--pill);padding:3px 10px;font-size:8px;font-family:'SF Mono','Courier New',monospace;font-weight:700;color:#fff;z-index:1062;display:none;white-space:nowrap;pointer-events:none;">⚠️ KOMPAS DRIFT</div>
 
 <!-- Survival compass HUD — shown when GPS lost during backtrack -->
 <div id="survivalHUD">
@@ -1751,7 +1753,23 @@ document.addEventListener('DOMContentLoaded', function(){
 //        visibility-safe RAF, Android memory, camera pan jitter,
 //        battery drain reduction, long-session stability
 // =====================================================================
-console.log('[VMS] v5.36 FIELD-HARDENED — boot');
+console.log('[VMS] v5.49 DRIFT GUARD v2 — boot');
+// =====================================================================
+// v5.49 CHANGELOG (on top of v5.48)
+// =====================================================================
+// FIX-13: DRIFT GUARD v2 — rewritten compassDriftCheck()
+//   OLD: totalRotation / elapsed → false positive on patrol head-scan
+//        (kanan 15° + kiri 15° = 30° counted, but net = 0°)
+//   NEW: netRotation (first→last) + low-variance gate
+//        patrol scan: net ≈ 0° → NOT drift
+//        hardware drift: sustained unidirectional → net = large + variance = low
+// FIX-14: Threshold 25→40 deg/s — patrol & QR-scan tolerance
+// FIX-15: Confirmation window — require 3 consecutive over-threshold checks
+//         before freeze activates (was: freeze on first detection)
+//         _driftConfirmCount decays gradually, not instant-reset
+// FIX-16: Buffer 12→16, min readings 4→6, window 0.1→0.15s
+// FIX-17: Freeze 3000→4000ms — gives GPS more time to fill in during freeze
+// =====================================================================
 
 // =====================================================================
 // SECTION 1: CONSTANTS & CONFIGURATION
@@ -1781,7 +1799,8 @@ const CONFIG = {
     SYNC_RETRY_BUDGET: 5,
     TX_TIMEOUT_MS: 10000,
     OFFROUTE_THRESHOLD: 30,
-    OFFROUTE_COOLDOWN_MS: 5000,
+    OFFROUTE_REACQUIRE_THRESHOLD: 5,
+    OFFROUTE_COOLDOWN_MS: 1500,
     CHECKPOINT_INTERVAL_M: 100,
     CHECKPOINT_INTERVAL_MS: 300000,
     MAX_CHECKPOINTS: 50
@@ -1794,13 +1813,13 @@ const GPS_OPTIONS = {
 };
 
 const VEHICLE_PROFILES = {
-    WALKING: { name:'🚶 PEJALAN KAKI', minSpeed:0.3, maxSpeed:3.0,  turnAngle:30, headingSmooth:0.7 },
-    MOTOR:   { name:'🏍️ MOTOR',         minSpeed:2.0, maxSpeed:17.0, turnAngle:20, headingSmooth:0.85 },
-    CAR:     { name:'🚗 MOBIL',          minSpeed:5.0, maxSpeed:35.0, turnAngle:15, headingSmooth:0.92 }
+    WALKING: { name:'🚶 PEJALAN KAKI', minSpeed:0.2, maxSpeed:2.5,  turnAngle:25, headingSmooth:0.5  },
+    MOTOR:   { name:'🏍️ MOTOR',         minSpeed:1.5, maxSpeed:17.0, turnAngle:20, headingSmooth:0.78 },
+    CAR:     { name:'🚗 MOBIL',          minSpeed:3.0, maxSpeed:35.0, turnAngle:15, headingSmooth:0.88 }
 };
 
 const VEHICLE_FILTERS = {
-    WALKING: { minDistance:0.5,  driftRadius:2.5,  jumpLimit:40,  warmup:2 },
+    WALKING: { minDistance:0.3,  driftRadius:1.5,  jumpLimit:30,  warmup:2 },
     MOTOR:   { minDistance:2.0,  driftRadius:6.0,  jumpLimit:150, warmup:1 },
     CAR:     { minDistance:4.0,  driftRadius:12.0, jumpLimit:250, warmup:1 }
 };
@@ -1922,6 +1941,18 @@ let _compassPrevTs     = 0;
 let _compassPrevVal    = 0;
 const COMPASS_JUMP_GATE = 45; // deg — reject jumps larger than this within 150ms
 const COMPASS_EMA_K    = 0.18;// EMA smoothing (lower = smoother but slower)
+
+// v5.48: COMPASS DRIFT GUARD — detects & suppresses spinning/drifting compass
+// Oppo/Realme/Vivo/Infinix compass hardware often drifts continuously
+let _driftGuardBuf     = [];  // ring buffer of last N compass readings
+let _driftGuardActive  = false; // true = compass frozen, use gyro or GPS only
+let _driftGuardTs      = 0;   // when drift was detected
+let _driftFrozenVal    = 0;   // value frozen when drift detected
+let _driftConfirmCount = 0;   // v5.49: consecutive windows above threshold before freeze
+const DRIFT_BUF_SIZE   = 16;  // v5.49: was 12 — wider window for better rate estimate
+const DRIFT_RATE_DEG_S = 40;  // v5.49: was 25 — raised for patrol/head-scan tolerance
+const DRIFT_CONFIRM    = 3;   // v5.49: require 3 consecutive over-threshold windows before freeze
+const DRIFT_FREEZE_MS  = 4000;// v5.49: was 3000 — freeze 4s, gives GPS time to fill in
 
 // Accelerometer bearing (S4) — horizontal motion vector
 // When device flat+moving: accel X/Y = lateral force → infer direction change
@@ -2503,48 +2534,68 @@ function initGyroscope(){
     } else { _attach(); }
 }
 
-// ── 2. 6-SOURCE HEADING FUSION ──────────────────────────────────────────
-// Priority: GPS bearing > Compass > Gyro integration > DR > lastGood
+// ── 2. HEADING PIPELINE v5.47 ──────────────────────────────────────────
+// WALKING: Compass PRIMARY. GPS bearing only above 1.2 m/s AND accuracy < 15m.
+//          No lerp delay — compass reads directly to arrow.
+// MOTOR:   GPS primary above 2.0 m/s. Compass blended at lower speed.
+// CAR:     GPS primary above 3.0 m/s. Compass blended lightly.
+// Dead reckoning: keep gyro-propagated heading when GPS+compass both stale.
 function fuseSurvivalHeading(){
     const spd = lastPosition?.speed || _drSpeed || 0;
+    const acc = lastPosition?.accuracy || 99;
     const gpsAge = Date.now() - gpsLastFixTime;
     const hasGPS = gpsAge < 3000 && gpsState === GPS_STATE.ACTIVE;
+    // v5.48: if compass is drifting, treat it as unavailable
+    const compassOk = lastCompassHeading > 0 && (Date.now() - _compassPrevTs) < 5000 && !_driftGuardActive;
 
     let h = _survFused || 0;
 
-    if(hasGPS && spd > 0.5 && _gpsBearLast > 0){
-        // GPS bearing dominant when moving with good fix
-        h = _gpsBearLast;
-        _survHeadingGPS = h;
-        // Blend in compass lightly
-        if(lastCompassHeading > 0) h = circularMean(h, lastCompassHeading, 0.88, 0.12);
-    } else if(hasGPS && spd <= 0.5 && lastCompassHeading > 0){
-        // Stationary with GPS — compass primary
-        h = lastCompassHeading;
-        _survHeadingCompass = h;
-    } else if(!hasGPS && lastCompassHeading > 0){
-        // No GPS — compass + gyro + accel (S4) integration
-        const gyroW = Math.min(0.6, Math.abs(_survGyroRate) * 0.05); // gyro weight by rotation speed
-        h = circularMean(lastCompassHeading, _survHeadingGyro, 1-gyroW, gyroW);
-        // v5.40: blend S4 (accel bearing) only when it has meaningful confidence
-        // Max accel weight capped at 0.15 — supporting evidence only, never dominant
-        if(_accelBearConf > 0.1 && _survHeadingAccel > 0){
-            const accelW = Math.min(0.15, _accelBearConf * 0.3);
-            h = circularMean(h, _survHeadingAccel, 1 - accelW, accelW);
+    if(currentVehicle === 'WALKING'){
+        // v5.47 FIX: compass ALWAYS dominant for walking.
+        // GPS bearing merges only when moving fast AND signal is tight.
+        if(compassOk){
+            h = lastCompassHeading;
+            if(hasGPS && spd > 1.2 && acc < 15 && _gpsBearLast > 0){
+                // Fast walk with tight GPS — blend gently
+                h = circularMean(lastCompassHeading, _gpsBearLast, 0.70, 0.30);
+            }
+        } else if(hasGPS && spd > 1.2 && _gpsBearLast > 0){
+            h = _gpsBearLast;
+        } else {
+            // Nothing fresh — propagate with gyro
+            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
         }
-        _survHeadingCompass = lastCompassHeading;
-        _survHeadingDR = h;
-    } else if(lastGoodHeading > 0){
-        // Fallback: last known good heading + gyro drift
-        h = normalizeAngle(lastGoodHeading + (_survGyroRate * Math.min((Date.now()-_survFusedTs)/1000, 0.5)));
-        _survHeadingDR = h;
+        // WALKING: NO EMA smoothing — direct assignment for instant body rotation
+        _survFused = h;
+
+    } else if(currentVehicle === 'MOTOR'){
+        if(hasGPS && spd > 2.0 && _gpsBearLast > 0){
+            h = compassOk ? circularMean(_gpsBearLast, lastCompassHeading, 0.80, 0.20) : _gpsBearLast;
+        } else if(compassOk){
+            h = lastCompassHeading;
+        } else {
+            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
+        }
+        // MOTOR: light EMA
+        const diff = shortestAngleDiff(_survFused, h);
+        _survFused = normalizeAngle(_survFused + diff * 0.45);
+
+    } else {
+        // CAR: GPS strongly dominant
+        if(hasGPS && spd > 3.0 && _gpsBearLast > 0){
+            h = compassOk ? circularMean(_gpsBearLast, lastCompassHeading, 0.92, 0.08) : _gpsBearLast;
+        } else if(compassOk){
+            h = lastCompassHeading;
+        } else {
+            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
+        }
+        // CAR: smoother EMA
+        const diff = shortestAngleDiff(_survFused, h);
+        _survFused = normalizeAngle(_survFused + diff * 0.25);
     }
 
-    // Smooth the fused result with exponential moving average
-    const diff = shortestAngleDiff(_survFused, h);
-    _survFused = normalizeAngle(_survFused + diff * 0.35);
     _survFusedTs = Date.now();
-    if(Math.abs(diff) < 90) lastGoodHeading = _survFused; // update lastGood only when stable
+    if(Math.abs(shortestAngleDiff(_survFused, h)) < 90) lastGoodHeading = _survFused;
     return _survFused;
 }
 
@@ -2740,32 +2791,29 @@ function startArrowRAF(){
         _arrowRAFId = requestAnimationFrame(loop);
         if(!backtrackActive){ return; }
 
-        // Fuse all 6 heading sources
+        // Fuse all heading sources — per vehicle mode
         const currentFacing = fuseSurvivalHeading();
 
-        // Compute how many degrees to rotate arrow from screen-up
-        // Arrow at 0° = straight up = facing next breadcrumb
-        // Arrow angle = relative bearing from currentFacing to target
         let relBearing = 0;
         if(_arrowTargetBearing !== null && currentFacing !== null){
             relBearing = shortestAngleDiff(currentFacing, _arrowTargetBearing);
         }
 
-        // Smooth the display angle (lerp) — v5.40: _arrowConfidence now wired in
-        // High confidence (GPS/compass) → fast track (0.22)
-        // Low confidence (gyro-only/DR) → slow lerp (0.08) — anti-wild-spin
-        const headingAge = Date.now() - _survFusedTs;
-        const hasRecentCompass = (Date.now() - _compassPrevTs) < 3000 && lastCompassHeading > 0;
-        const hasRecentGPS = (Date.now() - gpsLastFixTime) < 3000 && _gpsBearLast > 0;
-        // Decay confidence when no fresh sensor data
-        if(hasRecentGPS) _arrowConfidence = Math.min(1, _arrowConfidence + 0.05);
-        else if(hasRecentCompass) _arrowConfidence = Math.min(0.8, _arrowConfidence + 0.02);
-        else _arrowConfidence = Math.max(0.15, _arrowConfidence - 0.01);
-        const lerpSpeed = 0.08 + _arrowConfidence * 0.18; // 0.08 (noisy) → 0.26 (confident)
-        const diff = shortestAngleDiff(_arrowCurrentAngle, relBearing);
-        // Gate: suppress micro-jitter when diff is tiny relative to confidence
-        if(Math.abs(diff) > (1.5 / _arrowConfidence)){
-            _arrowCurrentAngle += diff * lerpSpeed;
+        // Per-vehicle lerp speed v5.47:
+        // WALKING: DIRECT — no lerp, compass reads instantly to arrow
+        // MOTOR:   0.35 — fast
+        // CAR:     0.20 — smooth
+        // Removed: _arrowConfidence multiplier (was masking slow response)
+        if(currentVehicle === 'WALKING'){
+            // Direct: jump straight to target, suppress only sub-0.5° noise
+            const diff = shortestAngleDiff(_arrowCurrentAngle, relBearing);
+            if(Math.abs(diff) > 0.5) _arrowCurrentAngle = relBearing;
+        } else {
+            const baseLerp = currentVehicle === 'MOTOR' ? 0.35 : 0.20;
+            const diff = shortestAngleDiff(_arrowCurrentAngle, relBearing);
+            if(Math.abs(diff) > 0.8){
+                _arrowCurrentAngle += diff * baseLerp;
+            }
         }
         _arrowCurrentAngle = normalizeAngle(_arrowCurrentAngle);
 
@@ -2776,6 +2824,10 @@ function startArrowRAF(){
             if(_arrowOffroute) arrowEl.classList.add('offroute-mode');
             else arrowEl.classList.remove('offroute-mode');
         }
+
+        // v5.48: Show/hide drift warning badge
+        const db = document.getElementById('driftBadge');
+        if(db) db.style.display = _driftGuardActive ? 'block' : 'none';
 
         // Update DR position every frame (handles indoor)
         updateDRPosition();
@@ -3379,6 +3431,74 @@ function adaptiveCameraFollowOffset(lat,lng,speed,heading){
 // =====================================================================
 // SECTION 8: COMPASS
 // =====================================================================
+
+// v5.48: COMPASS DRIFT GUARD
+// Detects continuous spinning (hardware drift on budget Android).
+// If compass rotates >25 deg/s for multiple consecutive readings:
+//   → freeze compass output for 3s
+// v5.49: NET rotation + confirmation window
+function compassDriftCheck(ch, now){
+    _driftGuardBuf.push({v: ch, t: now});
+    if(_driftGuardBuf.length > DRIFT_BUF_SIZE) _driftGuardBuf.shift();
+    if(_driftGuardBuf.length < 6) return false; // need at least 6 readings
+
+    const oldest = _driftGuardBuf[0];
+    const newest = _driftGuardBuf[_driftGuardBuf.length - 1];
+    const dtSec = (newest.t - oldest.t) / 1000;
+    if(dtSec < 0.15) return _driftGuardActive;
+
+    // v5.49 FIX: use NET rotation not total absolute rotation.
+    // Patrol head-scan: kanan 15° lalu kiri 15° → net ≈ 0° → NOT drift.
+    // Hardware drift: compass terus bergerak satu arah → net = besar.
+    let netDelta = newest.v - oldest.v;
+    if(netDelta > 180) netDelta -= 360;
+    if(netDelta < -180) netDelta += 360;
+    const netRatePerSec = Math.abs(netDelta) / dtSec;
+
+    // Compute variance — low variance = unidirectional = drift signature
+    let sx = 0, sy = 0;
+    for(const pt of _driftGuardBuf){
+        sx += Math.cos(pt.v * Math.PI / 180);
+        sy += Math.sin(pt.v * Math.PI / 180);
+    }
+    const meanDir = (Math.atan2(sy / _driftGuardBuf.length, sx / _driftGuardBuf.length) * 180 / Math.PI + 360) % 360;
+    let variance = 0;
+    for(const pt of _driftGuardBuf){
+        let d = Math.abs(pt.v - meanDir);
+        if(d > 180) d = 360 - d;
+        variance += d;
+    }
+    variance /= _driftGuardBuf.length;
+
+    // Drift = HIGH net rate + LOW variance (unidirectional spin, not back-and-forth human motion)
+    const isOverThreshold = (netRatePerSec > DRIFT_RATE_DEG_S) && (variance < 20);
+
+    if(isOverThreshold){
+        _driftConfirmCount++;
+        if(_driftConfirmCount >= DRIFT_CONFIRM && !_driftGuardActive){
+            _driftGuardActive = true;
+            _driftFrozenVal = lastCompassHeading;
+            _driftGuardTs = now;
+            _driftConfirmCount = 0;
+            console.warn('[DRIFT] Confirmed — rate:', Math.round(netRatePerSec),
+                         'deg/s variance:', Math.round(variance), '— freezing');
+        }
+        return _driftGuardActive;
+    }
+
+    // Below threshold — decay confirm counter (don't reset instantly)
+    _driftConfirmCount = Math.max(0, _driftConfirmCount - 1);
+
+    // Auto-unfreeze after DRIFT_FREEZE_MS of sustained non-drift
+    if(_driftGuardActive && (now - _driftGuardTs) > DRIFT_FREEZE_MS){
+        _driftGuardActive = false;
+        _driftGuardBuf = [];
+        _driftConfirmCount = 0;
+        console.log('[DRIFT] Cleared — compass resumed');
+    }
+    return _driftGuardActive;
+}
+
 function updateHeadingConfidence(h){
     headingHistory.push(h);
     if(headingHistory.length>10) headingHistory.shift();
@@ -3402,6 +3522,17 @@ async function initCompass(){
     window.addEventListener('deviceorientation',(e)=>{
         let ch=e.webkitCompassHeading||e.alpha||0;
         if(!Number.isFinite(ch)) return;
+
+        // v5.48: Run drift guard first — if drifting, discard this reading
+        const now48 = Date.now();
+        const isDrifting = compassDriftCheck(ch, now48);
+        if(isDrifting){
+            // Compass is spinning/drifting — keep lastCompassHeading frozen
+            // but mark timestamp so freshness check still works
+            _compassPrevTs = now48;
+            return; // discard drifting reading
+        }
+
         const conf=updateHeadingConfidence(ch);
         // v5.30: Stricter wobble gate — only accept compass if delta < 90° (not 120°)
         if(Math.abs(ch-lastCompassHeading)<=90) lastCompassHeading=ch;
@@ -3419,14 +3550,23 @@ async function initCompass(){
         const spd=lastPosition?.speed||0;
         // GM6: stationary lock active — do NOT update fusedHeading from compass noise
         if(_gmSlock) return;
-        if(spd>1.0 && _gpsBearLast>0){
-            // Sensor fusion: 90% GPS bearing + 10% compass when moving
+        // v5.48: if compass currently drifting, skip fusedHeading update entirely
+        if(_driftGuardActive) return;
+        // v5.47: Per-vehicle compass→fusedHeading update
+        if(currentVehicle === 'WALKING'){
+            // WALKING: compass IS fusedHeading. GPS only blends above 1.2 m/s + tight accuracy.
+            const acc = lastPosition?.accuracy || 99;
+            if(spd > 1.2 && _gpsBearLast > 0 && acc < 15){
+                fusedHeading = circularMean(lastCompassHeading, _gpsBearLast, 0.70, 0.30);
+            } else {
+                fusedHeading = lastCompassHeading; // direct — no lerp delay for walking
+            }
+        } else if(spd>1.0 && _gpsBearLast>0){
+            // MOTOR/CAR: GPS bearing dominant when moving
             fusedHeading=circularMean(_gpsBearLast,lastCompassHeading,0.90,0.10);
         } else if(spd>0.3 && conf>60){
-            // Slow movement: 70% GPS + 30% compass
             fusedHeading=circularMean(lastPosition?.heading||lastCompassHeading, lastCompassHeading, 0.70, 0.30);
         } else {
-            // GM6: raise threshold 55→68 — prevents compass wobble while standing still
             if(conf>68) fusedHeading=lastCompassHeading;
         }
         if(spd<0.5) setTargetRotation(fusedHeading);
@@ -3695,20 +3835,28 @@ function updateTrail(){
         }
     }
 
-    // --- camera: GPS-track bearing dominant (v5.30) ---
-    // GPS-computed heading is far more stable than compass on Android
-    // Always use GPS bearing when available and moving
-    if(lastPosition&&lastPosition.speed>0.8){
+    // --- camera: per-vehicle GPS bearing threshold (v5.47) ---
+    // WALKING: GPS bearing only above 1.2 m/s. Below that, compass rules.
+    // MOTOR/CAR: GPS bearing above 0.8 m/s as before.
+    const _bearThreshold = currentVehicle === 'WALKING' ? 1.2 : 0.8;
+    if(lastPosition&&lastPosition.speed>_bearThreshold){
         const gpsHead=lastPosition.heading;
-        // v5.30: prefer GPS bearing exclusively when moving — no compass blend for rotation
-        const rotHead=(Number.isFinite(gpsHead)&&gpsHead>0)
-            ? getSmoothedGPSBearing(gpsHead)
-            : (_gpsBearLast>0 ? _gpsBearLast : (fusedHeading||0));
-        // update fusedHeading from GPS bearing so compass stays in sync
-        if(_gpsBearLast>0) fusedHeading=_gpsBearLast;
+        let rotHead;
+        if(currentVehicle === 'WALKING'){
+            // Walking: blend compass + GPS, compass heavier
+            const acc = lastPosition.accuracy || 99;
+            const rawGPS = (Number.isFinite(gpsHead)&&gpsHead>0) ? getSmoothedGPSBearing(gpsHead) : _gpsBearLast;
+            rotHead = (rawGPS > 0 && acc < 15 && lastCompassHeading > 0)
+                ? circularMean(lastCompassHeading, rawGPS, 0.65, 0.35)
+                : (lastCompassHeading > 0 ? lastCompassHeading : rawGPS);
+        } else {
+            rotHead=(Number.isFinite(gpsHead)&&gpsHead>0)
+                ? getSmoothedGPSBearing(gpsHead)
+                : (_gpsBearLast>0 ? _gpsBearLast : (fusedHeading||0));
+            if(_gpsBearLast>0) fusedHeading=_gpsBearLast;
+        }
         setTargetRotation(rotHead);
-        // FIX v5.37-B2: always drive camera here (backtrack mode was skipping this path)
-        if(!backtrackActive) // backtrack drives camera in updateBacktrackNavigation
+        if(!backtrackActive)
             adaptiveCameraFollowOffset(last.lat,last.lng,lastPosition.speed||0,rotHead);
     } else {
         if(!backtrackActive)
@@ -4633,21 +4781,28 @@ function findNearestBacktrack(){
 
     const now2=Date.now();
     const isOff=minDist>CONFIG.OFFROUTE_THRESHOLD;
-    if(isOff!==backtrackOffroute&&(now2-lastOffrouteWarning)>CONFIG.OFFROUTE_COOLDOWN_MS){
-        backtrackOffroute=isOff; lastOffrouteWarning=now2;
-        const ob=document.getElementById('offrouteBadge');
-        const np=document.getElementById('navPanel');
-        if(backtrackOffroute){
-            if(ob) ob.style.display='block';
-            if(np) np.style.borderLeftColor='#ff5a5f';
-            // v5.27: route line turns red when off-route
-            if(returnLine){ try{ returnLine.setStyle({color:'#ff5a5f',dashArray:'6,6',weight:3}); }catch(e){} }
-            if(navigator.vibrate) navigator.vibrate([60,40,60]);
-        } else {
+
+    // v5.47 FIX: re-entry (off→on) is INSTANT — no cooldown gate.
+    // Only exit (on→off) has cooldown to prevent false positives.
+    if(isOff !== backtrackOffroute){
+        if(!isOff){
+            // INSTANT reacquire — user stepped back on route
+            backtrackOffroute = false;
+            lastOffrouteWarning = now2;
+            const ob=document.getElementById('offrouteBadge');
+            const np=document.getElementById('navPanel');
             if(ob) ob.style.display='none';
             if(np) np.style.borderLeftColor='#fd7e2c';
-            // v5.27: restore solid orange when back on route
             if(returnLine){ try{ returnLine.setStyle({color:'#fd7e2c',dashArray:null,weight:5}); }catch(e){} }
+        } else if((now2-lastOffrouteWarning)>CONFIG.OFFROUTE_COOLDOWN_MS){
+            // Departure from route — gated by cooldown to avoid false positives
+            backtrackOffroute = true; lastOffrouteWarning = now2;
+            const ob=document.getElementById('offrouteBadge');
+            const np=document.getElementById('navPanel');
+            if(ob) ob.style.display='block';
+            if(np) np.style.borderLeftColor='#ff5a5f';
+            if(returnLine){ try{ returnLine.setStyle({color:'#ff5a5f',dashArray:'6,6',weight:3}); }catch(e){} }
+            if(navigator.vibrate) navigator.vibrate([60,40,60]);
         }
     }
     return nearestIdx;
@@ -4709,6 +4864,9 @@ function updateBacktrackNavigation(){
         if(navigator.vibrate) navigator.vibrate([60,40,60]);
         return;
     } else {
+        // v5.47: ensure UI is cleared when back on route (covers any state desync)
+        const ob2=document.getElementById('offrouteBadge');
+        if(ob2) ob2.style.display='none';
         if(navInst) navInst.style.color='#00f2a0';
         if(returnLine){ try{ returnLine.setStyle({color:'#fd7e2c',dashArray:null,weight:5}); }catch(e){} }
     }
@@ -6444,14 +6602,20 @@ document.getElementById('uploadMapBtn')?.addEventListener('click', ()=>{ if(type
 let _voiceEnabled = true;
 let _voiceLastSpoken = '';
 let _voiceLastTs = 0;
-const _voiceCooldown = 6000; // ms antara dua instruksi yang sama
+const _voiceCooldown = 12000; // v5.47: was 6000 — anti-spam, minimum 12s same instruction
+const _voiceGlobalCooldown = 5000; // v5.47: minimum 5s between ANY voice output
 
 function voiceSpeak(text){
     if(!_voiceEnabled) return;
     if(!('speechSynthesis' in window)) return;
     if(!text||text.length<3) return;
     const now = Date.now();
+    // Global cooldown — no voice within 5s of last voice regardless of text
+    if((now - _voiceLastTs) < _voiceGlobalCooldown) return;
+    // Same-instruction cooldown
     if(text === _voiceLastSpoken && (now - _voiceLastTs) < _voiceCooldown) return;
+    // Don't speak "HAMPIR SAMPAI" more than once every 30s
+    if(text.includes('HAMPIR') && (now - _voiceLastTs) < 30000 && _voiceLastSpoken.includes('HAMPIR')) return;
     _voiceLastSpoken = text;
     _voiceLastTs = now;
     try{
