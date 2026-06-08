@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.49 · DRIFT GUARD v2 · NET ROTATION · CONFIRM WINDOW · PATROL SAFE</title>
+    <title>VMS | v5.50 · NAV ARCH RESET · NORTH-UP LOCKED · 3-ENGINE SPLIT · FAST MOTOR/CAR</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -1753,22 +1753,44 @@ document.addEventListener('DOMContentLoaded', function(){
 //        visibility-safe RAF, Android memory, camera pan jitter,
 //        battery drain reduction, long-session stability
 // =====================================================================
-console.log('[VMS] v5.49 DRIFT GUARD v2 — boot');
+console.log('[VMS] v5.50 NAV ARCH RESET — boot');
 // =====================================================================
-// v5.49 CHANGELOG (on top of v5.48)
+// v5.50 CHANGELOG — NAVIGATION ARCHITECTURE RESET
 // =====================================================================
-// FIX-13: DRIFT GUARD v2 — rewritten compassDriftCheck()
-//   OLD: totalRotation / elapsed → false positive on patrol head-scan
-//        (kanan 15° + kiri 15° = 30° counted, but net = 0°)
-//   NEW: netRotation (first→last) + low-variance gate
-//        patrol scan: net ≈ 0° → NOT drift
-//        hardware drift: sustained unidirectional → net = large + variance = low
-// FIX-14: Threshold 25→40 deg/s — patrol & QR-scan tolerance
-// FIX-15: Confirmation window — require 3 consecutive over-threshold checks
-//         before freeze activates (was: freeze on first detection)
-//         _driftConfirmCount decays gradually, not instant-reset
-// FIX-16: Buffer 12→16, min readings 4→6, window 0.1→0.15s
-// FIX-17: Freeze 3000→4000ms — gives GPS more time to fill in during freeze
+// FIX-A: NORTH-UP LOCKED PERMANENTLY
+//   updateRotationMode() → always returns NORTH_UP
+//   setTargetRotation() → no-op for map, sets rotTargetAngle=0
+//   Eliminates: "peta geser sendiri", "peta muter tidak jelas"
+//
+// FIX-B: 3 SEPARATE HEADING ENGINES (fuseSurvivalHeading)
+//   WALKING: compass/gyro ONLY — GPS bearing never used for heading
+//            direct assignment, no EMA → instant body rotation response
+//   MOTOR:   GPS bearing 100% above 2.8 m/s (10 km/h), compass below
+//            NO mixing — pure source switching
+//   CAR:     GPS bearing 100% always — compass NEVER used in car
+//            EMA 0.35 → smooth but not laggy
+//
+// FIX-C: SPEED-ADAPTIVE ARROW LERP
+//   MOTOR: 0.35 idle → 0.85 at 30 km/h (was flat 0.35)
+//   CAR:   0.30 idle → 0.80 at 80 km/h (was flat 0.20)
+//   Walking: still direct (no lerp)
+//
+// FIX-D: DEAD RECKONING uses GPS bearing (_gpsBearLast) not fusedHeading
+//   Walking fusedHeading = compass, useless for position prediction
+//   DR now always uses last known GPS track bearing
+//
+// FIX-E: PER-VEHICLE LOOK-AHEAD in computeArrowBearing
+//   WALKING: 3-point weighted average (smooth)
+//   MOTOR/CAR: 1 point only — no averaging = instant turn signal
+//
+// FIX-F: COMPASS EVENT HANDLER — CAR mode blocked entirely
+//   Compass NEVER updates fusedHeading in CAR mode
+//
+// FIX-G: HEADING_UP pan offset removed from adaptiveCameraFollow
+//   Was causing "peta geser" sensation when heading changed
+//
+// FIX-H: Walking mode — adaptiveCameraFollowOffset disabled
+//   Walking uses plain camera center (no forward offset)
 // =====================================================================
 
 // =====================================================================
@@ -2459,8 +2481,11 @@ function startPositionInterpolation(){
         } else if(staleness<8000&&_interpSpeed>0.4&&isTracking){
             _deadReckoningActive=true;
             const EARTH_R=111320;
-            // FIX H-08: update DR bearing from compass when GPS delayed
-            const drBearing = (fusedHeading && _interpSpeed>0.5) ? fusedHeading : _interpBearing;
+            // v5.50 FIX: DR uses GPS bearing (_gpsBearLast) not fusedHeading.
+            // fusedHeading may be compass-based (walking) and wrong for position prediction.
+            // For DR position, GPS bearing is always more accurate than compass.
+            const drBearing = (_gpsBearLast > 0) ? _gpsBearLast
+                            : (_interpBearing > 0 ? _interpBearing : (fusedHeading || 0));
             const rad=drBearing*Math.PI/180;
             let effectiveSpeed=_interpSpeed;
             if(_accelTs>0&&(Date.now()-_accelTs)<2000){
@@ -2534,69 +2559,83 @@ function initGyroscope(){
     } else { _attach(); }
 }
 
-// ── 2. HEADING PIPELINE v5.47 ──────────────────────────────────────────
-// WALKING: Compass PRIMARY. GPS bearing only above 1.2 m/s AND accuracy < 15m.
-//          No lerp delay — compass reads directly to arrow.
-// MOTOR:   GPS primary above 2.0 m/s. Compass blended at lower speed.
-// CAR:     GPS primary above 3.0 m/s. Compass blended lightly.
-// Dead reckoning: keep gyro-propagated heading when GPS+compass both stale.
+// ── 2. HEADING ENGINE v5.50 — 3 FULLY SEPARATE ENGINES ──────────────────
+// WALKING ENGINE: Compass + Gyro ONLY. GPS bearing not used at any speed.
+//   Arrow = compass. Instant. No prediction. No lerp.
+// MOTOR ENGINE:   GPS bearing dominant above 2.8 m/s (≈10 km/h).
+//   Below 2.8 m/s → compass. No mixing of GPS + compass.
+// CAR ENGINE:     GPS bearing 100% above 5.5 m/s (≈20 km/h).
+//   Below 5.5 m/s → GPS bearing (slow GPS still better than compass in car).
+//   Compass NEVER used in CAR mode.
 function fuseSurvivalHeading(){
     const spd = lastPosition?.speed || _drSpeed || 0;
-    const acc = lastPosition?.accuracy || 99;
     const gpsAge = Date.now() - gpsLastFixTime;
-    const hasGPS = gpsAge < 3000 && gpsState === GPS_STATE.ACTIVE;
-    // v5.48: if compass is drifting, treat it as unavailable
-    const compassOk = lastCompassHeading > 0 && (Date.now() - _compassPrevTs) < 5000 && !_driftGuardActive;
+    const hasGPS = gpsAge < 4000 && gpsState === GPS_STATE.ACTIVE;
+    const compassOk = lastCompassHeading > 0
+        && (Date.now() - _compassPrevTs) < 5000
+        && !_driftGuardActive;
 
-    let h = _survFused || 0;
-
+    // ── WALKING ENGINE ──────────────────────────────────────────────────
+    // Pure compass/gyro. GPS only for position, never for heading.
     if(currentVehicle === 'WALKING'){
-        // v5.47 FIX: compass ALWAYS dominant for walking.
-        // GPS bearing merges only when moving fast AND signal is tight.
+        let h;
         if(compassOk){
-            h = lastCompassHeading;
-            if(hasGPS && spd > 1.2 && acc < 15 && _gpsBearLast > 0){
-                // Fast walk with tight GPS — blend gently
-                h = circularMean(lastCompassHeading, _gpsBearLast, 0.70, 0.30);
-            }
-        } else if(hasGPS && spd > 1.2 && _gpsBearLast > 0){
-            h = _gpsBearLast;
-        } else {
-            // Nothing fresh — propagate with gyro
+            h = lastCompassHeading; // direct — no EMA, no blend
+        } else if(_survFused > 0){
+            // Gyro propagation when compass unavailable
             h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
-        }
-        // WALKING: NO EMA smoothing — direct assignment for instant body rotation
-        _survFused = h;
-
-    } else if(currentVehicle === 'MOTOR'){
-        if(hasGPS && spd > 2.0 && _gpsBearLast > 0){
-            h = compassOk ? circularMean(_gpsBearLast, lastCompassHeading, 0.80, 0.20) : _gpsBearLast;
-        } else if(compassOk){
-            h = lastCompassHeading;
         } else {
-            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
+            h = lastGoodHeading || 0;
         }
-        // MOTOR: light EMA
-        const diff = shortestAngleDiff(_survFused, h);
-        _survFused = normalizeAngle(_survFused + diff * 0.45);
-
-    } else {
-        // CAR: GPS strongly dominant
-        if(hasGPS && spd > 3.0 && _gpsBearLast > 0){
-            h = compassOk ? circularMean(_gpsBearLast, lastCompassHeading, 0.92, 0.08) : _gpsBearLast;
-        } else if(compassOk){
-            h = lastCompassHeading;
-        } else {
-            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
-        }
-        // CAR: smoother EMA
-        const diff = shortestAngleDiff(_survFused, h);
-        _survFused = normalizeAngle(_survFused + diff * 0.25);
+        _survFused = h; // NO smoothing — instant body rotation
+        _survFusedTs = Date.now();
+        if(h > 0) lastGoodHeading = h;
+        return _survFused;
     }
 
-    _survFusedTs = Date.now();
-    if(Math.abs(shortestAngleDiff(_survFused, h)) < 90) lastGoodHeading = _survFused;
-    return _survFused;
+    // ── MOTOR ENGINE ───────────────────────────────────────────────────
+    // GPS bearing dominant above 10 km/h. Pure compass below.
+    // No mixing — choose one source only.
+    if(currentVehicle === 'MOTOR'){
+        let h;
+        if(hasGPS && spd > 2.8 && _gpsBearLast > 0){
+            // Fast motor: GPS bearing 100%, compass ignored
+            h = _gpsBearLast;
+        } else if(compassOk){
+            // Slow / stationary: compass only
+            h = lastCompassHeading;
+        } else if(hasGPS && _gpsBearLast > 0){
+            h = _gpsBearLast;
+        } else {
+            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
+        }
+        // Motor: fast EMA — arrow must track quickly at speed
+        const diff = shortestAngleDiff(_survFused, h);
+        _survFused = normalizeAngle(_survFused + diff * 0.55);
+        _survFusedTs = Date.now();
+        if(Math.abs(diff) < 120) lastGoodHeading = _survFused;
+        return _survFused;
+    }
+
+    // ── CAR ENGINE ─────────────────────────────────────────────────────
+    // GPS bearing only. Compass NEVER used in car mode.
+    // At low speed GPS bearing may be stale but it is still more reliable than compass in a metal cage.
+    {
+        let h;
+        if(hasGPS && _gpsBearLast > 0){
+            h = _gpsBearLast;
+        } else if(_survFused > 0){
+            h = normalizeAngle(_survFused + (_survGyroRate * 0.05));
+        } else {
+            h = lastGoodHeading || 0;
+        }
+        // Car: smooth EMA — highway speed still needs smooth rendering
+        const diff = shortestAngleDiff(_survFused, h);
+        _survFused = normalizeAngle(_survFused + diff * 0.35);
+        _survFusedTs = Date.now();
+        if(Math.abs(diff) < 120) lastGoodHeading = _survFused;
+        return _survFused;
+    }
 }
 
 // ── 3. INDOOR / DEAD RECKONING POSITION ────────────────────────────────
@@ -2799,20 +2838,28 @@ function startArrowRAF(){
             relBearing = shortestAngleDiff(currentFacing, _arrowTargetBearing);
         }
 
-        // Per-vehicle lerp speed v5.47:
-        // WALKING: DIRECT — no lerp, compass reads instantly to arrow
-        // MOTOR:   0.35 — fast
-        // CAR:     0.20 — smooth
-        // Removed: _arrowConfidence multiplier (was masking slow response)
+        // v5.50: Speed-adaptive arrow lerp
+        // WALKING: direct (no lerp) — compass instant
+        // MOTOR: lerp scales with speed — kencang = lebih responsif
+        //   10 km/h → 0.50, 20 km/h → 0.70, 30 km/h → 0.85
+        // CAR: lerp scales with speed
+        //   20 km/h → 0.40, 40 km/h → 0.60, 80 km/h → 0.80
         if(currentVehicle === 'WALKING'){
-            // Direct: jump straight to target, suppress only sub-0.5° noise
             const diff = shortestAngleDiff(_arrowCurrentAngle, relBearing);
             if(Math.abs(diff) > 0.5) _arrowCurrentAngle = relBearing;
         } else {
-            const baseLerp = currentVehicle === 'MOTOR' ? 0.35 : 0.20;
+            const spd50 = lastPosition?.speed || 0; // m/s
+            let lerp;
+            if(currentVehicle === 'MOTOR'){
+                // 0.35 at idle → 0.85 at 30 km/h (8.3 m/s)
+                lerp = Math.min(0.85, 0.35 + (spd50 / 8.3) * 0.50);
+            } else {
+                // CAR: 0.30 at idle → 0.80 at 80 km/h (22 m/s)
+                lerp = Math.min(0.80, 0.30 + (spd50 / 22.0) * 0.50);
+            }
             const diff = shortestAngleDiff(_arrowCurrentAngle, relBearing);
             if(Math.abs(diff) > 0.8){
-                _arrowCurrentAngle += diff * baseLerp;
+                _arrowCurrentAngle += diff * lerp;
             }
         }
         _arrowCurrentAngle = normalizeAngle(_arrowCurrentAngle);
@@ -2846,14 +2893,16 @@ function stopArrowRAF(){
 function computeArrowBearing(posLat, posLng, nearestIdx){
     if(backtrackRoute.length === 0) return 0;
 
-    // Look-ahead: take average of next 3 points for smoother direction
-    const LOOK = 3;
+    // v5.50: per-vehicle look-ahead
+    // WALKING: 3 points weighted — smooth direction for pedestrian
+    // MOTOR:   1 point — next breadcrumb only, no averaging delays turn signal
+    // CAR:     1 point — same, speed-adaptive look done in distance not count
+    const LOOK = currentVehicle === 'WALKING' ? 3 : 1;
     const pts = [];
     for(let i=1; i<=LOOK; i++){
         const idx = Math.min(nearestIdx+i, backtrackRoute.length-1);
         pts.push(backtrackRoute[idx]);
     }
-    // Weight closer points more heavily
     let sx=0, sy=0, totalW=0;
     pts.forEach((pt,i)=>{
         const w = LOOK - i;
@@ -3275,50 +3324,18 @@ function applyMapRotation(angle){
     // v5.28: marker heading is managed by updateMarkerHeading() in rotation loop
 }
 
+// v5.50: NORTH-UP PERMANENTLY LOCKED
+// Map NEVER rotates. Arrow rotates. They are fully independent.
+// HEADING_UP removed — was causing map drift + arrow desync + "peta geser sendiri"
 function updateRotationMode(){
-    const now=Date.now();
-    if(now-rotDecisionTs<800) return; // v5.30: was 1000ms - faster decision
-    rotDecisionTs=now;
-
-    // v5.21: suspend rotation update during zoom animation (prevents tile shimmer)
-    if(mapZooming) return;
-
-    // v5.21: replay — slow rotation update frequency to reduce GPU pressure
-    if(isReplaying){
-        if(now-rotLastReplayTs<3000) return;
-        rotLastReplayTs=now;
-        rotMode='NORTH_UP'; // replay always north-up for stable camera
-        return;
-    }
-
-    if(backtrackActive){ rotMode='HEADING_UP'; return; }
-
-    // v5.30: HIGH SPEED — prefer marker-only rotation (don't rotate whole map)
-    const highSpeedThr=currentVehicle==='CAR'?15.0:(currentVehicle==='MOTOR'?10.0:999);
-    const currentSpeed=lastPosition?.speed||0;
-    if(currentSpeed>highSpeedThr){
-        rotMode='NORTH_UP';
-        headingStableCount=0;
-        return;
-    }
-
-    // v5.30: lower speed thresholds so HEADING_UP kicks in sooner
-    const speedThr=currentVehicle==='WALKING'?0.5:(currentVehicle==='MOTOR'?1.5:3.0);
-    if(!lastPosition||currentSpeed<speedThr){ rotMode='NORTH_UP'; headingStableCount=0; return; }
-    if(fusedHeading){
-        const delta=Math.abs(shortestAngleDiff(lastStableHeading,fusedHeading));
-        if(delta<8) headingStableCount=Math.min(headingStableCount+1,10);
-        else headingStableCount=Math.max(0,headingStableCount-2);
-        lastStableHeading=fusedHeading;
-    }
-    // v5.30: require only 3 stable readings (was 4) and 0.8 m/s (was 1.5)
-    rotMode=(headingStableCount>=3&&currentSpeed>0.8)?'HEADING_UP':'NORTH_UP';
+    rotMode = 'NORTH_UP';
+    rotTargetAngle = 0;
 }
 
-function setTargetRotation(heading){
-    updateRotationMode();
-    if(rotMode==='HEADING_UP') rotTargetAngle=normalizeAngle(heading);
-    else rotTargetAngle=0;
+function setTargetRotation(_heading){
+    // v5.50: No-op for map rotation. Arrow handles its own rotation via fuseSurvivalHeading().
+    rotMode = 'NORTH_UP';
+    rotTargetAngle = 0;
 }
 
 function requestPan(lat,lng){
@@ -3394,23 +3411,19 @@ function adaptiveCameraFollow(lat,lng,speed){
             [ne.lat-latRange*panDeadzone, ne.lng-lngRange*panDeadzone]
         );
         if(!inner.contains(L.latLng(camSmoothedLat,camSmoothedLng))){
-            // heading-offset pan for HEADING_UP mode
-            let panLat=camSmoothedLat, panLng=camSmoothedLng;
-            if(rotMode==='HEADING_UP'&&fusedHeading&&speed>1.0){
-                const offsetM=0.00007;
-                panLat-=offsetM*Math.cos((fusedHeading-90)*Math.PI/180);
-                panLng-=offsetM*Math.sin((fusedHeading-90)*Math.PI/180);
-            }
-            map.panTo([panLat,panLng],{animate:false,noMoveStart:true});
+            // v5.50: NORTH_UP always — no heading offset pan
+            map.panTo([camSmoothedLat,camSmoothedLng],{animate:false,noMoveStart:true});
             camLastPanTs=now;
         }
     } catch(e){}
 }
 
 // v5.30: forward-offset camera — looks ahead of movement direction
-// viewport-proportional offset: marker sits at 38% from bottom edge (Google Maps style)
+// v5.50: WALKING uses plain adaptiveCameraFollow (no offset — causes map drift feel)
 function adaptiveCameraFollowOffset(lat,lng,speed,heading){
     if(!map||currentTab!=='2D'||isReplaying) return;
+    // v5.50: Walking — no forward offset. Keeps map centered on user position.
+    if(currentVehicle === 'WALKING'){ adaptiveCameraFollow(lat,lng,speed); return; }
     let fwdM;
     try{
         const sz=map.getSize();
@@ -3552,6 +3565,8 @@ async function initCompass(){
         if(_gmSlock) return;
         // v5.48: if compass currently drifting, skip fusedHeading update entirely
         if(_driftGuardActive) return;
+        // v5.50: CAR mode — compass NEVER updates fusedHeading (metal cage interference)
+        if(currentVehicle === 'CAR') return;
         // v5.47: Per-vehicle compass→fusedHeading update
         if(currentVehicle === 'WALKING'){
             // WALKING: compass IS fusedHeading. GPS only blends above 1.2 m/s + tight accuracy.
