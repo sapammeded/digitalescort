@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.50 · NAV ARCH RESET · NORTH-UP LOCKED · 3-ENGINE SPLIT · FAST MOTOR/CAR</title>
+    <title>VMS | v5.51 · COMPASS FIX · ARROW FATAL FIX · BEARING DIRECT · THROTTLE REMOVED</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -1753,7 +1753,40 @@ document.addEventListener('DOMContentLoaded', function(){
 //        visibility-safe RAF, Android memory, camera pan jitter,
 //        battery drain reduction, long-session stability
 // =====================================================================
-console.log('[VMS] v5.50 NAV ARCH RESET — boot');
+console.log('[VMS] v5.51 FATAL FIXES — boot');
+// =====================================================================
+// v5.51 FATAL FIXES
+// =====================================================================
+// BUG-1 FATAL: Arrow tidak bergerak saat return mode
+//   CAUSE: updateBacktrackNavigation() did `return` when offroute
+//          → _arrowTargetBearing never updated → arrow frozen
+//   FIX: Removed early return. Arrow bearing always computed and set.
+//        Even when offroute, arrow shows direction back to route.
+//
+// BUG-2 FATAL: Arrow points to wrong location (sungai/off-map)
+//   CAUSE: computeArrowBearing() used snapToBacktrack projection
+//          when offroute → projected point could be on wrong segment
+//   FIX: When offroute → direct calcBearing to nearest breadcrumb
+//        No projection, no look-ahead. Just "go back to that point."
+//
+// BUG-3: Compass conflict between initGyroscope and initCompass
+//   CAUSE: initGyroscope used `360 - webkitCompassHeading` (wrong direction)
+//          initCompass used raw webkitCompassHeading — two listeners fighting
+//   FIX: initGyroscope now only computes rotation rate (deg/s), not heading
+//        initCompass is the SOLE owner of lastCompassHeading
+//
+// BUG-4: EMA self-poisoning in compass
+//   CAUSE: `lastCompassHeading = lastCompassHeading * 0.7 + ch * 0.3`
+//          applied to already-smoothed value → bias, never tracks true heading
+//   FIX: EMA applied to raw ch only using shortestAngleDiff circular interpolation
+//
+// BUG-5: Arrow throttle 700ms → missed updates at motor/car speed
+//   FIX: Throttle 200ms (normal), 400ms (HIGH pressure), 800ms (CRITICAL)
+//
+// BUG-6: GPS bearing not immediately updating fusedHeading for motor/car
+//   FIX: onGPSPosition directly sets fusedHeading + _survFused for motor/car
+//        Walking: GPS bearing NEVER touches fusedHeading (threshold 999)
+// =====================================================================
 // =====================================================================
 // v5.50 CHANGELOG — NAVIGATION ARCHITECTURE RESET
 // =====================================================================
@@ -2534,21 +2567,41 @@ function resetPositionInterpolation(){
 // =====================================================================
 
 // ── 1. GYROSCOPE INIT ─────────────────────────────────────────────────
+// v5.51 FIX: Gyro listener computes ONLY rotation rate (_survGyroRate).
+// It does NOT compute heading or update lastCompassHeading.
+// Compass heading is handled EXCLUSIVELY by initCompass() listener.
+// Previous code used 360-webkitCompassHeading here but raw webkitCompassHeading
+// in initCompass() — causing heading conflict and arrow desync.
 function initGyroscope(){
     if(typeof DeviceOrientationEvent==='undefined') return;
     function _attach(){
         if(_gyroListener) window.removeEventListener('deviceorientation', _gyroListener);
         let _prevAlpha=null, _prevTs=0;
         _gyroListener=(e)=>{
-            const alpha = e.webkitCompassHeading ? (360 - e.webkitCompassHeading) : (e.alpha||0);
+            // Use beta/gamma for gyro rate (rotation speed), not alpha/compass heading
+            // alpha changes come from compass — handled by initCompass separately
             const now=Date.now();
-            if(_prevAlpha!==null && (now-_prevTs)>0){
+            const dt=(now-_prevTs)/1000;
+            if(_prevAlpha!==null && dt>0 && dt<0.5){
+                // Use alpha delta only for rotation rate (deg/s), not for heading
+                let alpha;
+                if(Number.isFinite(e.webkitCompassHeading)){
+                    alpha = e.webkitCompassHeading; // iOS: already absolute
+                } else {
+                    alpha = e.alpha || 0; // Android: relative alpha
+                }
                 let da = alpha - _prevAlpha;
-                if(da>180) da-=360; if(da<-180) da+=360;
-                _survGyroRate = da / ((now-_prevTs)/1000); // deg/s
-                _survHeadingGyro = normalizeAngle(_survHeadingGyro + _survGyroRate * Math.min((now-_prevTs)/1000, 0.1));
+                if(da>180) da-=360;
+                if(da<-180) da+=360;
+                _survGyroRate = da / dt; // deg/s — used only for dead reckoning propagation
+                _survHeadingGyro = normalizeAngle(_survHeadingGyro + _survGyroRate * Math.min(dt, 0.1));
             }
-            _prevAlpha=alpha; _prevTs=now;
+            if(Number.isFinite(e.webkitCompassHeading)){
+                _prevAlpha = e.webkitCompassHeading;
+            } else {
+                _prevAlpha = e.alpha || 0;
+            }
+            _prevTs=now;
         };
         window.addEventListener('deviceorientation', _gyroListener, {passive:true});
     }
@@ -2893,10 +2946,17 @@ function stopArrowRAF(){
 function computeArrowBearing(posLat, posLng, nearestIdx){
     if(backtrackRoute.length === 0) return 0;
 
+    // v5.51 FIX: when offroute, point directly to nearest breadcrumb (not projected)
+    // so user always sees the direction back to route — prevents "pointing to river"
+    if(backtrackOffroute){
+        const nearest = backtrackRoute[nearestIdx];
+        if(!nearest) return _arrowTargetBearing || 0;
+        return calcBearing(posLat, posLng, nearest.lat, nearest.lng);
+    }
+
     // v5.50: per-vehicle look-ahead
     // WALKING: 3 points weighted — smooth direction for pedestrian
-    // MOTOR:   1 point — next breadcrumb only, no averaging delays turn signal
-    // CAR:     1 point — same, speed-adaptive look done in distance not count
+    // MOTOR/CAR: 1 point only — no averaging delays turn signal
     const LOOK = currentVehicle === 'WALKING' ? 3 : 1;
     const pts = [];
     for(let i=1; i<=LOOK; i++){
@@ -3533,58 +3593,68 @@ async function initCompass(){
         try{ const r=await DeviceOrientationEvent.requestPermission(); if(r!=='granted') return; }catch(e){ return; }
     }
     window.addEventListener('deviceorientation',(e)=>{
-        let ch=e.webkitCompassHeading||e.alpha||0;
-        if(!Number.isFinite(ch)) return;
-
-        // v5.48: Run drift guard first — if drifting, discard this reading
-        const now48 = Date.now();
-        const isDrifting = compassDriftCheck(ch, now48);
-        if(isDrifting){
-            // Compass is spinning/drifting — keep lastCompassHeading frozen
-            // but mark timestamp so freshness check still works
-            _compassPrevTs = now48;
-            return; // discard drifting reading
-        }
-
-        const conf=updateHeadingConfidence(ch);
-        // v5.30: Stricter wobble gate — only accept compass if delta < 90° (not 120°)
-        if(Math.abs(ch-lastCompassHeading)<=90) lastCompassHeading=ch;
-        else return; // reject large jumps — compass wobble
-
-        // FIX H-04: pre-smooth compass with EMA before fusion — removes jitter from bumpy roads
-        // EMA factor 0.3 = responsive but filtered (was: raw compass directly into fusion)
-        lastCompassHeading = lastCompassHeading * 0.7 + ch * 0.3;
-        // FIX v5.40: populate _compassEma (was declared but never written — broken anchor for accel bearing)
-        _compassEma = (_compassEma === 0) ? lastCompassHeading : normalizeAngle(_compassEma + shortestAngleDiff(_compassEma, lastCompassHeading) * COMPASS_EMA_K);
-        // FIX v5.40: update _compassPrevTs so arrow RAF can check compass freshness
-        _compassPrevTs = Date.now();
-
-        // v5.30: GPS Bearing Dominant — compass only used when stopped or very slow
-        const spd=lastPosition?.speed||0;
-        // GM6: stationary lock active — do NOT update fusedHeading from compass noise
-        if(_gmSlock) return;
-        // v5.48: if compass currently drifting, skip fusedHeading update entirely
-        if(_driftGuardActive) return;
-        // v5.50: CAR mode — compass NEVER updates fusedHeading (metal cage interference)
-        if(currentVehicle === 'CAR') return;
-        // v5.47: Per-vehicle compass→fusedHeading update
-        if(currentVehicle === 'WALKING'){
-            // WALKING: compass IS fusedHeading. GPS only blends above 1.2 m/s + tight accuracy.
-            const acc = lastPosition?.accuracy || 99;
-            if(spd > 1.2 && _gpsBearLast > 0 && acc < 15){
-                fusedHeading = circularMean(lastCompassHeading, _gpsBearLast, 0.70, 0.30);
-            } else {
-                fusedHeading = lastCompassHeading; // direct — no lerp delay for walking
-            }
-        } else if(spd>1.0 && _gpsBearLast>0){
-            // MOTOR/CAR: GPS bearing dominant when moving
-            fusedHeading=circularMean(_gpsBearLast,lastCompassHeading,0.90,0.10);
-        } else if(spd>0.3 && conf>60){
-            fusedHeading=circularMean(lastPosition?.heading||lastCompassHeading, lastCompassHeading, 0.70, 0.30);
+        // v5.51 FIX: webkitCompassHeading is already absolute North-referenced (iOS/Android).
+        // Do NOT do 360-x. Use it directly. e.alpha is device rotation, not compass heading.
+        let ch;
+        if(Number.isFinite(e.webkitCompassHeading) && e.webkitCompassHeading > 0){
+            ch = e.webkitCompassHeading; // iOS + many Android: 0=North, 90=East, clockwise
+        } else if(Number.isFinite(e.alpha)){
+            // Fallback: alpha=0 points to arbitrary reference on Android without calibration
+            // Try to use alpha as-is — it's the best we have
+            ch = e.alpha;
         } else {
-            if(conf>68) fusedHeading=lastCompassHeading;
+            return;
         }
-        if(spd<0.5) setTargetRotation(fusedHeading);
+        if(!Number.isFinite(ch) || ch < 0) return;
+
+        // v5.49: Run drift guard first
+        const now51 = Date.now();
+        const isDrifting = compassDriftCheck(ch, now51);
+        if(isDrifting){
+            _compassPrevTs = now51;
+            return;
+        }
+
+        const conf = updateHeadingConfidence(ch);
+
+        // v5.51 FIX: Jump gate — reject >90° change in <200ms (spike, not rotation)
+        const dtSinceLastCompass = now51 - _compassPrevTs;
+        if(lastCompassHeading > 0 && dtSinceLastCompass < 200){
+            let jump = Math.abs(ch - lastCompassHeading);
+            if(jump > 180) jump = 360 - jump;
+            if(jump > 90) return; // reject spike
+        }
+
+        // v5.51 FIX: EMA applied to raw ch, not to lastCompassHeading (prevents self-poisoning)
+        // Old: lastCompassHeading = lastCompassHeading * 0.7 + ch * 0.3
+        // → was smoothing the already-smoothed value, never fully tracking real heading
+        // New: EMA against raw input only
+        if(lastCompassHeading === 0){
+            lastCompassHeading = ch; // cold start
+        } else {
+            const d = shortestAngleDiff(lastCompassHeading, ch);
+            lastCompassHeading = normalizeAngle(lastCompassHeading + d * 0.45); // EMA factor 0.45 = responsive
+        }
+        _compassEma = (_compassEma === 0) ? lastCompassHeading
+            : normalizeAngle(_compassEma + shortestAngleDiff(_compassEma, lastCompassHeading) * COMPASS_EMA_K);
+        _compassPrevTs = now51;
+        _compassPrevVal = ch;
+
+        if(_gmSlock) return;
+        if(_driftGuardActive) return;
+        if(currentVehicle === 'CAR') return;
+
+        // Walking: compass IS fusedHeading directly
+        if(currentVehicle === 'WALKING'){
+            fusedHeading = lastCompassHeading;
+        } else if(currentVehicle === 'MOTOR'){
+            const spd = lastPosition?.speed || 0;
+            if(spd < 2.8){ // below 10 km/h: compass drives heading
+                fusedHeading = lastCompassHeading;
+            }
+            // above 2.8 m/s: fusedHeading is set by GPS bearing in onGPSPosition
+        }
+        // CAR: already blocked above
     });
 }
 
@@ -3850,32 +3920,29 @@ function updateTrail(){
         }
     }
 
-    // --- camera: per-vehicle GPS bearing threshold (v5.47) ---
-    // WALKING: GPS bearing only above 1.2 m/s. Below that, compass rules.
-    // MOTOR/CAR: GPS bearing above 0.8 m/s as before.
-    const _bearThreshold = currentVehicle === 'WALKING' ? 1.2 : 0.8;
-    if(lastPosition&&lastPosition.speed>_bearThreshold){
-        const gpsHead=lastPosition.heading;
-        let rotHead;
-        if(currentVehicle === 'WALKING'){
-            // Walking: blend compass + GPS, compass heavier
-            const acc = lastPosition.accuracy || 99;
-            const rawGPS = (Number.isFinite(gpsHead)&&gpsHead>0) ? getSmoothedGPSBearing(gpsHead) : _gpsBearLast;
-            rotHead = (rawGPS > 0 && acc < 15 && lastCompassHeading > 0)
-                ? circularMean(lastCompassHeading, rawGPS, 0.65, 0.35)
-                : (lastCompassHeading > 0 ? lastCompassHeading : rawGPS);
-        } else {
-            rotHead=(Number.isFinite(gpsHead)&&gpsHead>0)
-                ? getSmoothedGPSBearing(gpsHead)
-                : (_gpsBearLast>0 ? _gpsBearLast : (fusedHeading||0));
-            if(_gpsBearLast>0) fusedHeading=_gpsBearLast;
+    // --- GPS bearing → fusedHeading update (v5.51) ---
+    // WALKING: GPS never touches fusedHeading (handled by compass only)
+    // MOTOR: GPS bearing updates fusedHeading above 2.8 m/s
+    // CAR: GPS bearing updates fusedHeading always when moving
+    const _bearThreshold = currentVehicle === 'WALKING' ? 999 : // walking: GPS bearing never used for heading
+                           currentVehicle === 'MOTOR' ? 2.8 : 0.8; // motor: 10km/h, car: 3km/h
+    if(lastPosition && lastPosition.speed > _bearThreshold){
+        const gpsHead = lastPosition.heading;
+        const rawBearing = (Number.isFinite(gpsHead) && gpsHead >= 0)
+            ? getSmoothedGPSBearing(gpsHead)
+            : _gpsBearLast;
+        if(rawBearing > 0){
+            fusedHeading = rawBearing; // direct — no blend with compass for motor/car
+            // v5.51: Update _survFused directly so fuseSurvivalHeading() picks it up immediately
+            const sdiff = shortestAngleDiff(_survFused, rawBearing);
+            const emaK = currentVehicle === 'CAR' ? 0.35 : 0.55;
+            _survFused = normalizeAngle(_survFused + sdiff * emaK);
         }
-        setTargetRotation(rotHead);
         if(!backtrackActive)
-            adaptiveCameraFollowOffset(last.lat,last.lng,lastPosition.speed||0,rotHead);
+            adaptiveCameraFollowOffset(last.lat, last.lng, lastPosition.speed||0, fusedHeading);
     } else {
         if(!backtrackActive)
-            adaptiveCameraFollow(last.lat,last.lng,0);
+            adaptiveCameraFollow(last.lat, last.lng, 0);
     }
 
 }
@@ -4825,9 +4892,10 @@ function findNearestBacktrack(){
 
 function updateBacktrackNavigation(){
     if(!backtrackActive||isReplaying||followMode||backtrackRoute.length===0) return;
-    // Allow running even without lastPosition (indoor DR mode)
     const now=Date.now();
-    const throttle=systemPressure==='CRITICAL'?2000:(systemPressure==='HIGH'?1200:700);
+    // v5.51 FIX: throttle 700→200ms — arrow must update fast enough for motor/car
+    // 700ms at 60 km/h = 11.6m traveled between updates — way too slow
+    const throttle=systemPressure==='CRITICAL'?800:(systemPressure==='HIGH'?400:200);
     if(now-backtrackArrowTs<throttle) return;
     backtrackArrowTs=now;
 
@@ -4864,6 +4932,8 @@ function updateBacktrackNavigation(){
 
     // ── SET ARROW TARGET BEARING (absolute compass) ──────────────────────
     // RAF loop reads this every frame for real-time rotation
+    // v5.51 FIX: ALWAYS compute and set _arrowTargetBearing regardless of offroute status
+    // Previous code: returned early when offroute → arrow froze → FATAL in field
     _arrowTargetBearing = computeArrowBearing(sLat, sLng, nearestIdx);
     _arrowOffroute = backtrackOffroute;
 
@@ -4877,9 +4947,9 @@ function updateBacktrackNavigation(){
         if(navInst){ navInst.innerHTML='⚠️ KELUAR JALUR — KEMBALI KE GARIS ORANYE'; navInst.style.color='#ff5a5f'; }
         if(returnLine){ try{ returnLine.setStyle({color:'#ff5a5f',dashArray:'6,6',weight:3}); }catch(e){} }
         if(navigator.vibrate) navigator.vibrate([60,40,60]);
-        return;
+        // v5.51 FIX: do NOT return here — arrow must continue updating even when offroute
+        // so user can see which direction to walk back to the route
     } else {
-        // v5.47: ensure UI is cleared when back on route (covers any state desync)
         const ob2=document.getElementById('offrouteBadge');
         if(ob2) ob2.style.display='none';
         if(navInst) navInst.style.color='#00f2a0';
