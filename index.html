@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.54 · POINTER DIRECTION FIX · TRAIL ALIGN · VEHICLE SPEED RESPONSE · RETURN ARROW LIVE</title>
+    <title>VMS v5.58 Route Simulator</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -1005,6 +1005,49 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 .pv-btn-skip{background:#1a1a30;border:1px solid rgba(255,255,255,0.1)!important;color:#6888aa;}
 
 /* ═══════════════════════════════════════════════
+   v5.55 ROUTE SIMULATION PANEL CSS
+═══════════════════════════════════════════════ */
+.route-sim-panel{
+    position:fixed;
+    bottom:calc(var(--sab) + var(--tb-h) + 8px);
+    right:8px;left:8px;
+    background:rgba(6,10,22,0.99);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border-radius:16px;
+    padding:14px;
+    z-index:1197;
+    border:2px solid rgba(30,136,229,0.55);
+    display:none;font-size:10px;
+    pointer-events:none;
+    touch-action:none;
+}
+.route-sim-panel.show{display:block;pointer-events:auto;touch-action:auto;}
+.route-sim-panel h4{color:#7ee8ff;margin-bottom:10px;font-size:11px;font-weight:800;display:flex;align-items:center;gap:8px;}
+.rsim-row{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
+.rsim-btn{
+    height:38px;padding:0 12px;
+    background:rgba(20,34,58,0.9);
+    border:1px solid rgba(255,255,255,0.1);
+    color:var(--c-text);border-radius:var(--pill);
+    font-size:11px;font-weight:700;cursor:pointer;
+    font-family:'SF Mono','Courier New',monospace;
+    min-height:40px;min-width:50px;
+    -webkit-tap-highlight-color:rgba(30,136,229,0.25);
+    touch-action:manipulation;
+}
+.rsim-btn:active{transform:scale(0.92);}
+.rsim-btn.active{background:#0a2a5a;border-color:#1e88e5;color:#7ee8ff;box-shadow:0 0 8px rgba(30,136,229,0.4);}
+.rsim-btn.play-btn{background:#003d2a;border-color:#00f2a0;color:#00f2a0;}
+.rsim-btn.stop-btn{background:#2a0a0a;border-color:#ff5a5f;color:#ff5a5f;}
+.rsim-btn.pause-btn{background:#3a2800;border-color:#ffb347;color:#ffb347;}
+.rsim-btn.rewind-btn{background:#1a1050;border-color:#9b59b6;color:#c380f0;}
+.rsim-progress-wrap{width:100%;background:rgba(255,255,255,0.06);border-radius:var(--pill);height:6px;margin:6px 0;}
+.rsim-progress-fill{height:100%;background:#1e88e5;border-radius:var(--pill);transition:width 0.3s linear;width:0%;}
+.rsim-status{font-size:9px;color:var(--c-green);margin-top:5px;min-height:14px;}
+.rsim-speed-wrap{display:flex;align-items:center;gap:6px;margin-top:6px;}
+.rsim-speed-label{font-size:9px;color:var(--c-muted);white-space:nowrap;}
+
+/* ═══════════════════════════════════════════════
    v5.43 EVIDENCE VALIDATION CSS
 ═══════════════════════════════════════════════ */
 /* Evidence viewer nav arrows */
@@ -1242,6 +1285,59 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
         <span style="font-size:8px;color:#506878;">GPS drift sim</span>
     </div>
     <div style="font-size:8px;color:#404e58;margin-top:5px;">START → SIM untuk test tanpa GPS fisik</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     ROUTE SIMULATION PANEL v5.55
+══════════════════════════════════════════ -->
+<div class="route-sim-panel" id="routeSimPanel">
+    <h4>🧪 ROUTE SIMULATOR v5.57
+        <button onclick="window.routeSimClose()" style="margin-left:auto;height:26px;padding:0 10px;background:rgba(180,40,50,0.7);border:1px solid #ff5a5f;color:#fff;border-radius:var(--pill);font-size:10px;cursor:pointer;font-family:inherit;font-weight:700;">✕</button>
+    </h4>
+    <!-- SOURCE: Draw or Import -->
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button id="rsimDrawModeBtn" class="rsim-btn" style="flex:1;background:#0a2a1a;border-color:#00f2a0;color:#00f2a0;" onclick="window.rsimToggleDrawMode()">📍 GAMBAR ROUTE</button>
+        <button id="rsimImportBtn" class="rsim-btn" style="flex:1;background:#0a2040;border-color:#1e88e5;color:#7ee8ff;" onclick="document.getElementById('rsimFileInput').click()">📂 IMPORT</button>
+        <input id="rsimFileInput" type="file" accept=".gpx,.geojson,.json" style="display:none;" onchange="window.rsimHandleFile(this)"/>
+    </div>
+    <!-- Draw-mode hint -->
+    <div id="rsimDrawHint" style="display:none;font-size:9px;color:#00f2a0;background:rgba(0,242,160,0.08);border:1px solid rgba(0,242,160,0.2);border-radius:8px;padding:5px 8px;margin-bottom:6px;text-align:center;">
+        ✅ Mode gambar AKTIF — Klik/tap peta untuk tambah waypoint
+    </div>
+    <!-- Waypoint list -->
+    <div id="rsimWpList" style="max-height:80px;overflow-y:auto;margin-bottom:6px;display:none;"></div>
+    <!-- Clear waypoints -->
+    <button id="rsimClearWpBtn" onclick="window.rsimClearWaypoints()" style="display:none;width:100%;margin-bottom:6px;font-size:9px;background:rgba(40,0,0,0.6);border:1px solid #ff5a5f;color:#ff5a5f;border-radius:var(--pill);padding:4px 0;cursor:pointer;font-family:inherit;">🗑️ HAPUS SEMUA WAYPOINT</button>
+    <!-- Import status -->
+    <div id="rsimImportStatus" style="font-size:9px;color:#6888aa;margin-bottom:4px;text-align:center;"></div>
+    <!-- Vehicle mode -->
+    <div class="rsim-row">
+        <button id="rsimWalk" class="rsim-btn active" onclick="window.rsimSetVehicle('WALKING')" style="background:#122a16;border-color:#2c6e2f;color:#00f2a0;">🚶 JALAN</button>
+        <button id="rsimMotor" class="rsim-btn" onclick="window.rsimSetVehicle('MOTOR')">🏍️ MOTOR</button>
+        <button id="rsimCar" class="rsim-btn" onclick="window.rsimSetVehicle('CAR')">🚗 MOBIL</button>
+    </div>
+    <!-- Speed multiplier -->
+    <div class="rsim-speed-wrap">
+        <span class="rsim-speed-label">KECEPATAN:</span>
+        <input id="rsimSpeedMul" type="range" min="1" max="20" value="1" style="flex:1;accent-color:#1e88e5;"
+            oninput="document.getElementById('rsimSpeedVal').innerText=this.value+'×'">
+        <span id="rsimSpeedVal" style="font-size:10px;color:#7ee8ff;min-width:28px;">1×</span>
+    </div>
+    <!-- Progress bar -->
+    <div class="rsim-progress-wrap"><div class="rsim-progress-fill" id="rsimProgressFill"></div></div>
+    <div style="display:flex;justify-content:space-between;font-size:8px;color:#506878;">
+        <span id="rsimPtIdx">0/0</span>
+        <span id="rsimEta">ETA: --</span>
+    </div>
+    <!-- Controls -->
+    <div class="rsim-row" style="margin-top:8px;">
+        <button id="rsimPlayBtn" class="rsim-btn play-btn" onclick="window.rsimPlay()">▶ PLAY</button>
+        <button id="rsimPauseBtn" class="rsim-btn pause-btn" onclick="window.rsimPause()">⏸ PAUSE</button>
+        <button id="rsimStopBtn" class="rsim-btn stop-btn" onclick="window.rsimStop()">⏹ STOP</button>
+        <button id="rsimRewindBtn" class="rsim-btn rewind-btn" onclick="window.rsimRewind()">⏪ REWIND</button>
+    </div>
+    <div class="rsim-status" id="rsimStatus">⏳ Gambar route atau import track</div>
+    <div style="font-size:8px;color:#404e58;margin-top:4px;">🔗 Terhubung ke: GPS · Heading · Return · Voice · Breadcrumb · Offroute · Map Center</div>
 </div>
 
 <!-- Return arrow — survival grade canvas (v5.38) -->
@@ -1484,6 +1580,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
         <button id="sheetBtn" class="btn-sec btn-sheet">📊 SHEET</button>
         <button id="playbackToggleBtn" class="btn-sec btn-replay">🎬 REPLAY</button>
         <button id="simToggleBtn" class="btn-sec btn-sim">🎮 SIM</button>
+        <button id="routeSimBtn" class="btn-sec" style="background:#0a2040;border:1px solid #1e88e5;color:#7ee8ff;">🛣️ ROUTE SIM</button>
         <button id="mapMatchBtn" class="btn-sec" style="background:#0a2a3a;border:1px solid #00b4d8;color:#7ee8ff;">🛣️ MAP MATCH</button>
     </div>
 </div>
@@ -1542,6 +1639,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
         <div id="infoChip">📏 <span id="bbDist">0 m</span></div>
     </div>
     <div class="bb-right">
+        <button id="simQuickBtn" onclick="window.togglePanel('routesim')" style="width:44px;height:44px;min-width:44px;background:#0a2040;border:1px solid #1e88e5;color:#7ee8ff;font-size:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;">🧪</button>
         <button id="menuToggleBtn" onclick="toggleSecondaryMenu()">☰</button>
     </div>
 </div>
@@ -1567,7 +1665,8 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 var PANELS = {
     history:  { id: 'historyPanel',  type: 'show' },
     sim:      { id: 'simPanel',      type: 'show' },
-    points:   { id: 'pointsPanel',   type: 'show' }
+    points:   { id: 'pointsPanel',   type: 'show' },
+    routesim: { id: 'routeSimPanel', type: 'show' }
 };
 
 // Active panel key — null means all closed
@@ -1701,6 +1800,15 @@ if(simBtn){
     simBtn.addEventListener('click', function(){
         window.closeSecondaryMenu();
         window.togglePanel('sim');
+    });
+}
+
+// routeSimBtn: open route sim panel
+var rsBtn = _getEl('routeSimBtn');
+if(rsBtn){
+    rsBtn.addEventListener('click', function(){
+        window.closeSecondaryMenu();
+        window.togglePanel('routesim');
     });
 }
 
@@ -2971,13 +3079,16 @@ function computeArrowBearing(posLat, posLng, nearestIdx){
         return calcBearing(posLat, posLng, nearest.lat, nearest.lng);
     }
 
+    // v5.58 FIX: look-ahead must go toward LOWER indices (index 0 = origin/start point)
+    // backtrackRoute is built reversed: [0]=last GPS point, [last]=first GPS point
+    // Progress = moving from high index → 0, so next waypoints are at nearestIdx-1, -2, etc.
     // v5.50: per-vehicle look-ahead
     // WALKING: 3 points weighted — smooth direction for pedestrian
     // MOTOR/CAR: 1 point only — no averaging delays turn signal
     const LOOK = currentVehicle === 'WALKING' ? 3 : 1;
     const pts = [];
     for(let i=1; i<=LOOK; i++){
-        const idx = Math.min(nearestIdx+i, backtrackRoute.length-1);
+        const idx = Math.max(nearestIdx-i, 0);
         pts.push(backtrackRoute[idx]);
     }
     let sx=0, sy=0, totalW=0;
@@ -4993,7 +5104,8 @@ function updateBacktrackNavigation(){
     // Instruction text — based on relative bearing diff
     const currentFacing = fuseSurvivalHeading();
     const diff = shortestAngleDiff(currentFacing, _arrowTargetBearing);
-    const distToNext = haversineFast(posLat, posLng, backtrackRoute[Math.min(nearestIdx+1,backtrackRoute.length-1)].lat, backtrackRoute[Math.min(nearestIdx+1,backtrackRoute.length-1)].lng);
+    // v5.58 FIX: next waypoint is at lower index (route is reversed, index 0 = origin)
+    const distToNext = haversineFast(posLat, posLng, backtrackRoute[Math.max(nearestIdx-1,0)].lat, backtrackRoute[Math.max(nearestIdx-1,0)].lng);
 
     let inst = '';
     if(remainingDist < 30)       inst = '🏁 HAMPIR SAMPAI!';
@@ -5069,9 +5181,13 @@ function projectOnSegment(pLat,pLng,aLat,aLng,bLat,bLng){
 function snapToBacktrack(lat,lng,nearestIdx){
     const SNAP_MAX=30; // meters — beyond this means genuinely off-route
     let best={dist:Infinity,pt:{lat,lng}};
+    // v5.58 FIX: backtrackRoute is REVERSED (index 0 = origin/destination of RETURN).
+    // Travel direction = high index → 0. Check segments around nearestIdx.
+    // projectOnSegment only needs two endpoints; order doesn't matter for projection.
     for(const i of [nearestIdx-1,nearestIdx]){
-        if(i<0||i>=backtrackRoute.length-1) continue;
-        const A=backtrackRoute[i],B=backtrackRoute[i+1];
+        const lo=i, hi=i+1;
+        if(lo<0||hi>=backtrackRoute.length) continue;
+        const A=backtrackRoute[lo],B=backtrackRoute[hi];
         const proj=projectOnSegment(lat,lng,A.lat,A.lng,B.lat,B.lng);
         const d=haversineFast(lat,lng,proj.lat,proj.lng);
         if(d<best.dist) best={dist:d,pt:proj};
@@ -7221,8 +7337,439 @@ setTimeout(()=>{
 }, 2000);
 
 
+// =====================================================================
+// SECTION 42: ROUTE SIMULATION ENGINE v5.56
+// Features:
+//   • Draw mode — klik peta untuk tambah waypoint
+//   • Import GPX / GeoJSON / JSON track
+//   • Interpolasi halus antar waypoint
+//   • Vehicle profile: WALKING / MOTOR / CAR
+//   • Speed multiplier 1×–20×
+//   • Play / Pause / Stop / Rewind
+//   • Feed ke onGPSPosition → semua fitur VMS aktif (record, breadcrumb,
+//     return, voice, offroute) tanpa GPS fisik
+// =====================================================================
+(function(){
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────────────
+var rsimWaypoints   = [];   // [{lat,lng}] raw waypoints (user clicks or imported)
+var rsimRoute       = [];   // [{lat,lng}] dense interpolated route points
+var rsimIdx         = 0;    // current position in rsimRoute
+var rsimIv          = null;
+var rsimPlaying     = false;
+var rsimPaused      = false;
+var rsimVehicle     = 'WALKING';
+var rsimDrawMode    = false;
+var rsimMapMarkers  = [];   // Leaflet waypoint markers on map
+var rsimPolyline    = null; // Leaflet polyline preview
+
+var RSIM_PROFILES = {
+    WALKING: { speedMs: 1.2,  tickMs: 600,  accuracy: 5,  headingNoise: 10 },
+    MOTOR:   { speedMs: 8.0,  tickMs: 400,  accuracy: 4,  headingNoise: 4  },
+    CAR:     { speedMs: 14.0, tickMs: 300,  accuracy: 3,  headingNoise: 2  }
+};
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function _rsimEl(id){ return document.getElementById(id); }
+
+function _rsimStatus(msg){ var el=_rsimEl('rsimStatus'); if(el) el.textContent=msg; }
+
+function _rsimBearing(a, b){
+    var dLng = (b.lng - a.lng) * Math.PI / 180;
+    var lat1 = a.lat * Math.PI / 180;
+    var lat2 = b.lat * Math.PI / 180;
+    var y = Math.sin(dLng) * Math.cos(lat2);
+    var x = Math.cos(lat1)*Math.sin(lat2) - Math.sin(lat1)*Math.cos(lat2)*Math.cos(dLng);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+function _rsimDistM(a, b){
+    var R=6371000;
+    var dLat=(b.lat-a.lat)*Math.PI/180;
+    var dLng=(b.lng-a.lng)*Math.PI/180;
+    var s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+
+// ── Interpolate waypoints → dense route (1 point per ~stepM meters) ──
+function _rsimInterpolate(wps, stepM){
+    if(!wps||wps.length<2) return [];
+    stepM = stepM||3;
+    var out=[];
+    for(var i=0;i<wps.length-1;i++){
+        var a=wps[i], b=wps[i+1];
+        var d=_rsimDistM(a,b);
+        var n=Math.max(1,Math.round(d/stepM));
+        for(var j=0;j<n;j++){
+            var t=j/n;
+            out.push({lat:a.lat+(b.lat-a.lat)*t, lng:a.lng+(b.lng-a.lng)*t});
+        }
+    }
+    out.push(wps[wps.length-1]);
+    return out;
+}
+
+// ── Update waypoint list UI ───────────────────────────────────────────
+function _rsimRefreshWpList(){
+    var list=_rsimEl('rsimWpList');
+    var clearBtn=_rsimEl('rsimClearWpBtn');
+    if(!list) return;
+    if(rsimWaypoints.length===0){
+        list.style.display='none';
+        if(clearBtn) clearBtn.style.display='none';
+        return;
+    }
+    list.style.display='block';
+    if(clearBtn) clearBtn.style.display='block';
+    list.innerHTML = rsimWaypoints.map(function(wp,i){
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:2px 4px;font-size:8px;color:#7ee8ff;border-bottom:1px solid rgba(255,255,255,0.04);">'
+            + '<span>📍 WP'+(i+1)+' &nbsp;'+wp.lat.toFixed(5)+', '+wp.lng.toFixed(5)+'</span>'
+            + '<span onclick="window.rsimRemoveWaypoint('+i+')" style="color:#ff5a5f;cursor:pointer;padding:0 4px;">✕</span>'
+            + '</div>';
+    }).join('');
+}
+
+// ── Update polyline preview on map ───────────────────────────────────
+function _rsimRefreshPolyline(){
+    if(rsimPolyline){ try{ map.removeLayer(rsimPolyline); }catch(e){} rsimPolyline=null; }
+    if(rsimWaypoints.length<2) return;
+    rsimPolyline = L.polyline(rsimWaypoints.map(function(w){return[w.lat,w.lng];}),{
+        color:'#00f2a0', weight:2, opacity:0.7, dashArray:'5,5'
+    }).addTo(map);
+}
+
+// ── Draw mode toggle ──────────────────────────────────────────────────
+window.rsimToggleDrawMode = function(){
+    rsimDrawMode = !rsimDrawMode;
+    var btn=_rsimEl('rsimDrawModeBtn');
+    var hint=_rsimEl('rsimDrawHint');
+    if(rsimDrawMode){
+        if(btn){ btn.style.background='#003d2a'; btn.style.borderColor='#00f2a0'; btn.textContent='🟢 STOP GAMBAR'; }
+        if(hint) hint.style.display='block';
+        _rsimStatus('Klik peta untuk tambah waypoint...');
+    } else {
+        if(btn){ btn.style.background='#0a2a1a'; btn.style.borderColor='#00f2a0'; btn.textContent='📍 GAMBAR ROUTE'; }
+        if(hint) hint.style.display='none';
+        if(rsimWaypoints.length>1) _rsimStatus('✅ '+rsimWaypoints.length+' waypoint — siap PLAY');
+        else _rsimStatus('⏳ Gambar route atau import track');
+    }
+};
+
+// ── Map click handler — added after map is ready ─────────────────────
+function _rsimOnMapClick(e){
+    if(!rsimDrawMode) return;
+    if(rsimPlaying) return; // don't add while playing
+    var wp={lat:e.latlng.lat, lng:e.latlng.lng};
+    rsimWaypoints.push(wp);
+    // Add numbered marker
+    var icon=L.divIcon({
+        className:'',
+        html:'<div style="background:#00f2a0;color:#000;font-size:9px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 0 6px rgba(0,242,160,0.7);">'+rsimWaypoints.length+'</div>',
+        iconSize:[20,20], iconAnchor:[10,10]
+    });
+    var m=L.marker([wp.lat,wp.lng],{icon:icon,interactive:false}).addTo(map);
+    rsimMapMarkers.push(m);
+    _rsimRefreshPolyline();
+    _rsimRefreshWpList();
+    _rsimStatus('WP'+rsimWaypoints.length+' ditambah — '+(rsimWaypoints.length>1?'siap PLAY atau tambah lagi':'tambah WP lagi lalu PLAY'));
+}
+
+// Hook map click after map init (polled since map init is async)
+var _rsimMapHooked=false;
+function _rsimHookMap(){
+    if(_rsimMapHooked) return;
+    if(typeof map==='undefined'||!map) return;
+    map.on('click',_rsimOnMapClick);
+    _rsimMapHooked=true;
+}
+setInterval(_rsimHookMap, 500);
+
+// ── Remove single waypoint ────────────────────────────────────────────
+window.rsimRemoveWaypoint = function(idx){
+    rsimWaypoints.splice(idx,1);
+    // Remove all markers and re-add (to renum)
+    rsimMapMarkers.forEach(function(m){ try{map.removeLayer(m);}catch(e){} });
+    rsimMapMarkers=[];
+    rsimWaypoints.forEach(function(wp,i){
+        var icon=L.divIcon({
+            className:'',
+            html:'<div style="background:#00f2a0;color:#000;font-size:9px;font-weight:700;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 0 6px rgba(0,242,160,0.7);">'+(i+1)+'</div>',
+            iconSize:[20,20], iconAnchor:[10,10]
+        });
+        var m=L.marker([wp.lat,wp.lng],{icon:icon,interactive:false}).addTo(map);
+        rsimMapMarkers.push(m);
+    });
+    _rsimRefreshPolyline();
+    _rsimRefreshWpList();
+};
+
+// ── Clear all waypoints ───────────────────────────────────────────────
+window.rsimClearWaypoints = function(){
+    rsimWaypoints=[];
+    rsimRoute=[];
+    rsimIdx=0;
+    rsimMapMarkers.forEach(function(m){ try{map.removeLayer(m);}catch(e){} });
+    rsimMapMarkers=[];
+    if(rsimPolyline){ try{map.removeLayer(rsimPolyline);}catch(e){} rsimPolyline=null; }
+    _rsimRefreshWpList();
+    _rsimEl('rsimProgressFill').style.width='0%';
+    _rsimEl('rsimPtIdx').textContent='0/0';
+    _rsimEl('rsimEta').textContent='ETA: --';
+    _rsimEl('rsimImportStatus').textContent='';
+    _rsimStatus('⏳ Gambar route atau import track');
+};
+
+// ── Import GPX / GeoJSON / JSON ───────────────────────────────────────
+window.rsimHandleFile = function(input){
+    var file=input.files&&input.files[0]; if(!file) return;
+    var reader=new FileReader();
+    reader.onload=function(e){
+        var text=e.target.result;
+        var pts=[];
+        try {
+            // GPX
+            if(file.name.endsWith('.gpx')){
+                var parser=new DOMParser();
+                var doc=parser.parseFromString(text,'text/xml');
+                var trkpts=doc.querySelectorAll('trkpt,wpt,rtept');
+                trkpts.forEach(function(n){
+                    var lat=parseFloat(n.getAttribute('lat'));
+                    var lng=parseFloat(n.getAttribute('lon'));
+                    if(!isNaN(lat)&&!isNaN(lng)) pts.push({lat:lat,lng:lng});
+                });
+            }
+            // GeoJSON
+            else if(file.name.endsWith('.geojson')){
+                var gj=JSON.parse(text);
+                var coords=[];
+                function _extractCoords(g){
+                    if(!g) return;
+                    if(g.type==='FeatureCollection') g.features.forEach(function(f){_extractCoords(f.geometry);});
+                    else if(g.type==='Feature') _extractCoords(g.geometry);
+                    else if(g.type==='LineString') coords=coords.concat(g.coordinates);
+                    else if(g.type==='MultiLineString') g.coordinates.forEach(function(l){coords=coords.concat(l);});
+                    else if(g.type==='Point') coords.push(g.coordinates);
+                }
+                _extractCoords(gj);
+                coords.forEach(function(c){ pts.push({lat:c[1],lng:c[0]}); });
+            }
+            // JSON (VMS track format)
+            else {
+                var obj=JSON.parse(text);
+                var arr=obj.points||obj.track||obj;
+                if(Array.isArray(arr)){
+                    arr.forEach(function(p){
+                        var lat=p.lat||p.latitude; var lng=p.lng||p.lon||p.longitude;
+                        if(!isNaN(lat)&&!isNaN(lng)) pts.push({lat:parseFloat(lat),lng:parseFloat(lng)});
+                    });
+                }
+            }
+        } catch(err){ _rsimEl('rsimImportStatus').textContent='❌ Parse error: '+err.message; return; }
+
+        if(pts.length<2){ _rsimEl('rsimImportStatus').textContent='❌ Tidak ada titik valid dalam file'; return; }
+
+        // Clear draw waypoints, load imported
+        window.rsimClearWaypoints();
+        rsimWaypoints=pts;
+        _rsimEl('rsimImportStatus').textContent='✅ '+pts.length+' titik dari '+file.name;
+        _rsimRefreshPolyline();
+        _rsimRefreshWpList();
+        _rsimStatus('✅ Import OK — '+pts.length+' titik. Pilih mode lalu PLAY');
+        input.value='';
+    };
+    reader.readAsText(file);
+};
+
+// ── Vehicle selector ──────────────────────────────────────────────────
+window.rsimSetVehicle = function(v){
+    rsimVehicle=v;
+    ['WALKING','MOTOR','CAR'].forEach(function(k){
+        var id={WALKING:'rsimWalk',MOTOR:'rsimMotor',CAR:'rsimCar'}[k];
+        var el=_rsimEl(id); if(!el) return;
+        el.classList.toggle('active', k===v);
+        if(k===v){ el.style.background=k==='WALKING'?'#122a16':(k==='MOTOR'?'#3a1800':'#1a0a0a'); }
+        else { el.style.background=''; }
+    });
+};
+
+// ── Play ──────────────────────────────────────────────────────────────
+window.rsimPlay = function(){
+    if(rsimWaypoints.length<2){ _rsimStatus('⚠️ Minimal 2 waypoint!'); return; }
+
+    // If paused, resume
+    if(rsimPaused && rsimRoute.length>0){
+        rsimPaused=false; rsimPlaying=true;
+        _rsimTick();
+        _rsimStatus('▶ Melanjutkan...');
+        return;
+    }
+
+    // Fresh start — interpolate route
+    rsimRoute = _rsimInterpolate(rsimWaypoints, 2); // 2m steps
+    rsimIdx=0;
+    rsimPlaying=true; rsimPaused=false;
+
+    // Sync simulator vehicle to main vehicle selector
+    if(typeof setVehicle==='function'){
+        var vMap={WALKING:'WALKING',MOTOR:'MOTOR',CAR:'CAR'};
+        try{ setVehicle(vMap[rsimVehicle]||rsimVehicle); }catch(e){}
+    }
+
+    // Ensure tracking is active — start if not yet started
+    if(typeof isTracking!=='undefined'&&!isTracking){
+        if(typeof startTracking==='function') startTracking();
+    }
+
+    // Auto-enable return if waypoints span a real route
+    if(typeof startReturn==='function' && rsimWaypoints.length>=2){
+        try{ startReturn(); }catch(e){}
+    }
+
+    // Pan map to first waypoint
+    if(typeof map!=='undefined'&&map){
+        try{ map.panTo([rsimWaypoints[0].lat,rsimWaypoints[0].lng],{animate:true}); }catch(e){}
+    }
+
+    // Show sim badge
+    var badge=document.getElementById('simStatusBadge');
+    if(badge){ badge.style.display='block'; badge.textContent='🧪 SIM RUNNING…'; }
+
+    _rsimStatus('▶ Simulasi berjalan — '+rsimVehicle+' · '+rsimRoute.length+' titik');
+    _rsimTick();
+};
+
+// ── Pause ─────────────────────────────────────────────────────────────
+window.rsimPause = function(){
+    if(!rsimPlaying) return;
+    rsimPaused=true; rsimPlaying=false;
+    if(rsimIv){ clearTimeout(rsimIv); rsimIv=null; }
+    _rsimStatus('⏸ Paused di '+rsimIdx+'/'+rsimRoute.length);
+};
+
+// ── Stop ──────────────────────────────────────────────────────────────
+window.rsimStop = function(){
+    rsimPlaying=false; rsimPaused=false; rsimIdx=0;
+    if(rsimIv){ clearTimeout(rsimIv); rsimIv=null; }
+    _rsimEl('rsimProgressFill').style.width='0%';
+    _rsimEl('rsimPtIdx').textContent='0/0';
+    _rsimEl('rsimEta').textContent='ETA: --';
+    var badge=document.getElementById('simStatusBadge');
+    if(badge){ badge.style.display='none'; badge.textContent=''; }
+    _rsimStatus('⏹ Stop — tekan PLAY untuk mulai ulang');
+};
+
+// ── Rewind ────────────────────────────────────────────────────────────
+window.rsimRewind = function(){
+    var wasPlaying=rsimPlaying;
+    rsimPlaying=false; rsimPaused=false; rsimIdx=0;
+    if(rsimIv){ clearTimeout(rsimIv); rsimIv=null; }
+    _rsimEl('rsimProgressFill').style.width='0%';
+    _rsimEl('rsimPtIdx').textContent='0/0';
+    _rsimEl('rsimEta').textContent='ETA: --';
+    _rsimStatus('⏪ Rewind ke awal');
+    if(wasPlaying){ setTimeout(window.rsimPlay,100); }
+};
+
+// ── Tick — feed one GPS position ─────────────────────────────────────
+function _rsimTick(){
+    if(!rsimPlaying||rsimPaused) return;
+    if(rsimIdx>=rsimRoute.length){ _rsimFinish(); return; }
+
+    var prof=RSIM_PROFILES[rsimVehicle]||RSIM_PROFILES.WALKING;
+    var mul=parseInt((_rsimEl('rsimSpeedMul')||{value:1}).value)||1;
+    var pt=rsimRoute[rsimIdx];
+    var next=rsimRoute[Math.min(rsimIdx+1,rsimRoute.length-1)];
+    var heading=_rsimBearing(pt,next);
+    // Add slight heading noise for realism
+    heading = (heading + (Math.random()-0.5)*prof.headingNoise + 360) % 360;
+    var acc=prof.accuracy + (Math.random()-0.5)*1.5;
+    var speedMs = prof.speedMs * mul;
+
+    var pos = {
+        coords:{
+            latitude:  pt.lat,
+            longitude: pt.lng,
+            accuracy:  acc,
+            heading:   heading,
+            speed:     speedMs,
+            altitude:  30 + Math.sin(rsimIdx/20)*3
+        },
+        timestamp: Date.now()
+    };
+
+    // 1. PRIMARY: Feed to VMS GPS pipeline (handles marker, breadcrumb, offroute, return, recording)
+    if(typeof onGPSPosition==='function') onGPSPosition(pos);
+
+    // 2. HEADING: Force heading update on vehicle marker
+    if(typeof updateVehicleHeading==='function') updateVehicleHeading(heading);
+    else if(typeof lastHeading!=='undefined') { try{ lastHeading=heading; }catch(e){} }
+
+    // 3. RETURN ARROW: update bearing toward start
+    if(typeof updateReturnArrow==='function') updateReturnArrow(pt.lat, pt.lng, heading);
+
+    // 4. BREADCRUMB: explicitly add point if breadcrumb engine exposed
+    if(typeof addBreadcrumb==='function') addBreadcrumb(pt.lat, pt.lng, heading, speedMs);
+
+    // 5. VOICE: trigger navigation voice if nav engine exposed
+    if(typeof checkNavVoice==='function') checkNavVoice(pt.lat, pt.lng, heading);
+
+    // 6. MAP CENTER: keep map centered on moving marker
+    if(typeof map!=='undefined' && map && rsimIdx%4===0){
+        try{
+            if(typeof lastLat==='undefined'||isNaN(lastLat)){
+                map.panTo([pt.lat,pt.lng],{animate:true,duration:0.3});
+            }
+        }catch(e){}
+    }
+
+    // 7. SIM STATUS BADGE
+    var badge=document.getElementById('simStatusBadge');
+    if(badge){
+        badge.style.display='block';
+        var pctBadge=Math.round((rsimIdx/rsimRoute.length)*100);
+        badge.textContent='🧪 SIM '+rsimVehicle+' '+pctBadge+'%';
+    }
+
+    // Update progress UI
+    var pct=Math.round((rsimIdx/rsimRoute.length)*100);
+    _rsimEl('rsimProgressFill').style.width=pct+'%';
+    _rsimEl('rsimPtIdx').textContent=rsimIdx+'/'+rsimRoute.length;
+    var remaining=rsimRoute.length-rsimIdx;
+    var etaSec=Math.round((remaining*prof.tickMs/mul)/1000);
+    _rsimEl('rsimEta').textContent='ETA: '+(etaSec>60?Math.floor(etaSec/60)+'m'+(etaSec%60)+'s':etaSec+'s');
+    if(rsimIdx%20===0) _rsimStatus('▶ '+rsimVehicle+' · '+pct+'% · '+(speedMs).toFixed(1)+' m/s · HDG:'+Math.round(heading)+'°');
+
+    rsimIdx++;
+    rsimIv=setTimeout(_rsimTick, Math.round(prof.tickMs/mul));
+}
+
+function _rsimFinish(){
+    rsimPlaying=false; rsimPaused=false;
+    if(rsimIv){ clearTimeout(rsimIv); rsimIv=null; }
+    _rsimEl('rsimProgressFill').style.width='100%';
+    _rsimEl('rsimPtIdx').textContent=rsimRoute.length+'/'+rsimRoute.length;
+    _rsimEl('rsimEta').textContent='ETA: 0s';
+    var badge=document.getElementById('simStatusBadge');
+    if(badge){ badge.style.display='block'; badge.textContent='✅ SIM SELESAI'; setTimeout(function(){ badge.style.display='none'; },4000); }
+    _rsimStatus('✅ Simulasi selesai! Route dilalui: '+rsimWaypoints.length+' waypoint');
+}
+
+// ── Close panel handler ───────────────────────────────────────────────
+window.routeSimClose = function(){
+    // stop draw mode
+    if(rsimDrawMode){ window.rsimToggleDrawMode(); }
+    if(typeof window.togglePanel==='function') window.togglePanel('routesim');
+};
+
+// ── Init: set default vehicle ─────────────────────────────────────────
+window.rsimSetVehicle('WALKING');
+
+})(); // END SECTION 42
+// =====================================================================
+
 async function bootstrap(){
-    console.log('[VMS] v5.44 BOOTING — COMPARE ENGINE · WATERMARK BURN · EVIDENCE NAV · TACTICAL POINTS · SURVIVAL RETURN ENGINE...');
+    console.log('[VMS] v5.57 BOOTING — ROUTE SIMULATOR · HEADING ACCURACY · MAP MATCHING · VEHICLE ACCURACY · RETURN ACCURACY · FULL ENGINE INTEGRATION...');
     // v5.26: force-unlock all panels on boot — prevents deadlock from crashed previous session
     ['historyPanel','simPanel','pointsPanel','addPointModal'].forEach(id=>{
         const el=document.getElementById(id);
@@ -7247,7 +7794,7 @@ async function bootstrap(){
     startPositionInterpolation(); // v5.28: smooth marker + GPS dead reckoning
     // Render saved tactical points on map
     setTimeout(()=>{ renderAllTacticalPointsOnMap(); renderPointsList(); updatePointCounter(); },500);
-    console.log('[VMS] v5.44 BOOT COMPLETE — Compare Engine + Watermark Burn + Evidence Nav + Map Matching + Survival Nav ONLINE');
+    console.log('[VMS] v5.57 BOOT COMPLETE — Route Simulator FULLY CONNECTED → GPS · Heading · Marker · Return Arrow · Breadcrumb · Voice · Offroute · Map Center ONLINE');
     console.log('[INFO] Klik START lalu SIM untuk test tanpa GPS fisik');
 }
 
