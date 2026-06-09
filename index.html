@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS | v5.51 · COMPASS FIX · ARROW FATAL FIX · BEARING DIRECT · THROTTLE REMOVED</title>
+    <title>VMS | v5.54 · POINTER DIRECTION FIX · TRAIL ALIGN · VEHICLE SPEED RESPONSE · RETURN ARROW LIVE</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -105,6 +105,20 @@ input,textarea,select{user-select:text!important;-webkit-user-select:text!import
     white-space:nowrap;
 }
 .tab-btn.active{background:var(--c-accent);color:#fff;border-color:var(--c-accent);box-shadow:0 0 10px rgba(30,136,229,.4);}
+/* MAP LAYER SWITCHER */
+#layerSwitcher{position:fixed;bottom:calc(var(--sab) + var(--tb-h) + 12px);right:12px;z-index:1180;display:flex;flex-direction:column;gap:6px;align-items:flex-end;}
+#layerToggleBtn{width:52px;height:52px;border-radius:12px;background:rgba(8,13,24,0.95);border:1px solid rgba(30,136,229,0.4);box-shadow:0 2px 12px rgba(0,0,0,0.5);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:border-color .15s;}
+#layerToggleBtn:hover{border-color:var(--c-accent);}
+#layerToggleBtnThumb{width:36px;height:28px;border-radius:6px;background-size:cover;background-position:center;border:1px solid rgba(255,255,255,0.15);pointer-events:none;}
+#layerToggleBtnLabel{font-size:8px;font-weight:700;color:var(--c-muted);font-family:'SF Mono','Courier New',monospace;pointer-events:none;letter-spacing:0.5px;}
+#layerPanel{display:none;background:rgba(8,13,24,0.97);border:1px solid var(--c-border);border-radius:14px;padding:10px;box-shadow:0 4px 20px rgba(0,0,0,0.6);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);flex-direction:row;gap:8px;flex-wrap:wrap;max-width:calc(100vw - 24px);justify-content:flex-end;}
+#layerPanel.open{display:flex;}
+.layer-option{display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;padding:4px;border-radius:10px;transition:background .12s;min-width:62px;}
+.layer-option:hover{background:rgba(30,136,229,0.12);}
+.layer-option.active .layer-thumb{border-color:var(--c-accent);box-shadow:0 0 8px rgba(30,136,229,0.6);}
+.layer-option.active .layer-label{color:var(--c-accent);}
+.layer-thumb{width:56px;height:44px;border-radius:8px;border:2px solid rgba(255,255,255,0.1);background-size:cover;background-position:center;transition:border-color .12s;}
+.layer-label{font-size:9px;font-weight:700;color:var(--c-muted);font-family:'SF Mono','Courier New',monospace;white-space:nowrap;letter-spacing:0.3px;}
 
 /* ═══════════════════════════════════════════════
    MAP GUARD ZONE  — transparent, blocks accidental taps into menu area
@@ -2354,23 +2368,26 @@ function createVehicleMarkerIcon(vehicle,heading){
 
 // Update heading of existing marker — O(1), no setIcon() overhead
 // GM2: heading hysteresis + stationary lock freeze
+// v5.54 FIX (Bug1+3): use _survFused as primary source — fused engine output.
+//   WALKING: _survFused=compass → real body direction.
+//   MOTOR/CAR: _survFused=GPS bearing (fused in updateTrail) → real movement direction.
+//   Old code used raw _gpsBearLast — never set in WALKING mode → pointer wrong direction.
 function updateMarkerHeading(heading){
     if(!currentMarker) return;
     const el=document.getElementById('vms-main-marker');
     if(!el) return;
-    // GM1: stationary — freeze heading completely (no compass wobble)
     if(_gmSlock){
         el.style.transform=`rotate(${(_gmSlockHeading||0).toFixed(1)}deg)`;
         return;
     }
-    // GM2: hysteresis dead-zone — speed-adaptive
-    // Walking: 5° dead-zone, Motor: 3°, Car: 1.5° — mirrors Google Maps tuning
+    // v5.54: fused heading is the truth — not raw GPS bearing
+    const h = (_survFused > 0) ? _survFused : (heading || 0);
     const spd = lastPosition?.speed || 0;
     const dz = spd > 10 ? 1.5 : (spd > 2 ? 3.0 : 5.0);
-    const diff = Math.abs(shortestAngleDiff(_gmLastMarkerHeading, heading || 0));
-    if(diff < dz) return; // below dead-zone — hold current heading
-    _gmLastMarkerHeading = heading || 0;
-    el.style.transform=`rotate(${(heading||0).toFixed(1)}deg)`;
+    const diff = Math.abs(shortestAngleDiff(_gmLastMarkerHeading, h));
+    if(diff < dz) return;
+    _gmLastMarkerHeading = h;
+    el.style.transform=`rotate(${h.toFixed(1)}deg)`;
 }
 
 // =====================================================================
@@ -3932,10 +3949,18 @@ function updateTrail(){
             ? getSmoothedGPSBearing(gpsHead)
             : _gpsBearLast;
         if(rawBearing > 0){
-            fusedHeading = rawBearing; // direct — no blend with compass for motor/car
-            // v5.51: Update _survFused directly so fuseSurvivalHeading() picks it up immediately
+            fusedHeading = rawBearing;
+            // v5.54 FIX (Bug3): adaptive EMA same as fuseSurvivalHeading MOTOR engine.
+            // Sharp turn (>30°) = 0.85 (instant response), straight = 0.40 (smooth).
+            // Old flat 0.55 caused pointer lag during cornering at speed.
             const sdiff = shortestAngleDiff(_survFused, rawBearing);
-            const emaK = currentVehicle === 'CAR' ? 0.35 : 0.55;
+            const absD = Math.abs(sdiff);
+            let emaK;
+            if(currentVehicle === 'CAR'){
+                emaK = absD > 25 ? 0.80 : (absD > 8 ? 0.55 : 0.35);
+            } else {
+                emaK = absD > 30 ? 0.85 : (absD > 10 ? 0.65 : 0.40);
+            }
             _survFused = normalizeAngle(_survFused + sdiff * emaK);
         }
         if(!backtrackActive)
@@ -4058,8 +4083,11 @@ function addPoint(lat,lng,accuracy,heading,speed,altitude,timestamp){
         cachedTotalDistance+=rawDist;
     }
 
-    if(fusedHeading&&(point.speed||0)>0.5)
-        point.heading=circularMean(point.heading,lastCompassHeading);
+    // v5.54 FIX (Bug2): do NOT blend compass into trail heading.
+    // point.heading=calcBearing(prev→cur) is GPS-derived — correct path direction.
+    // Old circularMean with lastCompassHeading biased trail points toward compass facing,
+    // causing trail to drift off OSM road lines when user faces a different direction.
+    // Heading only used for marker icon rotation — keep it pure GPS-derived bearing.
 
     addMovementVector(point,prevPoint);
     pushPoint(point);
@@ -5016,7 +5044,9 @@ function startBacktrackMode(){
     // Start RAF arrow loop
     startArrowRAF();
     if(backtrackIv) clearInterval(backtrackIv);
-    backtrackIv=setInterval(()=>{ if(!backtrackActive||isReplaying) return; updateBacktrackNavigation(); },700);
+    // v5.54 FIX (Bug4): was 700ms — at 60km/h = 11.6m between arrow updates, far too slow.
+    // 150ms matches the 200ms throttle guard in updateBacktrackNavigation — arrow tracks route live.
+    backtrackIv=setInterval(()=>{ if(!backtrackActive||isReplaying) return; updateBacktrackNavigation(); },150);
     if(returnLine) safeRemoveLayer(returnLine);
     if(backtrackRoute.length>0){
         returnLine=L.polyline(backtrackRoute.map(p=>[p.lat,p.lng]),{color:'#fd7e2c',weight:5,opacity:0.9,dashArray:null,interactive:false}).addTo(map);
