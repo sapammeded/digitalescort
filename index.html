@@ -2271,6 +2271,10 @@ let playbackMarker = null;
 let backtrackActive = false;
 let backtrackRoute = [], backtrackCumDist = [];
 let backtrackNearestIdx = 0;
+// v5.61 ACTIVE SEGMENT navigation state
+let _btActiveSegIdx = 0;       // current active segment start index (moves forward, never backward)
+let _btWpCount = 0;            // total named waypoints in backtrackRoute
+let _btWpIndices = [];         // indices of WP markers within backtrackRoute (for display)
 let backtrackOffroute = false;
 let lastOffrouteWarning = 0;
 let backtrackUpdateTs = 0;
@@ -2476,16 +2480,17 @@ function createVehicleMarkerIcon(vehicle,heading){
 
 // Update heading of existing marker — O(1), no setIcon() overhead
 // GM2: heading hysteresis + stationary lock freeze
-// v5.54 FIX (Bug1+3): use _survFused as primary source — fused engine output.
-//   WALKING: _survFused=compass → real body direction.
-//   MOTOR/CAR: _survFused=GPS bearing (fused in updateTrail) → real movement direction.
-//   Old code used raw _gpsBearLast — never set in WALKING mode → pointer wrong direction.
+// v5.60 FIX-2: Marker must be counter-rotated by map's current rotation so it
+//   always appears pointing "up" (direction of travel) when map is in Heading-Up mode.
+//   Old code applied raw world heading → marker visually drifted with map rotation.
 function updateMarkerHeading(heading){
     if(!currentMarker) return;
     const el=document.getElementById('vms-main-marker');
     if(!el) return;
     if(_gmSlock){
-        el.style.transform=`rotate(${(_gmSlockHeading||0).toFixed(1)}deg)`;
+        // In heading-up mode, locked heading must also be screen-compensated
+        const screenH = (_gmSlockHeading||0) - rotCurrentAngle;
+        el.style.transform=`rotate(${screenH.toFixed(1)}deg)`;
         return;
     }
     // v5.54: fused heading is the truth — not raw GPS bearing
@@ -2495,7 +2500,9 @@ function updateMarkerHeading(heading){
     const diff = Math.abs(shortestAngleDiff(_gmLastMarkerHeading, h));
     if(diff < dz) return;
     _gmLastMarkerHeading = h;
-    el.style.transform=`rotate(${h.toFixed(1)}deg)`;
+    // v5.60: subtract map rotation so marker stays visually pointing in travel direction
+    const screenAngle = h - rotCurrentAngle;
+    el.style.transform=`rotate(${screenAngle.toFixed(1)}deg)`;
 }
 
 // =====================================================================
@@ -2807,9 +2814,12 @@ function fuseSurvivalHeading(){
         } else {
             h = lastGoodHeading || 0;
         }
-        // Car: smooth EMA — highway speed still needs smooth rendering
+        // v5.60 FIX-4: CAR min EMA raised 0.35→0.55 — was too sluggish on city bends.
+        // Sharp turn (>25°): 0.90 instant, straight: 0.55 smooth.
         const diff = shortestAngleDiff(_survFused, h);
-        _survFused = normalizeAngle(_survFused + diff * 0.35);
+        const absD = Math.abs(diff);
+        const emaK = absD > 25 ? 0.90 : (absD > 8 ? 0.70 : 0.55);
+        _survFused = normalizeAngle(_survFused + diff * emaK);
         _survFusedTs = Date.now();
         if(Math.abs(diff) < 120) lastGoodHeading = _survFused;
         return _survFused;
@@ -3065,30 +3075,38 @@ function stopArrowRAF(){
     if(_arrowRAFId){ cancelAnimationFrame(_arrowRAFId); _arrowRAFId = null; }
 }
 
-// ── 7. COMPUTE TARGET BEARING — called from backtrack update ────────────
-// Returns absolute compass bearing from current position to next breadcrumb
-// Uses look-ahead + DR fallback when GPS unavailable
+// ── 7. COMPUTE TARGET BEARING — v5.61 ACTIVE SEGMENT NAVIGATION ────────
+// Bearing follows the ACTIVE SEGMENT (WP[n] → WP[n+1]) direction.
+// MOTOR/CAR: direct segment bearing, no smoothing.
+// WALKING: 3-point weighted look-ahead along segment, smoothed.
+// Off-route: point directly back toward segment start.
 function computeArrowBearing(posLat, posLng, nearestIdx){
     if(backtrackRoute.length === 0) return 0;
 
-    // v5.51 FIX: when offroute, point directly to nearest breadcrumb (not projected)
-    // so user always sees the direction back to route — prevents "pointing to river"
+    // When off-route: point toward the active segment (nearest endpoint of active seg)
     if(backtrackOffroute){
-        const nearest = backtrackRoute[nearestIdx];
-        if(!nearest) return _arrowTargetBearing || 0;
-        return calcBearing(posLat, posLng, nearest.lat, nearest.lng);
+        const segStart = backtrackRoute[_btActiveSegIdx];
+        if(!segStart) return _arrowTargetBearing || 0;
+        return calcBearing(posLat, posLng, segStart.lat, segStart.lng);
     }
 
-    // v5.58 FIX: look-ahead must go toward LOWER indices (index 0 = origin/start point)
-    // backtrackRoute is built reversed: [0]=last GPS point, [last]=first GPS point
-    // Progress = moving from high index → 0, so next waypoints are at nearestIdx-1, -2, etc.
-    // v5.50: per-vehicle look-ahead
-    // WALKING: 3 points weighted — smooth direction for pedestrian
-    // MOTOR/CAR: 1 point only — no averaging delays turn signal
-    const LOOK = currentVehicle === 'WALKING' ? 3 : 1;
+    // Active segment end point = the next target in direction of travel (lower index = origin)
+    // _btActiveSegIdx is the current segment's leading edge (higher index = further from origin)
+    // Target of active segment = _btActiveSegIdx - 1 (one step closer to origin, index 0)
+    const segEnd = Math.max(0, _btActiveSegIdx - 1);
+
+    // MOTOR/CAR: raw segment bearing — no averaging, update every GPS tick
+    if(currentVehicle !== 'WALKING'){
+        const target = backtrackRoute[segEnd];
+        if(!target) return _arrowTargetBearing || 0;
+        return calcBearing(posLat, posLng, target.lat, target.lng);
+    }
+
+    // WALKING: 3-point weighted look-ahead along active segment (smooth for pedestrian)
+    const LOOK = 3;
     const pts = [];
     for(let i=1; i<=LOOK; i++){
-        const idx = Math.max(nearestIdx-i, 0);
+        const idx = Math.max(segEnd - (i-1), 0);
         pts.push(backtrackRoute[idx]);
     }
     let sx=0, sy=0, totalW=0;
@@ -3449,18 +3467,29 @@ function startRotationLoop(){
         // v5.28: update vehicle icon heading every frame — smooth rotation
         updateMarkerHeading(_gpsBearLast);
 
+        // v5.60 FIX-5: speed-adaptive rotation lerp — was flat 0.25, too slow at highway speed.
+        // WALKING: 0.18 (compass direct, slow is fine), MOTOR: 0.30-0.65, CAR: 0.35-0.80
+        const _spd60 = lastPosition?.speed || 0;
+        let _rotLerp;
+        if(currentVehicle === 'CAR'){
+            _rotLerp = Math.min(0.80, 0.35 + (_spd60 / 22.0) * 0.45);
+        } else if(currentVehicle === 'MOTOR'){
+            _rotLerp = Math.min(0.65, 0.30 + (_spd60 / 8.3) * 0.35);
+        } else {
+            _rotLerp = 0.18;
+        }
         // --- rotation lerp ---
         if(rotEnabled && rotMode==='HEADING_UP'){
             const diff=shortestAngleDiff(rotCurrentAngle,rotTargetAngle);
             if(Math.abs(diff)>0.3){
-                rotCurrentAngle+=diff*ROT_LERP;
+                rotCurrentAngle+=diff*_rotLerp;
                 rotCurrentAngle=normalizeAngle(rotCurrentAngle);
                 applyMapRotation(rotCurrentAngle);
             }
         } else if(rotCurrentAngle!==0){
             const diff=shortestAngleDiff(rotCurrentAngle,0);
             if(Math.abs(diff)>0.5){
-                rotCurrentAngle+=diff*ROT_LERP;
+                rotCurrentAngle+=diff*_rotLerp;
                 applyMapRotation(rotCurrentAngle);
             } else {
                 rotCurrentAngle=0;
@@ -3512,18 +3541,22 @@ function applyMapRotation(angle){
     // v5.28: marker heading is managed by updateMarkerHeading() in rotation loop
 }
 
-// v5.50: NORTH-UP PERMANENTLY LOCKED
-// Map NEVER rotates. Arrow rotates. They are fully independent.
-// HEADING_UP removed — was causing map drift + arrow desync + "peta geser sendiri"
+// v5.59: HEADING_UP MAP ROTATION — map rotates to face movement direction like Google Maps
+// WALKING: compass heading drives map rotation (compass = body direction)
+// MOTOR/CAR: GPS bearing drives map rotation (GPS = actual movement direction)
+// Map rotation = counter-rotate tiles so pointer always faces "up" = direction of travel
 function updateRotationMode(){
-    rotMode = 'NORTH_UP';
-    rotTargetAngle = 0;
+    if(!isTracking && !backtrackActive){ rotMode='NORTH_UP'; rotTargetAngle=0; return; }
+    rotMode = 'HEADING_UP';
 }
 
-function setTargetRotation(_heading){
-    // v5.50: No-op for map rotation. Arrow handles its own rotation via fuseSurvivalHeading().
-    rotMode = 'NORTH_UP';
-    rotTargetAngle = 0;
+function setTargetRotation(heading){
+    // v5.60 FIX-1: was rejecting heading=0 (North) — only skip NaN/null.
+    // applyMapRotation does rotate(-angle), so map counter-rotates keeping
+    // movement direction pointing "up" — true Heading-Up like Google Maps.
+    if(!Number.isFinite(heading)) return;
+    rotMode = 'HEADING_UP';
+    rotTargetAngle = heading;
 }
 
 function requestPan(lat,lng){
@@ -4076,6 +4109,8 @@ function updateTrail(){
         }
         if(!backtrackActive)
             adaptiveCameraFollowOffset(last.lat, last.lng, lastPosition.speed||0, fusedHeading);
+        // v5.60 FIX-3: drive Heading-Up map rotation from fused heading every GPS fix
+        if(isTracking && fusedHeading > 0) setTargetRotation(fusedHeading);
     } else {
         if(!backtrackActive)
             adaptiveCameraFollow(last.lat, last.lng, 0);
@@ -4976,27 +5011,45 @@ function buildBacktrackRoute(){
 }
 
 function findNearestBacktrack(){
-    if(!lastPosition||backtrackRoute.length===0) return 0;
+    if(!lastPosition||backtrackRoute.length===0) return _btActiveSegIdx;
     const now=Date.now();
     const throttleMs=systemPressure==='CRITICAL'?2000:800;
     if(now-backtrackUpdateTs<throttleMs) return backtrackNearestIdx;
     backtrackUpdateTs=now;
 
-    let minDist=Infinity, nearestIdx=0;
-    const radius=systemPressure==='CRITICAL'?0.003:0.0015;
-    const nearby=findNearbyIndices(lastPosition.lat,lastPosition.lng,radius);
-    for(const idx of nearby){
-        if(idx<0||idx>=backtrackRoute.length) continue;
-        const d=haversineFast(lastPosition.lat,lastPosition.lng,backtrackRoute[idx].lat,backtrackRoute[idx].lng);
-        if(d<minDist){ minDist=d; nearestIdx=idx; }
-    }
-    if(minDist>50){
-        const range=200;
-        const s=Math.max(0,backtrackNearestIdx-range), e=Math.min(backtrackRoute.length,backtrackNearestIdx+range);
-        for(let i=s;i<e;i++){
-            const d=haversineFast(lastPosition.lat,lastPosition.lng,backtrackRoute[i].lat,backtrackRoute[i].lng);
-            if(d<minDist){ minDist=d; nearestIdx=i; }
+    // ── v5.61: ACTIVE SEGMENT PROGRESSION ─────────────────────────────
+    // Travel direction: high index → 0 (index 0 = origin/home).
+    // _btActiveSegIdx starts at (backtrackRoute.length - 1) and advances toward 0.
+    // We advance the active segment when the user is within ADVANCE_RADIUS of
+    // the segment's end waypoint — never jump backward (nearest-point is dead).
+    const ADVANCE_RADIUS = 20; // metres — reach threshold for segment advance
+
+    const segEnd = Math.max(0, _btActiveSegIdx - 1);
+    const target = backtrackRoute[segEnd];
+    if(target){
+        const dTarget = haversineFast(lastPosition.lat, lastPosition.lng, target.lat, target.lng);
+        // Auto-advance: reached end of current active segment → move to next segment
+        if(dTarget < ADVANCE_RADIUS && _btActiveSegIdx > 0){
+            _btActiveSegIdx = Math.max(0, _btActiveSegIdx - 1);
+            // Update returnLine highlight: re-color remaining route
+            if(returnLine){
+                try{
+                    const remaining = backtrackRoute.slice(0, _btActiveSegIdx + 1).map(p=>[p.lat,p.lng]);
+                    returnLine.setLatLngs(remaining);
+                }catch(e){}
+            }
         }
+    }
+
+    // Closest point on the active segment (for snap, offroute detection, progress)
+    // Search window: only scan around _btActiveSegIdx ± 50 points (prevents jumping)
+    const WIN = 50;
+    const scanStart = Math.max(0, _btActiveSegIdx - WIN);
+    const scanEnd   = Math.min(backtrackRoute.length - 1, _btActiveSegIdx + WIN);
+    let minDist=Infinity, nearestIdx=_btActiveSegIdx;
+    for(let i=scanStart;i<=scanEnd;i++){
+        const d=haversineFast(lastPosition.lat,lastPosition.lng,backtrackRoute[i].lat,backtrackRoute[i].lng);
+        if(d<minDist){ minDist=d; nearestIdx=i; }
     }
     backtrackNearestIdx=nearestIdx;
 
@@ -5032,8 +5085,7 @@ function findNearestBacktrack(){
 function updateBacktrackNavigation(){
     if(!backtrackActive||isReplaying||followMode||backtrackRoute.length===0) return;
     const now=Date.now();
-    // v5.51 FIX: throttle 700→200ms — arrow must update fast enough for motor/car
-    // 700ms at 60 km/h = 11.6m traveled between updates — way too slow
+    // v5.61: throttle — motor/car must update every GPS fix, no heavy smoothing
     const throttle=systemPressure==='CRITICAL'?800:(systemPressure==='HIGH'?400:200);
     if(now-backtrackArrowTs<throttle) return;
     backtrackArrowTs=now;
@@ -5044,7 +5096,6 @@ function updateBacktrackNavigation(){
     const posLng = hasGPS ? lastPosition.lng : _drLng;
     if(!posLat && !posLng) return;
 
-    // FIX v5.37-B: feed interpolation so marker moves
     const curSpd = hasGPS ? (lastPosition.speed||0) : _drSpeed;
     const curHdg = _survFused || _gpsBearLast || (hasGPS ? (lastPosition.heading||0) : fuseSurvivalHeading());
     setPredictionTarget(posLat, posLng, curSpd, curHdg);
@@ -5054,25 +5105,27 @@ function updateBacktrackNavigation(){
         adaptiveCameraFollow(posLat, posLng, curSpd);
     }
 
-    // Find nearest breadcrumb (use actual GPS when available for accuracy)
-    const nearestIdx = findNearestBacktrack();
-    const totalDist = backtrackCumDist[backtrackCumDist.length-1]||1;
-    const remainingDist = totalDist - backtrackCumDist[nearestIdx];
-    const progressPct = ((totalDist-remainingDist)/totalDist)*100;
-
-    // v5.42: Check proximity to tactical points for verification HUD
+    // v5.42: Check proximity to tactical points
     if(typeof pvCheckProximity === 'function' && tacticalPoints && tacticalPoints.length>0){
         pvCheckProximity(posLat, posLng);
     }
 
-    // Snap to route for stable bearing
-    const snapped = snapToBacktrack(posLat, posLng, nearestIdx);
+    // ── v5.61 ACTIVE SEGMENT NAVIGATION ──────────────────────────────
+    // findNearestBacktrack() also advances _btActiveSegIdx when reaching segment end
+    const nearestIdx = findNearestBacktrack();
+
+    // Progress = distance from current position to origin (index 0)
+    // Use _btActiveSegIdx for accurate remaining distance (never jumps backward)
+    const totalDist = backtrackCumDist[backtrackCumDist.length-1]||1;
+    const remainingDist = backtrackCumDist[_btActiveSegIdx] || 0;
+    const progressPct = ((totalDist - remainingDist) / totalDist) * 100;
+
+    // Snap to active segment for stable bearing (not nearest random segment)
+    const snapped = snapToBacktrack(posLat, posLng, _btActiveSegIdx);
     const sLat = snapped.lat, sLng = snapped.lng;
 
-    // ── SET ARROW TARGET BEARING (absolute compass) ──────────────────────
-    // RAF loop reads this every frame for real-time rotation
-    // v5.51 FIX: ALWAYS compute and set _arrowTargetBearing regardless of offroute status
-    // Previous code: returned early when offroute → arrow froze → FATAL in field
+    // ── SET ARROW TARGET BEARING (active segment direction) ──────────
+    // ALWAYS update regardless of offroute — arrow must always show direction
     _arrowTargetBearing = computeArrowBearing(sLat, sLng, nearestIdx);
     _arrowOffroute = backtrackOffroute;
 
@@ -5086,8 +5139,7 @@ function updateBacktrackNavigation(){
         if(navInst){ navInst.innerHTML='⚠️ KELUAR JALUR — KEMBALI KE GARIS ORANYE'; navInst.style.color='#ff5a5f'; }
         if(returnLine){ try{ returnLine.setStyle({color:'#ff5a5f',dashArray:'6,6',weight:3}); }catch(e){} }
         if(navigator.vibrate) navigator.vibrate([60,40,60]);
-        // v5.51 FIX: do NOT return here — arrow must continue updating even when offroute
-        // so user can see which direction to walk back to the route
+        // Arrow continues updating even off-route — user needs direction to return
     } else {
         const ob2=document.getElementById('offrouteBadge');
         if(ob2) ob2.style.display='none';
@@ -5101,15 +5153,16 @@ function updateBacktrackNavigation(){
         stopBacktrackMode(); return;
     }
 
-    // Instruction text — based on relative bearing diff
+    // Instruction text — based on active segment bearing vs current facing
     const currentFacing = fuseSurvivalHeading();
     const diff = shortestAngleDiff(currentFacing, _arrowTargetBearing);
-    // v5.58 FIX: next waypoint is at lower index (route is reversed, index 0 = origin)
-    const distToNext = haversineFast(posLat, posLng, backtrackRoute[Math.max(nearestIdx-1,0)].lat, backtrackRoute[Math.max(nearestIdx-1,0)].lng);
+    // Distance to active segment endpoint (next target)
+    const segEndIdx = Math.max(0, _btActiveSegIdx - 1);
+    const distToNext = haversineFast(posLat, posLng, backtrackRoute[segEndIdx].lat, backtrackRoute[segEndIdx].lng);
 
     let inst = '';
     if(remainingDist < 30)       inst = '🏁 HAMPIR SAMPAI!';
-    else if(Math.abs(diff)<15)   inst = `⬆️ LURUS ${Math.round(remainingDist)}m`;
+    else if(Math.abs(diff)<15)   inst = `⬆️ LURUS ${Math.round(distToNext)}m`;
     else if(diff>0 && diff<60)   inst = `↗️ KANAN SEDIKIT ${Math.round(distToNext)}m`;
     else if(diff>0 && diff<120)  inst = `➡️ BELOK KANAN ${Math.round(distToNext)}m`;
     else if(diff>0)              inst = '↩️ BALIK KANAN';
@@ -5143,10 +5196,13 @@ function startBacktrackMode(){
     if(!buildBacktrackRoute()){ alert('Gagal memuat jalur backtrack'); return; }
     backtrackActive=true; backtrackOffroute=false; backtrackNearestIdx=0;
     backtrackUpdateTs=0; backtrackArrowTs=0;
+    // v5.61: init active segment at the far end (highest index = current GPS position).
+    // Travel direction: high index → 0. Segment advances forward, never jumps backward.
+    _btActiveSegIdx = Math.max(0, backtrackRoute.length - 1);
+    _btWpIndices = []; // continuous breadcrumb — no discrete WP markers
     // Reset survival state
     _arrowCurrentAngle=0; _arrowTargetBearing=0; _arrowOffroute=false;
     _drActive=false;
-    const np=document.getElementById('navPanel');
     if(np){ np.classList.add('show'); np.style.borderLeftColor='#fd7e2c'; }
     const ni=document.getElementById('navInstruction'); if(ni) ni.innerHTML='🔄 MENGINISIALISASI BACKTRACK...';
     const rb=document.getElementById('returnBtn');
