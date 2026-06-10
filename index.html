@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <meta name="theme-color" content="#080d18">
-    <title>VMS v5.63 Route Simulator</title>
+    <title>VMS v5.63 Command Center</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/rbush@3.0.1/rbush.min.js"></script>
@@ -79,7 +79,7 @@ input,textarea,select{user-select:text!important;-webkit-user-select:text!import
 @keyframes lglow{from{opacity:.35}to{opacity:1;transform:scale(1.3)}}
 
 /* ═══════════════════════════════════════════════
-   TAB ROW  — slim, below status bar
+   TAB ROW  — hidden, functionality in sidebar
 ═══════════════════════════════════════════════ */
 #tabBar{
     position:fixed;
@@ -90,7 +90,8 @@ input,textarea,select{user-select:text!important;-webkit-user-select:text!import
     background:rgba(8,13,24,0.88);
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border-bottom:1px solid rgba(255,255,255,0.05);
-    display:flex;align-items:center;
+    display:none; /* Hidden — tabs accessible via sidebar Command Center */
+    align-items:center;
     padding:0 8px;gap:6px;
 }
 .tab-btn{
@@ -126,23 +127,27 @@ input,textarea,select{user-select:text!important;-webkit-user-select:text!import
 ═══════════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════════
-   BOTTOM TOOLBAR  — primary actions always visible
+   BOTTOM TOOLBAR — simplified: sidebar toggle + patrol status + distance
 ═══════════════════════════════════════════════ */
 #bottomBar{
     position:fixed;
     bottom:var(--sab);left:0;right:0;
     height:var(--tb-h);
     z-index:1200;
-    background:rgba(8,13,24,0.96);
-    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-    border-top:1px solid var(--c-border);
-    display:flex;align-items:center;justify-content:space-between;
+    background:rgba(6,10,18,0.97);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border-top:1px solid rgba(30,136,229,0.15);
+    display:flex;align-items:center;
     padding:0 10px;gap:8px;
 }
 
-/* Primary button group */
-.bb-primary{display:flex;align-items:center;gap:8px;flex:1;}
-.bb-right{display:flex;align-items:center;gap:8px;}
+/* ── Hide secondary menu — consolidated into sidebar ── */
+#secondaryMenu { display: none !important; pointer-events: none !important; }
+#menuDimmer { display: none !important; pointer-events: none !important; }
+#menuToggleBtn { display: none !important; }
+#simQuickBtn { display: none !important; }
+/* Hide bb-primary/bb-right wrapper divs — no longer needed */
+.bb-primary, .bb-right { display: contents; }
 
 /* All buttons base */
 button{
@@ -311,11 +316,11 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     font-size:9px;font-family:'SF Mono','Courier New',monospace;
     font-weight:700;z-index:1060;pointer-events:none;
 }
-/* Profile — top-left below tab bar, small */
+/* Profile — top-left below status bar, small */
 .profile-badge{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 6px);
-    left:8px;
+    top:calc(var(--sat) + var(--sb-h) + 6px);
+    left:52px;
     background:rgba(6,10,20,0.82);
     border:1px solid rgba(0,242,160,0.15);
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
@@ -327,8 +332,8 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 /* Sim status — below profile */
 .sim-status-badge{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 32px);
-    left:8px;
+    top:calc(var(--sat) + var(--sb-h) + 32px);
+    left:52px;
     background:rgba(142,68,173,0.85);
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
     padding:3px 9px;border-radius:var(--pill);
@@ -336,12 +341,10 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     font-weight:700;color:#fff;
     z-index:1050;display:none;
 }
-/* Wake/battery/gps badges — hidden on mobile, shown on desktop */
-.wake-badge,.battery-badge,.gps-state-badge{display:none;}
 /* Checkpoint */
 .checkpoint-badge{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 6px);
+    top:calc(var(--sat) + var(--sb-h) + 6px);
     left:50%;transform:translateX(-50%);
     background:rgba(27,70,30,0.9);
     backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
@@ -351,12 +354,15 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     z-index:1055;display:none;white-space:nowrap;
 }
 
+/* Wake/battery/gps badges — hidden */
+.wake-badge,.battery-badge,.gps-state-badge{display:none;}
+
 /* ═══════════════════════════════════════════════
    COLLAPSIBLE INFO PANEL  — top-right, tap to toggle
 ═══════════════════════════════════════════════ */
 #infoPanelWrap{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 6px);
+    top:calc(var(--sat) + var(--sb-h) + 6px);
     right:8px;
     z-index:1060;
     width:160px;
@@ -586,7 +592,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 ═══════════════════════════════════════════════ */
 .history-panel{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 4px);
+    top:calc(var(--sat) + var(--sb-h) + 4px);
     left:8px;right:8px;
     bottom:calc(var(--sab) + var(--tb-h) + 8px);
     z-index:1250;
@@ -682,46 +688,10 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     #statusBar{padding:0 20px;gap:16px;}
     .sb-item{font-size:11px;}
 
-    /* Tab bar */
-    #tabBar{height:42px;padding:0 16px;gap:8px;}
-    .tab-btn{font-size:12px;height:32px;}
-
     /* Bottom bar larger */
     #bottomBar{padding:0 20px;gap:12px;}
     .btn-primary{height:46px;min-width:88px;font-size:13px;padding:0 22px;}
-    #menuToggleBtn{width:46px;height:46px;min-width:46px;font-size:22px;}
-
-    /* Secondary menu wider */
-    #secondaryMenu{padding:16px 20px 14px;}
-    #secondaryMenu.open{max-height:300px;}
-    .btn-sec{height:40px;padding:0 16px;font-size:12px;}
-
-    /* Show wake/battery badges */
-    .wake-badge{
-        display:block;
-        top:calc(var(--sat) + var(--sb-h) + 42px + 8px);
-        right:8px;
-        background:rgba(6,10,20,0.82);
-        border:1px solid rgba(255,255,255,0.07);
-        backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-        padding:3px 10px;border-radius:var(--pill);
-        font-size:9px;font-family:'SF Mono','Courier New',monospace;
-        color:var(--c-amber);font-weight:700;z-index:1050;pointer-events:none;
-    }
-    .battery-badge{
-        display:block;
-        top:calc(var(--sat) + var(--sb-h) + 42px + 8px);
-        right:110px;
-        background:rgba(6,10,20,0.82);
-        border:1px solid rgba(255,255,255,0.07);
-        backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
-        padding:3px 10px;border-radius:var(--pill);
-        font-size:9px;font-family:'SF Mono','Courier New',monospace;
-        color:var(--c-amber);z-index:1050;pointer-events:none;
-    }
-    .gps-state-badge{
-        display:none; /* keep off unless set visible by JS */
-    }
+    #cc-sidebar-toggle{width:46px;height:46px;min-width:46px;font-size:20px;}
 
     /* Info panel wider */
     #infoPanelWrap{width:180px;}
@@ -755,7 +725,7 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 ═══════════════════════════════════════════════ */
 .points-panel{
     position:fixed;
-    top:calc(var(--sat) + var(--sb-h) + 38px + 4px);
+    top:calc(var(--sat) + var(--sb-h) + 4px);
     left:8px;right:8px;
     bottom:calc(var(--sab) + var(--tb-h) + 8px);
     z-index:1250;
@@ -1141,9 +1111,696 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
     border:1px solid rgba(0,180,216,0.2);border-radius:var(--pill);
     padding:3px 9px;white-space:nowrap;
 }
-    </style>
+    
+/* ╔══════════════════════════════════════════════════════════════╗
+   ║  VMS COMMAND CENTER OVERLAY v1.0                            ║
+   ║  MAP = 100% FULLSCREEN BACKGROUND — never touched           ║
+   ║  All dashboard = floating panels over the map               ║
+   ╚══════════════════════════════════════════════════════════════╝ */
+
+/* ── COLLAPSIBLE LEFT SIDEBAR — COMMAND CENTER ── */
+#cc-sidebar {
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  width: 280px;
+  z-index: 2000;
+  background: rgba(5, 9, 18, 0.97);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border-right: 1px solid rgba(30,136,229,0.2);
+  display: flex; flex-direction: column;
+  transform: translateX(-280px);
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 6px 0 50px rgba(0,0,0,0.7);
+  pointer-events: none;
+}
+#cc-sidebar.open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+.cc-sidebar-header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid rgba(30,136,229,0.14);
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(8,14,28,0.6);
+  flex-shrink: 0;
+}
+.cc-sidebar-logo { font-size: 22px; }
+.cc-sidebar-title {
+  font-size: 13px; font-weight: 800;
+  color: #ddeeff; letter-spacing: 1px;
+}
+.cc-sidebar-sub {
+  font-size: 9px; color: #1e88e5;
+  letter-spacing: 2px; text-transform: uppercase;
+}
+.cc-sidebar-nav { flex: 1; overflow-y: auto; padding: 6px 0 10px; }
+.cc-nav-section {
+  font-size: 8px; color: #2a4060;
+  letter-spacing: 2px; text-transform: uppercase;
+  padding: 12px 16px 4px;
+  display: flex; align-items: center; gap: 6px;
+}
+.cc-nav-section::after {
+  content: ''; flex: 1; height: 1px;
+  background: rgba(30,136,229,0.1);
+}
+.cc-nav-btn {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px;
+  background: none; border: none; border-radius: 0;
+  font-family: inherit; font-size: 11px; font-weight: 600;
+  color: #6888aa; cursor: pointer; text-align: left;
+  transition: all 0.15s; white-space: nowrap;
+}
+.cc-nav-btn:active { background: rgba(30,136,229,0.2); transform: scale(0.97); }
+.cc-nav-btn.active { background: rgba(30,136,229,0.13); color: #7ee8ff; border-left: 2px solid #1e88e5; }
+.cc-nav-btn .nav-icon { font-size: 15px; flex-shrink: 0; width: 22px; text-align: center; }
+.cc-nav-btn .nav-badge {
+  margin-left: auto; font-size: 9px; font-weight: 700;
+  background: rgba(0,242,160,0.15); color: #00f2a0;
+  border: 1px solid rgba(0,242,160,0.25); border-radius: 10px;
+  padding: 2px 6px;
+}
+/* Action button inside sidebar */
+.cc-nav-btn.cc-btn-start { color: #00f2a0; }
+.cc-nav-btn.cc-btn-stop  { color: #ff5a5f; }
+.cc-nav-btn.cc-btn-amber { color: #ffb347; }
+.cc-nav-btn.cc-btn-blue  { color: #7ee8ff; }
+.cc-nav-btn.cc-btn-purple{ color: #c380f0; }
+
+/* Vehicle row in sidebar */
+.cc-vehicle-row {
+  display: flex; gap: 5px;
+  padding: 5px 16px 8px;
+}
+.cc-veh-btn {
+  flex: 1; height: 32px; padding: 0 6px;
+  font-size: 10px; font-weight: 700;
+  background: rgba(20,34,58,0.85);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #6888aa; border-radius: 30px;
+  font-family: inherit; cursor: pointer; transition: all .12s;
+}
+.cc-veh-btn.active { background:#122a16;border-color:#2c6e2f;color:var(--c-green);box-shadow:0 0 8px rgba(44,110,47,.35); }
+.cc-veh-btn:active { transform:scale(0.93); }
+
+.cc-sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid rgba(30,136,229,0.1);
+  font-size: 9px; color: #2a4060; text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── SIDEBAR TOGGLE BUTTON — in bottom bar ── */
+#cc-sidebar-toggle {
+  width: 44px; height: 44px; min-width: 44px;
+  background: rgba(30,136,229,0.15);
+  border: 1px solid rgba(30,136,229,0.35);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 18px; color: #7ee8ff;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  transition: all 0.15s;
+  /* Override fixed positioning — placed inline in bottom bar */
+  position: static;
+}
+#cc-sidebar-toggle.open { background: rgba(30,136,229,0.35); border-color: #1e88e5; }
+
+/* ── SIDEBAR BACKDROP ── */
+#cc-sidebar-backdrop {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 1999;
+  background: rgba(0,0,0,0);
+  pointer-events: none;
+  transition: background 0.25s;
+}
+#cc-sidebar-backdrop.open {
+  background: rgba(0,0,0,0.45);
+  pointer-events: auto;
+}
+
+/* ── MODE TOGGLE (bottom-right corner, compact) ── */
+#cc-mode-bar {
+  position: fixed;
+  bottom: calc(var(--sab, 0px) + var(--tb-h, 64px) + 8px);
+  right: 8px;
+  z-index: 1500;
+  display: flex; gap: 3px;
+  background: rgba(6,10,20,0.92);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(30,136,229,0.18);
+  border-radius: 40px;
+  padding: 3px;
+}
+.cc-mode-btn {
+  height: 26px; padding: 0 10px;
+  background: none; border: none; border-radius: 40px;
+  font-family: inherit; font-size: 9px; font-weight: 700;
+  color: #6888aa; cursor: pointer; white-space: nowrap;
+  transition: all 0.15s; letter-spacing: 0.3px;
+}
+.cc-mode-btn.active {
+  background: rgba(30,136,229,0.22);
+  color: #7ee8ff;
+  box-shadow: 0 0 8px rgba(30,136,229,0.25);
+}
+
+/* ── FLOATING CARD BASE ── */
+.cc-card {
+  position: fixed;
+  z-index: 1400;
+  background: rgba(6,10,20,0.88);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(30,136,229,0.18);
+  border-radius: 16px;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04) inset;
+  overflow: hidden;
+  transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+  min-width: 180px;
+}
+.cc-card.minimized .cc-card-body { display: none !important; }
+.cc-card.hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
+
+/* Card header */
+.cc-card-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  cursor: move;
+}
+.cc-card-icon { font-size: 14px; flex-shrink: 0; }
+.cc-card-title {
+  flex: 1; font-size: 10px; font-weight: 800;
+  color: #ddeeff; letter-spacing: 1px; text-transform: uppercase;
+}
+.cc-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.cc-card-btn {
+  width: 22px; height: 22px;
+  background: rgba(255,255,255,0.05); border: none;
+  border-radius: 6px; cursor: pointer; font-size: 10px;
+  display: flex; align-items: center; justify-content: center;
+  color: #6888aa; transition: all 0.12s; font-family: inherit;
+}
+.cc-card-btn:hover { background: rgba(30,136,229,0.2); color: #7ee8ff; }
+
+/* Card body */
+.cc-card-body { padding: 10px 12px 12px; }
+
+/* Data row inside card */
+.cc-data-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 10px;
+}
+.cc-data-row:last-child { border-bottom: none; }
+.cc-data-label { color: #6888aa; }
+.cc-data-value { font-weight: 700; color: #00f2a0; font-size: 11px; }
+.cc-data-value.blue { color: #7ee8ff; }
+.cc-data-value.amber { color: #ffb347; }
+.cc-data-value.red { color: #ff5a5f; }
+.cc-data-value.white { color: #ddeeff; }
+
+/* Big stat display */
+.cc-big-stat {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 6px 0 4px;
+}
+.cc-big-stat-value {
+  font-size: 32px; font-weight: 800; color: #00f2a0;
+  line-height: 1; letter-spacing: -1px;
+}
+.cc-big-stat-unit { font-size: 10px; color: #6888aa; margin-top: 3px; }
+
+/* LED indicators in cards */
+.cc-led {
+  width: 7px; height: 7px; border-radius: 50%;
+  display: inline-block; flex-shrink: 0;
+}
+.cc-led-green { background: #00f2a0; box-shadow: 0 0 6px #00f2a0; animation: ccGlow 1.4s ease-in-out infinite alternate; }
+.cc-led-red { background: #ff5a5f; }
+.cc-led-yellow { background: #ffb347; }
+@keyframes ccGlow { from{opacity:.35} to{opacity:1;transform:scale(1.3)} }
+
+/* Progress bar */
+.cc-progress-wrap {
+  width: 100%; background: rgba(255,255,255,0.06);
+  border-radius: 40px; height: 4px; margin: 6px 0 2px;
+}
+.cc-progress-fill {
+  height: 100%; border-radius: 40px;
+  background: linear-gradient(90deg, #1e88e5, #00f2a0);
+  transition: width 0.5s;
+}
+
+/* ── CARD POSITIONS (defaults) ── */
+#cc-card-gps    { top: calc(var(--sat,0px) + var(--sb-h,48px) + 8px); right: 14px; width: 200px; }
+#cc-card-speed  { top: calc(var(--sat,0px) + var(--sb-h,48px) + 8px); right: 228px; width: 160px; }
+#cc-card-dist   { top: calc(var(--sat,0px) + var(--sb-h,48px) + 260px); right: 14px; width: 200px; }
+#cc-card-patrol { bottom: calc(var(--sab,0px) + var(--tb-h,64px) + 8px); right: 14px; width: 220px; }
+#cc-card-evidence { bottom: calc(var(--sab,0px) + var(--tb-h,64px) + 8px); right: 248px; width: 200px; }
+
+/* ── MODE OVERRIDES ── */
+/* Mode 1: FULL MAP — hide all cards */
+body.cc-mode-1 .cc-card { opacity: 0; pointer-events: none; }
+body.cc-mode-1 #infoPanelWrap { opacity: 0; pointer-events: none; }
+
+/* Mode 2: MAP + FLOATING — default, all visible */
+body.cc-mode-2 .cc-card { opacity: 1; pointer-events: auto; }
+
+/* Mode 3: DASHBOARD HEAVY — cards larger */
+body.cc-mode-3 #cc-card-gps    { width: 260px; }
+body.cc-mode-3 #cc-card-speed  { width: 200px; }
+body.cc-mode-3 #cc-card-patrol { width: 280px; }
+body.cc-mode-3 #cc-card-evidence { width: 260px; }
+
+/* Mode bar inline in bottom bar - override fixed positioning */
+#cc-mode-bar {
+  position: static !important;
+  transform: none !important;
+  background: rgba(6,10,20,0.7) !important;
+  border: 1px solid rgba(30,136,229,0.15) !important;
+  border-radius: 30px;
+  padding: 2px !important;
+  backdrop-filter: none !important;
+  flex-shrink: 0;
+}
+
+/* ── RIGHT PANEL (collapsible) ── */
+#cc-right-panel {
+  position: fixed;
+  top: calc(var(--sat,0px) + var(--sb-h,48px) + 46px);
+  right: 14px;
+  z-index: 1450;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: transform 0.25s cubic-bezier(0.4,0,0.2,1), opacity 0.2s;
+}
+#cc-right-panel.hidden {
+  transform: translateX(280px);
+  opacity: 0; pointer-events: none;
+}
+
+/* Panel toggle right */
+#cc-panel-toggle-right {
+  position: fixed;
+  top: calc(var(--sat,0px) + var(--sb-h,48px) + 46px);
+  right: 10px;
+  z-index: 2100;
+  width: 32px; height: 32px;
+  background: rgba(8,13,24,0.92);
+  border: 1px solid rgba(30,136,229,0.25);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 13px; color: #7ee8ff;
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  transition: all 0.15s;
+}
+
+/* ── DRAG HANDLE on cards ── */
+.cc-drag-handle {
+  cursor: grab; flex: 1; user-select: none;
+}
+.cc-drag-handle:active { cursor: grabbing; }
+
+/* ── CARD SPECIFIC COLORS ── */
+#cc-card-gps    { border-color: rgba(30,136,229,0.25); }
+#cc-card-speed  { border-color: rgba(0,242,160,0.2); }
+#cc-card-dist   { border-color: rgba(0,242,160,0.2); }
+#cc-card-patrol { border-color: rgba(255,179,71,0.25); }
+#cc-card-evidence { border-color: rgba(0,180,216,0.25); }
+
+/* Card accent lines */
+#cc-card-gps::before,
+#cc-card-speed::before,
+#cc-card-dist::before,
+#cc-card-patrol::before,
+#cc-card-evidence::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  border-radius: 16px 16px 0 0;
+}
+#cc-card-gps::before    { background: linear-gradient(90deg, #1e88e5, transparent); }
+#cc-card-speed::before  { background: linear-gradient(90deg, #00f2a0, transparent); }
+#cc-card-dist::before   { background: linear-gradient(90deg, #00f2a0, transparent); }
+#cc-card-patrol::before { background: linear-gradient(90deg, #ffb347, transparent); }
+#cc-card-evidence::before { background: linear-gradient(90deg, #00b4d8, transparent); }
+
+/* Compact scrollbar in sidebar nav */
+.cc-sidebar-nav::-webkit-scrollbar { width: 3px; }
+.cc-sidebar-nav::-webkit-scrollbar-thumb { background: rgba(30,136,229,0.3); border-radius: 3px; }
+
+/* ── RESPONSIVE: MOBILE ── */
+@media (max-width: 767px) {
+  #cc-card-speed  { right: 14px; top: calc(var(--sat,0px) + var(--sb-h,48px) + 8px + 220px); width: 160px; }
+  #cc-card-patrol { right: 14px; bottom: calc(var(--sab,0px) + var(--tb-h,64px) + 8px + 180px); }
+  #cc-card-evidence { display: none; }
+}
+
+</style>
 </head>
 <body>
+
+<!-- ╔═══════════════════════════════════════════════
+     ║  VMS COMMAND CENTER OVERLAY HTML
+     ╚═══════════════════════════════════════════════ -->
+
+<!-- Sidebar backdrop -->
+<div id="cc-sidebar-backdrop" onclick="ccToggleSidebar()"></div>
+
+<!-- Left Collapsible Sidebar — COMMAND CENTER -->
+<div id="cc-sidebar">
+  <div class="cc-sidebar-header">
+    <span class="cc-sidebar-logo">🗺️</span>
+    <div>
+      <div class="cc-sidebar-title">VMS v5.63</div>
+      <div class="cc-sidebar-sub">Command Center</div>
+    </div>
+    <button onclick="ccToggleSidebar()" style="margin-left:auto;background:none;border:none;color:#6888aa;cursor:pointer;font-size:16px;padding:4px;">✕</button>
+  </div>
+
+  <div class="cc-sidebar-nav">
+
+    <!-- MODE TAMPILAN -->
+    <div class="cc-nav-section">Mode Tampilan</div>
+    <button class="cc-nav-btn" id="cc-mode-btn-1" onclick="ccSetMode(1);ccToggleSidebar()">
+      <span class="nav-icon">🗺️</span> Full Map
+    </button>
+    <button class="cc-nav-btn active" id="cc-mode-btn-2" onclick="ccSetMode(2);ccToggleSidebar()">
+      <span class="nav-icon">🎛️</span> Map + Dashboard
+    </button>
+    <button class="cc-nav-btn" id="cc-mode-btn-3" onclick="ccSetMode(3);ccToggleSidebar()">
+      <span class="nav-icon">📊</span> Dashboard Heavy
+    </button>
+
+    <!-- PATROL CONTROL -->
+    <div class="cc-nav-section">🚓 Patrol Control</div>
+    <button class="cc-nav-btn cc-btn-start" id="cc-sb-startBtn"
+      onclick="(function(){var b=document.getElementById('startBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">▶</span> Start Patrol
+    </button>
+    <button class="cc-nav-btn cc-btn-stop" id="cc-sb-stopBtn"
+      onclick="(function(){var b=document.getElementById('stopBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">⏹</span> Stop Patrol
+    </button>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="(function(){var b=document.getElementById('centerBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🎯</span> Center GPS
+    </button>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="(function(){var b=document.getElementById('addPointBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">📍</span> Add Tactical Point
+    </button>
+
+    <!-- KENDARAAN -->
+    <div class="cc-nav-section">🚗 Mode Kendaraan</div>
+    <div class="cc-vehicle-row">
+      <button id="cc-veh-walking" class="cc-veh-btn active"
+        onclick="(function(){var b=document.getElementById('vehicleWalking');if(b)b.click();})()">🚶 JALAN</button>
+      <button id="cc-veh-motor" class="cc-veh-btn"
+        onclick="(function(){var b=document.getElementById('vehicleMotor');if(b)b.click();})()">🏍️ MOTOR</button>
+      <button id="cc-veh-car" class="cc-veh-btn"
+        onclick="(function(){var b=document.getElementById('vehicleCar');if(b)b.click();})()">🚗 MOBIL</button>
+    </div>
+
+    <!-- NAVIGASI -->
+    <div class="cc-nav-section">🎯 Navigasi</div>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="typeof window.togglePanel==='function'&&window.togglePanel('points');ccToggleSidebar()">
+      <span class="nav-icon">📍</span> Tactical Points
+    </button>
+    <button class="cc-nav-btn cc-btn-amber"
+      onclick="(function(){var b=document.getElementById('returnBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🏠</span> Return Route
+    </button>
+    <button class="cc-nav-btn"
+      onclick="(function(){var b=document.getElementById('btnSemantic');if(b)b.click();})()">
+      <span class="nav-icon">🧭</span> Breadcrumb Trail
+    </button>
+
+    <!-- SIMULATOR -->
+    <div class="cc-nav-section">🧪 Simulator</div>
+    <button class="cc-nav-btn cc-btn-purple"
+      onclick="(function(){var b=document.getElementById('simToggleBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🎮</span> GPS Simulator
+    </button>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="typeof window.togglePanel==='function'&&window.togglePanel('routesim');ccToggleSidebar()">
+      <span class="nav-icon">🧪</span> Route Simulator
+    </button>
+    <button class="cc-nav-btn"
+      onclick="(function(){var b=document.getElementById('playbackToggleBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🎬</span> Replay Track
+    </button>
+
+    <!-- DATA & TOOLS -->
+    <div class="cc-nav-section">📊 Data & Tools</div>
+    <button class="cc-nav-btn" onclick="ccToggleCard('cc-card-gps')">
+      <span class="nav-icon">📡</span> GPS Status
+    </button>
+    <button class="cc-nav-btn" onclick="ccToggleCard('cc-card-patrol')">
+      <span class="nav-icon">👮</span> Patrol Data
+    </button>
+    <button class="cc-nav-btn" onclick="ccToggleCard('cc-card-evidence')">
+      <span class="nav-icon">📷</span> Evidence
+    </button>
+    <button class="cc-nav-btn" onclick="ccToggleCard('cc-card-dist')">
+      <span class="nav-icon">📏</span> Distance Track
+    </button>
+    <button class="cc-nav-btn" onclick="ccToggleCard('cc-card-speed')">
+      <span class="nav-icon">⚡</span> Speed Monitor
+    </button>
+
+    <!-- ROUTE I/O -->
+    <div class="cc-nav-section">📁 Route I/O</div>
+    <button class="cc-nav-btn cc-btn-start"
+      onclick="(function(){var b=document.getElementById('saveBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">💾</span> Simpan Track
+    </button>
+    <button class="cc-nav-btn"
+      onclick="toggleHistory();ccToggleSidebar()">
+      <span class="nav-icon">📋</span> Saved Tracks
+    </button>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="(function(){var b=document.getElementById('exportRouteBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">📤</span> Export Route
+    </button>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="(function(){var b=document.getElementById('importRouteBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">📥</span> Import Route
+    </button>
+
+    <!-- PETA -->
+    <div class="cc-nav-section">🗺️ Peta</div>
+    <button class="cc-nav-btn cc-btn-blue"
+      onclick="(function(){var b=document.getElementById('uploadMapBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🗺️</span> Upload Peta Lokal
+    </button>
+    <button class="cc-nav-btn"
+      onclick="(function(){var b=document.getElementById('mapMatchBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🛣️</span> Map Matching
+    </button>
+
+    <!-- LAINNYA -->
+    <div class="cc-nav-section">⚙️ Sistem</div>
+    <button class="cc-nav-btn cc-btn-amber"
+      onclick="(function(){var b=document.getElementById('syncBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🔄</span> Sync Data
+    </button>
+    <button class="cc-nav-btn"
+      onclick="(function(){var b=document.getElementById('sheetBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">📊</span> Export Sheet
+    </button>
+    <button class="cc-nav-btn cc-btn-stop"
+      onclick="(function(){var b=document.getElementById('clearBtn');if(b)b.click();ccToggleSidebar();})()">
+      <span class="nav-icon">🗑</span> Clear Track
+    </button>
+
+  </div>
+
+  <div class="cc-sidebar-footer">
+    VMS v5.63 · Command Center<br>
+    GPS · Route · IndexedDB · Evidence
+  </div>
+</div>
+
+<!-- Sidebar Toggle Button is now inside bottomBar -->
+
+<!-- Mode bar is now inline inside bottomBar -->
+
+<!-- ── CARD: GPS STATUS ── -->
+<div class="cc-card" id="cc-card-gps">
+  <div class="cc-card-header">
+    <span class="cc-card-icon">📡</span>
+    <span class="cc-drag-handle cc-card-title">GPS STATUS</span>
+    <div class="cc-card-actions">
+      <button class="cc-card-btn" onclick="ccMinCard(this,'cc-card-gps')" title="Minimize">—</button>
+      <button class="cc-card-btn" onclick="ccHideCard('cc-card-gps')" title="Hide">✕</button>
+    </div>
+  </div>
+  <div class="cc-card-body">
+    <div class="cc-data-row">
+      <span class="cc-data-label">Status</span>
+      <span style="display:flex;align-items:center;gap:5px;">
+        <span class="cc-led cc-led-green" id="cc-gps-led"></span>
+        <span class="cc-data-value" id="cc-gps-state">INIT</span>
+      </span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🎯 Akurasi</span>
+      <span class="cc-data-value blue" id="cc-accuracy">-- m</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">⬆️ Altitude</span>
+      <span class="cc-data-value white" id="cc-alt">0 m</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🔄 Sync</span>
+      <span class="cc-data-value" id="cc-sync">--</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">📍 Points</span>
+      <span class="cc-data-value blue" id="cc-pts">0</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🔋 Power</span>
+      <span class="cc-data-value amber" id="cc-power">NORMAL</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── CARD: SPEED ── -->
+<div class="cc-card" id="cc-card-speed">
+  <div class="cc-card-header">
+    <span class="cc-card-icon">⚡</span>
+    <span class="cc-drag-handle cc-card-title">SPEED</span>
+    <div class="cc-card-actions">
+      <button class="cc-card-btn" onclick="ccMinCard(this,'cc-card-speed')" title="Minimize">—</button>
+      <button class="cc-card-btn" onclick="ccHideCard('cc-card-speed')" title="Hide">✕</button>
+    </div>
+  </div>
+  <div class="cc-card-body">
+    <div class="cc-big-stat">
+      <div class="cc-big-stat-value" id="cc-speed-big">0</div>
+      <div class="cc-big-stat-unit">km/h</div>
+    </div>
+    <div class="cc-progress-wrap">
+      <div class="cc-progress-fill" id="cc-speed-bar" style="width:0%"></div>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🚶 Mode</span>
+      <span class="cc-data-value" id="cc-vehicle">JALAN</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🧭 Heading</span>
+      <span class="cc-data-value blue" id="cc-heading">--°</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── CARD: DISTANCE ── -->
+<div class="cc-card" id="cc-card-dist">
+  <div class="cc-card-header">
+    <span class="cc-card-icon">📏</span>
+    <span class="cc-drag-handle cc-card-title">DISTANCE</span>
+    <div class="cc-card-actions">
+      <button class="cc-card-btn" onclick="ccMinCard(this,'cc-card-dist')" title="Minimize">—</button>
+      <button class="cc-card-btn" onclick="ccHideCard('cc-card-dist')" title="Hide">✕</button>
+    </div>
+  </div>
+  <div class="cc-card-body">
+    <div class="cc-data-row">
+      <span class="cc-data-label">📏 Total</span>
+      <span class="cc-data-value" id="cc-dist-total">0 m</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">⬆️ Naik</span>
+      <span class="cc-data-value blue" id="cc-climb">0 m</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">⬇️ Turun</span>
+      <span class="cc-data-value blue" id="cc-descent">0 m</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🔄 Belokan</span>
+      <span class="cc-data-value amber" id="cc-turns">0</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">⚠️ Lost</span>
+      <span class="cc-data-value" id="cc-lost">TIDAK</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── CARD: PATROL ── -->
+<div class="cc-card" id="cc-card-patrol">
+  <div class="cc-card-header">
+    <span class="cc-card-icon">👮</span>
+    <span class="cc-drag-handle cc-card-title">PATROL DATA</span>
+    <div class="cc-card-actions">
+      <button class="cc-card-btn" onclick="ccMinCard(this,'cc-card-patrol')" title="Minimize">—</button>
+      <button class="cc-card-btn" onclick="ccHideCard('cc-card-patrol')" title="Hide">✕</button>
+    </div>
+  </div>
+  <div class="cc-card-body">
+    <div class="cc-data-row">
+      <span class="cc-data-label">🚶 Gerakan</span>
+      <span class="cc-data-value" id="cc-movement" style="font-size:9px;">BERJALAN LURUS</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🎯 Confidence</span>
+      <span class="cc-data-value" id="cc-confidence" style="font-size:9px;">HIGH</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">📍 Checkpoint</span>
+      <span class="cc-data-value blue" id="cc-checkpoint" style="font-size:9px;">--</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🏠 Return</span>
+      <span class="cc-data-value amber" id="cc-return-dist">0 m</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">🔋 Battery</span>
+      <span class="cc-data-value" id="cc-battery">100%</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">📡 Profile</span>
+      <span class="cc-data-value blue" id="cc-profile" style="font-size:9px;">PEJALAN KAKI</span>
+    </div>
+  </div>
+</div>
+
+<!-- ── CARD: EVIDENCE ── -->
+<div class="cc-card" id="cc-card-evidence">
+  <div class="cc-card-header">
+    <span class="cc-card-icon">📷</span>
+    <span class="cc-drag-handle cc-card-title">EVIDENCE</span>
+    <div class="cc-card-actions">
+      <button class="cc-card-btn" onclick="ccMinCard(this,'cc-card-evidence')" title="Minimize">—</button>
+      <button class="cc-card-btn" onclick="ccHideCard('cc-card-evidence')" title="Hide">✕</button>
+    </div>
+  </div>
+  <div class="cc-card-body">
+    <div class="cc-data-row">
+      <span class="cc-data-label">📍 Total Points</span>
+      <span class="cc-data-value" id="cc-ev-points">0</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">📷 Foto/Video</span>
+      <span class="cc-data-value blue" id="cc-ev-media">0</span>
+    </div>
+    <div class="cc-data-row">
+      <span class="cc-data-label">📁 Saved</span>
+      <span class="cc-data-value" id="cc-ev-saved">0</span>
+    </div>
+    <div style="margin-top:8px;">
+      <button onclick="typeof window.togglePanel==='function'&&window.togglePanel('points')"
+        style="width:100%;height:30px;background:rgba(0,91,101,0.7);border:1px solid #00b0b9;color:#00f2c0;border-radius:20px;font-size:10px;font-weight:700;font-family:inherit;cursor:pointer;">
+        📍 LIHAT POINTS
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- MAP -->
 <div id="map-wrapper"><div id="map"></div></div>
 
@@ -1628,19 +2285,33 @@ button:active{transform:scale(0.91);filter:brightness(1.18);}
 </div>
 
 <!-- ══════════════════════════════════════════
-     BOTTOM TOOLBAR  — primary actions
+     BOTTOM TOOLBAR — Command Center style
+     LEFT: ☰ sidebar toggle  
+     CENTER: patrol status + distance
+     RIGHT: GPS center + add point
 ══════════════════════════════════════════ -->
 <div id="bottomBar">
-    <div class="bb-primary">
-        <button id="startBtn" class="btn-primary btn-start">▶ START</button>
-        <button id="stopBtn" class="btn-primary btn-stop" style="display:none">⏹ STOP</button>
-        <button id="centerBtn" class="btn-primary btn-center">🎯</button>
-        <button id="addPointBtn" class="btn-primary">📍+</button>
-        <div id="infoChip">📏 <span id="bbDist">0 m</span></div>
-    </div>
-    <div class="bb-right">
-        <button id="simQuickBtn" onclick="window.togglePanel('routesim')" style="width:44px;height:44px;min-width:44px;background:#0a2040;border:1px solid #1e88e5;color:#7ee8ff;font-size:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;">🧪</button>
-        <button id="menuToggleBtn" onclick="toggleSecondaryMenu()">☰</button>
+    <!-- Sidebar toggle -->
+    <button id="cc-sidebar-toggle" onclick="ccToggleSidebar()" title="Command Center">☰</button>
+
+    <!-- START/STOP patrol (always accessible) -->
+    <button id="startBtn" class="btn-primary btn-start">▶ START</button>
+    <button id="stopBtn" class="btn-primary btn-stop" style="display:none">⏹ STOP</button>
+
+    <!-- Center GPS -->
+    <button id="centerBtn" class="btn-primary btn-center" title="Center GPS">🎯</button>
+
+    <!-- Add point (visible during patrol) -->
+    <button id="addPointBtn" class="btn-primary">📍+</button>
+
+    <!-- Live distance chip -->
+    <div id="infoChip" style="flex:1;">📏 <span id="bbDist">0 m</span></div>
+
+    <!-- Mode switcher (compact) -->
+    <div id="cc-mode-bar" style="position:static;transform:none;bottom:auto;right:auto;background:none;border:none;backdrop-filter:none;padding:0;gap:3px;display:flex;">
+      <button class="cc-mode-btn active" id="cc-m1" onclick="ccSetMode(1)" title="Full Map">🗺️</button>
+      <button class="cc-mode-btn" id="cc-m2" onclick="ccSetMode(2)" title="Float">🎛️</button>
+      <button class="cc-mode-btn" id="cc-m3" onclick="ccSetMode(3)" title="Dashboard">📊</button>
     </div>
 </div>
 
@@ -7903,5 +8574,258 @@ async function bootstrap(){
 bootstrap();
 })();
 </script>
+
+<script>
+(function(){
+'use strict';
+
+// ── STATE ────────────────────────────────────────────
+var _ccMode = 2;        // 1=full map, 2=float, 3=heavy
+var _sidebarOpen = false;
+var _cardStates = {};   // { cardId: 'normal'|'minimized'|'hidden' }
+var _dragState = null;  // for drag
+var _updateIv = null;
+
+// ── INIT ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function(){
+  ccSetMode(2);
+  ccStartDataSync();
+  ccInitDrag();
+  console.log('[CC] Command Center overlay initialized');
+});
+
+// ── SIDEBAR ──────────────────────────────────────────
+window.ccToggleSidebar = function(){
+  _sidebarOpen = !_sidebarOpen;
+  var sb = document.getElementById('cc-sidebar');
+  var bd = document.getElementById('cc-sidebar-backdrop');
+  var tb = document.getElementById('cc-sidebar-toggle');
+  if(sb) sb.classList.toggle('open', _sidebarOpen);
+  if(bd) bd.classList.toggle('open', _sidebarOpen);
+  if(tb) tb.textContent = _sidebarOpen ? '✕' : '☰';
+};
+
+// ── MODE TOGGLE ───────────────────────────────────────
+window.ccSetMode = function(mode){
+  _ccMode = mode;
+  document.body.classList.remove('cc-mode-1','cc-mode-2','cc-mode-3');
+  document.body.classList.add('cc-mode-' + mode);
+
+  // Update mode buttons in bottom bar
+  for(var i=1;i<=3;i++){
+    var btn = document.getElementById('cc-m'+i);
+    if(btn) btn.classList.toggle('active', i===mode);
+  }
+
+  // Update sidebar nav mode buttons by ID
+  var sb1 = document.getElementById('cc-mode-btn-1');
+  var sb2 = document.getElementById('cc-mode-btn-2');
+  var sb3 = document.getElementById('cc-mode-btn-3');
+  if(sb1){ sb1.classList.toggle('active', mode===1); }
+  if(sb2){ sb2.classList.toggle('active', mode===2); }
+  if(sb3){ sb3.classList.toggle('active', mode===3); }
+
+  // Mode 3: arrange cards
+  if(mode===3){ setTimeout(function(){ ccSetMode_3_layout(); }, 100); }
+};
+
+function ccSetMode_3_layout(){
+  // In heavy mode, arrange cards more compactly
+  var gps = document.getElementById('cc-card-gps');
+  var speed = document.getElementById('cc-card-speed');
+  var dist = document.getElementById('cc-card-dist');
+  var patrol = document.getElementById('cc-card-patrol');
+  var evid = document.getElementById('cc-card-evidence');
+
+  // Reset inline positions for mode 3 layout
+  if(gps){ gps.style.right='14px'; gps.style.top=''; }
+  if(speed){ speed.style.right='288px'; speed.style.top=''; }
+  if(dist){ dist.style.right='14px'; }
+  if(patrol){ patrol.style.right='14px'; }
+  if(evid){ evid.style.right='248px'; }
+}
+
+// ── CARD CONTROLS ─────────────────────────────────────
+window.ccHideCard = function(cardId){
+  var card = document.getElementById(cardId);
+  if(!card) return;
+  card.classList.add('hidden');
+  _cardStates[cardId] = 'hidden';
+};
+
+window.ccMinCard = function(btn, cardId){
+  var card = document.getElementById(cardId);
+  if(!card) return;
+  var isMin = card.classList.contains('minimized');
+  card.classList.toggle('minimized', !isMin);
+  btn.textContent = isMin ? '—' : '□';
+  _cardStates[cardId] = isMin ? 'normal' : 'minimized';
+};
+
+window.ccToggleCard = function(cardId){
+  var card = document.getElementById(cardId);
+  if(!card) return;
+  var isHidden = card.classList.contains('hidden');
+  card.classList.toggle('hidden', !isHidden);
+  _cardStates[cardId] = isHidden ? 'normal' : 'hidden';
+};
+
+// ── DRAG TO MOVE CARDS ────────────────────────────────
+function ccInitDrag(){
+  document.querySelectorAll('.cc-drag-handle').forEach(function(handle){
+    handle.addEventListener('mousedown', function(e){
+      var card = handle.closest('.cc-card');
+      if(!card) return;
+      e.preventDefault();
+      var rect = card.getBoundingClientRect();
+      var offX = e.clientX - rect.left;
+      var offY = e.clientY - rect.top;
+      card.style.transition = 'none';
+      card.style.right = 'auto';
+      card.style.bottom = 'auto';
+
+      function onMove(me){
+        card.style.left = (me.clientX - offX) + 'px';
+        card.style.top  = (me.clientY - offY) + 'px';
+      }
+      function onUp(){
+        card.style.transition = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // Touch drag
+    handle.addEventListener('touchstart', function(e){
+      var card = handle.closest('.cc-card');
+      if(!card) return;
+      var touch = e.touches[0];
+      var rect = card.getBoundingClientRect();
+      var offX = touch.clientX - rect.left;
+      var offY = touch.clientY - rect.top;
+      card.style.transition = 'none';
+      card.style.right = 'auto';
+      card.style.bottom = 'auto';
+
+      function onTMove(te){
+        var t = te.touches[0];
+        card.style.left = (t.clientX - offX) + 'px';
+        card.style.top  = (t.clientY - offY) + 'px';
+      }
+      function onTEnd(){
+        card.style.transition = '';
+        document.removeEventListener('touchmove', onTMove);
+        document.removeEventListener('touchend', onTEnd);
+      }
+      document.addEventListener('touchmove', onTMove, {passive:true});
+      document.addEventListener('touchend', onTEnd);
+    }, {passive:true});
+  });
+}
+
+// ── DATA SYNC (reads from engine DOM) ─────────────────
+// Reads engine-generated values via DOM element text
+// Zero interference with engine state variables
+function ccReadEl(id){ var el=document.getElementById(id); return el?el.textContent.trim():'--'; }
+
+function ccSyncData(){
+  // GPS card
+  ccSet('cc-accuracy', ccReadEl('accuracyText'));
+  ccSet('cc-alt',      ccReadEl('altText'));
+  ccSet('cc-pts',      ccReadEl('pointCounter'));
+  ccSet('cc-gps-state', ccReadEl('gpsText').replace('GPS: ',''));
+  ccSet('cc-sync',     ccReadEl('syncText').replace('Sync: ',''));
+  ccSet('cc-power',    ccReadEl('powerMode'));
+
+  // GPS LED color from original LED classes
+  var origLed = document.getElementById('gpsLed');
+  var ccLed   = document.getElementById('cc-gps-led');
+  if(origLed && ccLed){
+    ccLed.className = 'cc-led';
+    if(origLed.classList.contains('led-green'))  ccLed.classList.add('cc-led-green');
+    else if(origLed.classList.contains('led-red')) ccLed.classList.add('cc-led-red');
+    else ccLed.classList.add('cc-led-yellow');
+  }
+
+  // Speed card
+  var speedTxt = ccReadEl('speedText');
+  var speedNum = parseFloat(speedTxt) || 0;
+  ccSet('cc-speed-big', speedNum.toFixed(speedNum>10?0:1));
+  var speedBar = document.getElementById('cc-speed-bar');
+  // max speed display: walking=10, motor=80, car=160
+  var maxSpeed = 10;
+  if(typeof currentVehicle !== 'undefined'){
+    if(currentVehicle==='MOTOR') maxSpeed=80;
+    else if(currentVehicle==='CAR') maxSpeed=160;
+  }
+  if(speedBar) speedBar.style.width = Math.min(100, (speedNum/maxSpeed)*100) + '%';
+
+  // Vehicle + heading
+  var profile = ccReadEl('profileBadge');
+  if(profile.indexOf('MOTOR')>-1)       ccSet('cc-vehicle','MOTOR');
+  else if(profile.indexOf('MOBIL')>-1)  ccSet('cc-vehicle','MOBIL');
+  else                                   ccSet('cc-vehicle','JALAN');
+  ccSet('cc-profile', profile.replace('📡','').replace('🚶','').trim());
+
+  // Distance card
+  ccSet('cc-dist-total', ccReadEl('totalDistance'));
+  ccSet('cc-climb',      ccReadEl('totalClimb'));
+  ccSet('cc-descent',    ccReadEl('totalDescent'));
+  ccSet('cc-turns',      ccReadEl('turnCount'));
+  ccSet('cc-lost',       ccReadEl('lostPattern'));
+
+  // Patrol card
+  var mv = ccReadEl('movementBadge');
+  ccSet('cc-movement', mv.replace('🚶','').replace('🏃','').trim());
+  var conf = ccReadEl('confidenceBadge');
+  ccSet('cc-confidence', conf.replace('🎯 RETURN:','').trim());
+  var cp = ccReadEl('checkpointBadge');
+  ccSet('cc-checkpoint', cp.replace('📍 CHECKPOINT:','').trim());
+  ccSet('cc-return-dist', ccReadEl('returnDistance') + ' m');
+  ccSet('cc-battery',     ccReadEl('batteryBadge').replace('🔋','').trim());
+
+  // Heading from confidence badge if available
+  if(typeof _survFused !== 'undefined' && _survFused > 0){
+    ccSet('cc-heading', Math.round(_survFused) + '°');
+  }
+
+  // Evidence card
+  ccSet('cc-ev-points', ccReadEl('pointCounter'));
+  var statsBox = ccReadEl('statsBox');
+  var savedM = statsBox.match(/Saved:(d+)/);
+  ccSet('cc-ev-saved', savedM ? savedM[1] : '0');
+
+  // Evidence media count from DOM
+  var evidCount = document.querySelectorAll('.evidence-thumb, .evidence-thumb-video').length;
+  ccSet('cc-ev-media', evidCount);
+
+  // Sync sidebar vehicle buttons
+  var vehWalking = document.getElementById('vehicleWalking');
+  var vehMotor   = document.getElementById('vehicleMotor');
+  var vehCar     = document.getElementById('vehicleCar');
+  var sbW = document.getElementById('cc-veh-walking');
+  var sbM = document.getElementById('cc-veh-motor');
+  var sbC = document.getElementById('cc-veh-car');
+  if(vehWalking && sbW) sbW.classList.toggle('active', vehWalking.classList.contains('active'));
+  if(vehMotor && sbM)   sbM.classList.toggle('active', vehMotor.classList.contains('active'));
+  if(vehCar && sbC)     sbC.classList.toggle('active', vehCar.classList.contains('active'));
+}
+
+function ccSet(id, val){
+  var el = document.getElementById(id);
+  if(el && el.textContent !== String(val)) el.textContent = val;
+}
+
+function ccStartDataSync(){
+  ccSyncData();
+  _updateIv = setInterval(ccSyncData, 600);
+  window.addEventListener('pagehide', function(){ clearInterval(_updateIv); }, {once:true});
+}
+
+})();
+</script>
+
 </body>
 </html>
